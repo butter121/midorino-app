@@ -608,11 +608,11 @@ export function apply(g: GameState, p: Player, sid: string, opt: Opt) {
     let bonusR: Res | null = null;
     if (ACC_WOOD.has(sid)) {
       bonusR = 'wood';
-      if (p.char === 'toma' && sid === 'forest' && !p.once.includes('toma')) { p.res.wood += 1; addTo(p.once, 'toma'); }
+      if (p.char === 'toma') p.res.wood += 1;
     }
     if (ACC_CLAY.has(sid)) {
       bonusR = 'clay';
-      if (p.char === 'mina') p.res.clay += 1;
+      if (p.char === 'mina' && sid === 'claypit') p.res.clay += 1;
     }
     if (ACC_STONE.has(sid)) bonusR = 'stone';
     if (sid === 'river' && p.char === 'momo') p.res.food += 1;
