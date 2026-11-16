@@ -59,6 +59,13 @@ export function cuesFor(ev: GameEvent, me: Seat): SeCue[] {
     case 'first_pass': return ['first_pass'];
     case 'score': return ['score_tick'];
     case 'game_end': return ['victory'];
+    case 'familiar': return ['loot'];
+    case 'trap': return ['build'];
+    case 'trade': return ['coin'];
+    case 'discard': return ['card_flip'];
+    case 'recall': return mine ? ['heal'] : [];
+    case 'weather_set': return ['weather'];
+    case 'wait': return ['place'];
     default: return [];
   }
 }

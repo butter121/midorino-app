@@ -1,8 +1,15 @@
-"""霧谷の冒険者団：Python 版 data.py を packages/ui/src/kiridani/data.ts に写す。
-使い方: python3 tools/kiridani_data_to_ts.py <data.py> packages/ui/src/kiridani/data.ts
-(data.py の数値をエンジン側で調整したら、これで TS 側を作り直す)"""
-import json, runpy, sys
-d = runpy.run_path(sys.argv[1])
+"""霧谷の冒険者団：Python 版 data.py を packages/engine/src/kiridani/data.ts に写す（数値の置き場はここ1つ）。
+画面（packages/ui/src/kiridani/data.ts）はこのファイルを読み直すだけ。
+使い方: python3 tools/kiridani_data_to_ts.py [data.py] [出力.ts]
+  既定: tools/kiridani/py/data.py → packages/engine/src/kiridani/data.ts
+(data.py の数値を調整したら tools/kiridani/sync.sh で写しを取り直し、これで TS 側を作り直す。
+ data.py に新しい大文字の定数が増えても、JSON にできるものは全部そのまま書き出す)"""
+import json, os, runpy, sys
+_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_src = sys.argv[1] if len(sys.argv) > 1 else os.path.join(_root, 'tools/kiridani/py/data.py')
+_dst = sys.argv[2] if len(sys.argv) > 2 else os.path.join(_root, 'packages/engine/src/kiridani/data.ts')
+d = runpy.run_path(_src)
+DONE = set()
 def j(x):
     def conv(o):
         if isinstance(o, set): return sorted(o)
@@ -33,8 +40,12 @@ export interface ItemDef { id: string; name: string; kind: ItemKind; tags: strin
 export type CardDef = OccupationDef | ItemDef;
 
 ''')
+DONE.update(['SEASONS','SEASON_JP','TIDE','ELEMENTS','EL_JP','RES','RES_JP','SEAT_FOOD','BED_COST','WALL_COST','FATE_DECK','MARKET_BASE','FIXED_BUY',
+             'ACTIONS','ACT','MARKETS','NESTS','NEST_JP','MONSTERS','MON','BOSSES','WEATHER','WEATHER_JP','WEATHER_EL','CHARACTERS',
+             'OCCUPATIONS','ITEMS','CARDS','OCC_IDS','ITEM_IDS','QUESTS','QUEST_FAME','ITEMS_BY'])
 for k in ['NUM_ROUNDS','START_COMPANIONS','MAX_COMPANIONS','START_BEDS','BASE_PLOTS','START_FOOD','START_GOLD','UPKEEP','DISCONTENT','HIRE_FOOD','POWER_PER','MAX_SKILL','WEAKNESS_BONUS','TIDE_BONUS','NEST_CAP','FAME_PER_COMPANION','HERO_BONUS','GOLD_PER_FAME','MARKET_SPAN','MARKET_QTY','DRAGON_FAIL']:
     w(f'export const {k} = {j(d[k])};\n')
+    DONE.add(k)
 w(f"export const SEASONS: Season[] = {j(d['SEASONS'])};\n")
 w(f"export const SEASON_JP: Record<Season, string> = {j(d['SEASON_JP'])};\n")
 w(f"export const TIDE: Record<Season, Element> = {j(d['TIDE'])};\n")
@@ -77,13 +88,33 @@ w("export const OCC_IDS = OCCUPATIONS.map((c) => c.id);\nexport const ITEM_IDS =
 w("\n// ---- 共通の依頼（15種から3枚） ----\n")
 w(f"export const QUESTS: Record<string, string> = {j(d['QUESTS'])};\n")
 w(f"export const QUEST_FAME: number[] = {j(d['QUEST_FAME'])};\n")
+# ---- それ以外の大文字の定数（エンジン用の調整値。data.py に増えたものも全部） ----
+TYPED = {'POTION': '[Cost, number]', 'MORALE': '[Cost, number]', 'START_BONUS': 'Record<string, Cost>', 'RATING': 'Record<string, number>',
+         'CHAR_RATING': 'Record<string, number>', 'BOSS_ROUNDS': 'number[]', 'WINTER_ROUNDS': 'number[]', 'OCC_FOOD': 'number[]',
+         'ALL_NESTS': 'string[]'}
+w("\n// ---- エンジン用の調整値（data.py の残りの定数をそのまま） ----\n")
+for k, v in d.items():
+    if k in DONE or not k.isupper() or len(k) < 2 or callable(v) or k.startswith('_'):
+        continue
+    try:
+        js = j(v)
+    except TypeError:
+        continue
+    t = TYPED.get(k)
+    if t is None and isinstance(v, dict) and all(isinstance(x, (int, float)) for x in v.values()):
+        t = 'Record<string, number>'
+    w(f"export const {k}{': ' + t if t else ''} = {js};\n")
+    DONE.add(k)
 w('''
 // ---- 表示用の補助 ----
 export const RACE_JP: Record<Race, string> = { beast: '獣', spirit: '精霊', undead: '亡者', humanoid: '人型', dragon: '竜' };
 export const KIND_JP: Record<'occ' | ItemKind, string> = { occ: '職能', weapon: '武具', tool: '道具', spell: '秘術' };
 /** 1年＝4ラウンド（春夏秋冬が1ラウンドずつ）。3年で12ラウンド */\nexport const seasonOf = (round: number): Season => SEASONS[(round - 1) % 4];
 export const yearOf = (round: number): number => Math.floor((round - 1) / 4) + 1;
-/** 主の出るラウンド（各年の冬の終わり） */
-export const BOSS_ROUNDS = Object.keys(BOSSES).map(Number);
 ''')
-open(sys.argv[2], 'w').write(''.join(out))
+if 'BOSS_ROUNDS' not in DONE:
+    w("/** 主の出るラウンド（各年の冬の終わり） */\nexport const BOSS_ROUNDS = Object.keys(BOSSES).map(Number);\n")
+w("if (!NEST_JP.nest_fog) NEST_JP.nest_fog = '霧の巣';\n")
+os.makedirs(os.path.dirname(_dst), exist_ok=True)
+open(_dst, 'w').write(''.join(out))
+print('wrote', _dst)

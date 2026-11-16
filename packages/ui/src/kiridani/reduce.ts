@@ -102,14 +102,17 @@ export function applyEvent(v0: GameView, ev: GameEvent): GameView {
       if (ev.boss) log(`今年の主：${monsterDef(ev.boss)?.name}`);
       break;
     case 'monster_spawn': {
-      const n = v.nests.find((x) => x.id === ev.nest);
-      if (n) { n.monster = ev.monster; n.wounds = 0; n.next = ev.next; n.trap = false; }
+      let n = v.nests.find((x) => x.id === ev.nest);
+      // 濃霧の日だけ現れる霧の巣
+      if (!n) { n = { id: ev.nest, wounds: 0, occupants: [] }; v.nests.push(n); }
+      n.monster = ev.monster; n.wounds = 0; n.next = ev.next; n.trap = false;
       log(`${NEST_JP[ev.nest]}に${monsterDef(ev.monster)?.name}`);
       break;
     }
     case 'monster_leave': {
       const n = v.nests.find((x) => x.id === ev.nest);
       if (n) { n.monster = undefined; n.wounds = 0; n.trap = false; }
+      if (ev.nest === 'nest_fog') v.nests = v.nests.filter((x) => x.id !== 'nest_fog');
       break;
     }
     case 'refill':
@@ -202,8 +205,10 @@ export function applyEvent(v0: GameView, ev: GameEvent): GameView {
         p.fateUsed.push(val);
       }
       if (v.combat) {
-        v.combat.fate = { seat: ev.seat, value: ev.value, values: ev.values };
-        v.combat.total = v.combat.parts.reduce((a, x) => a + x.value, 0) + ev.value;
+        // 主との決戦では参加者全員が1枚ずつめくり、合計を使う
+        const prev = v.combat.fate && v.combat.fate.seat !== ev.seat ? v.combat.fate.value : 0;
+        v.combat.fate = { seat: ev.seat, value: prev + ev.value, values: ev.values };
+        v.combat.total = v.combat.parts.reduce((a, x) => a + x.value, 0) + v.combat.fate.value;
       }
       break;
     }
@@ -308,6 +313,45 @@ export function applyEvent(v0: GameView, ev: GameEvent): GameView {
       break;
     case 'game_end':
       log('ゲーム終了');
+      break;
+    case 'familiar': {
+      const p = P(ev.seat);
+      p.familiars.push(ev.monster ?? 'wolf');
+      log(`${who(v, ev.seat)}が${ev.monster ? monsterDef(ev.monster)?.name + 'を' : ''}使い魔にした`);
+      break;
+    }
+    case 'trap': {
+      const n = v.nests.find((x) => x.id === ev.nest);
+      if (n) n.trap = true;
+      log(`${who(v, ev.seat)}が${NEST_JP[ev.nest] ?? ev.nest}に罠をしかけた`);
+      break;
+    }
+    case 'trade':
+      addCost(P(ev.a).res, ev.give, -1); addCost(P(ev.a).res, ev.get);
+      addCost(P(ev.b).res, ev.give); addCost(P(ev.b).res, ev.get, -1);
+      log(`${who(v, ev.a)}と${who(v, ev.b)}が取引（${costText(ev.give)} ⇄ ${costText(ev.get)}）`);
+      break;
+    case 'discard': {
+      const p = P(ev.seat);
+      for (const list of [p.occupations, p.weapons, p.facilities]) { const i = list.indexOf(ev.card); if (i >= 0) { list.splice(i, 1); break; } }
+      log(`${who(v, ev.seat)}の${cardName(ev.card)}がなくなった`);
+      break;
+    }
+    case 'recall': {
+      const p = P(ev.seat);
+      const c = p.companions.find((x) => x.id === ev.companion);
+      const at = c?.at;
+      if (c) { c.at = undefined; c.injured = false; }
+      const t = at ? target(at) : undefined;
+      if (t) { const i = t.occupants.indexOf(ev.seat); if (i >= 0) t.occupants.splice(i, 1); }
+      break;
+    }
+    case 'weather_set':
+      if (ev.round === v.round + 1) v.forecast = [ev.weather, ...v.forecast.slice(1)];
+      log(`${who(v, ev.seat)}が次の天候を${WEATHER_JP[ev.weather]}に`);
+      break;
+    case 'wait':
+      log(`${who(v, ev.seat)}が${placeName(ev.nest)}で共闘の相手を待つ（戦力${ev.power}）`);
       break;
   }
   return v;

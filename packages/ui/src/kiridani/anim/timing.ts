@@ -19,6 +19,7 @@ export const BASE_MS: Record<EventType, number> = {
   boss_appear: 2500, dragon_fail: 1200, quest_done: 800, fame: 400,
   market_reset: 400, round_end: 300, first_pass: 400,
   score: 7000, game_end: 600,
+  familiar: 600, trap: 500, trade: 700, discard: 400, recall: 400, weather_set: 700, wait: 500,
 };
 
 /** 最小の速さでも残す短い動き（「何が起きたか分かる」ための下限） */
