@@ -29,7 +29,7 @@ function spacesFor(g: GameState, by: Record<string, number[]>, me: number): Spac
 function GameDemo({ n, round, placed, me }: { n: number; round: number; placed: number; me: number }) {
   const [{ g, by, turn }] = useState(() => sampleGame(n, round, placed));
   if (me < 0) me = turn;
-  const [tab, setTab] = useState<'me' | 'all' | 'market' | 'cards'>('me');
+  const [tab, setTab] = useState<'me' | 'all' | 'market' | 'cards' | 'log'>('me');
   const [sel, setSel] = useState<string | null>(() => spacesFor(g, by, me).find((s) => s.available && ACT[s.id].accum)?.id ?? null);
   const p = g.players[me];
   const myTurn = turn === me;
@@ -48,7 +48,7 @@ function GameDemo({ n, round, placed, me }: { n: number; round: number; placed: 
       }))} />}
       board={<ActionBoard spaces={spacesFor(g, by, me)} selected={sel} onPick={setSel} />}
       side={<>
-        <Tabs value={tab} onChange={setTab} tabs={[{ id: 'me', label: 'わたし' }, { id: 'all', label: 'みんな' }, { id: 'market', label: '市場' }, { id: 'cards', label: '設備' }]} />
+        <Tabs value={tab} onChange={setTab} tabs={[{ id: 'me', label: 'わたし' }, { id: 'all', label: 'みんな' }, { id: 'market', label: '市場' }, { id: 'cards', label: '設備' }, { id: 'log', label: '記録' }]} />
         {tab === 'me' && <MyPanel player={p} sheepPer={sheepPerPlot(p)} />}
         {tab === 'all' && <PlayersOverview players={g.players} names={NAMES} mySeat={me} />}
         {tab === 'market' && <MarketPanel prices={g.prices} />}

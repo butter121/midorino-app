@@ -19,7 +19,7 @@ export function PlayerStrip({ players, onSelect }: { players: PlayerChip[]; onSe
             {p.isFirst && <span className="mi-pl-first" aria-hidden>先手</span>}
             {p.isTurn && <span className="mi-pl-turn" aria-hidden>番</span>}
             <Worker seat={p.seat} size={28} />
-            <span className="mi-pl-nm" aria-hidden>{PLAYER_MARKS[p.seat]}{p.isMe ? 'あなた' : p.name}</span>
+            <span className="mi-pl-nm" aria-hidden><span className="mi-pl-mark">{PLAYER_MARKS[p.seat]}</span>{p.isMe ? 'あなた' : p.name}</span>
             <span className="mi-pl-vp" aria-hidden>{p.vp}点</span>
             <span className="mi-pl-dots" aria-hidden>
               {Array.from({ length: p.total }, (_, i) => <i key={i} className={i < p.left ? '' : 'u'} />)}

@@ -42,7 +42,7 @@ export function SeasonTrack({ round }: { round: number }) {
       {Array.from({ length: NUM_ROUNDS }, (_, i) => {
         const r = i + 1; const s = seasonOf(r); const ev = roundEvent(r);
         return (
-          <li key={r} className={`is-${s}${r === round ? ' is-now' : ''}${r < round ? ' is-past' : ''}`}
+          <li key={r} className={`is-${s}${r === round ? ' is-now' : ''}${r < round ? ' is-past' : ''}${ev ? (ev === '冬越し' ? ' has-winter' : ' has-harvest') : ''}`}
             aria-current={r === round ? 'step' : undefined} title={`R${r} ${SEASON_JP[s]}${ev ? `・終わりに${ev}` : ''}`}>
             <span>{r}</span>{ev && <i aria-hidden>{ev === '冬越し' ? '冬' : '収'}</i>}
           </li>
