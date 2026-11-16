@@ -623,7 +623,7 @@ export class Game {
       }
       // 天候の鈴
       if (p.hand.includes('i21') && r < NUM_ROUNDS) {
-        const c = this.spell_cost(p, { mana: 2 });
+        const c = this.spell_cost(p, (CARDS['i21'] as D.ItemDef).cost as Record<string, number>);
         if (canPay(p, c)) {
           const nw: string | null = yield* this.ask({ k: 'weather', g: this, p });
           if (nw) {

@@ -265,6 +265,12 @@ export const DRAFT_SHOW = 3;
 export const SELL_SPREAD = 0;
 export const MINA_SPRING = 2;
 export const MINA_DISCOUNT_ALWAYS = true;
+export const FATE_TOP_VISIBLE = false;
+export const EXTRA_WORKER_FROM = 0;
+export const EXTRA_NEST = false;
+export const CATCHUP_ORDER = false;
+export const CATCHUP_SUPPLY: Record<string, number> = {};
+export const DEAL_COMP = 0.0;
 
 // ---- 表示用の補助 ----
 export const RACE_JP: Record<Race, string> = { beast: '獣', spirit: '精霊', undead: '亡者', humanoid: '人型', dragon: '竜' };

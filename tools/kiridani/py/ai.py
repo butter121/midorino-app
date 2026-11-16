@@ -416,3 +416,96 @@ class AI:
             if o.ai.accept(g, o, get, give):
                 g.trade(p, o, give, get)
                 done += 1
+
+
+# ====================================================================== 強いAI（ロールアウト）
+def end_value(g, p, W):
+    """ラウンド終了後の局面の価値"""
+    if g.round >= NUM_ROUNDS:
+        g.over = True
+        return score(p, g)
+    g.round += 1
+    v = evaluate(g, p, W)
+    g.round -= 1
+    return v
+
+
+class RolloutAI(AI):
+    """貪欲AIの上位K手それぞれについて、ラウンドの終わりまで（全員貪欲方針で）R回打ち切りシミュレーションし、平均の良い手を選ぶ。
+    ドラフトは較正済み評価で「この手札ならどのキャラが一番か」を先読みして選ぶ。"""
+
+    def __init__(self, level='strong', W=None, seed=None, trade=True, arch=None, K=3, R=2, H=1):
+        super().__init__('expert', W=W, seed=seed, trade=trade, arch=arch)
+        self.level = 'strong'
+        self.K, self.R, self.H = K, R, H
+        self.seed0 = seed or 0
+
+    def choose(self, g, p, opts):
+        if g.rollout:
+            return AI.choose(self, g, p, opts)
+        vals = [(self.option_value(g, p, s, o), i) for i, (s, o) in enumerate(opts)]
+        vals.sort(reverse=True)
+        if len(vals) >= 2:
+            g.close_calls += (vals[0][0] - vals[1][0] < 0.5)
+        cand, seen = [], set()
+        for v, i in vals:
+            s, o = opts[i]
+            key = (s, o if not s.startswith('nest') else (o[0], o[1]))
+            if key in seen:
+                continue
+            seen.add(key)
+            cand.append((v, i))
+            if len(cand) >= self.K:
+                break
+        if len(cand) == 1:
+            return opts[cand[0][1]]
+        best, bv = None, -1e9
+        self.nd += 1
+        for v0, i in cand:
+            s, o = opts[i]
+            tot = 0.0
+            for r in range(self.R):
+                g2 = g.clone_for(p.pid, extra=tuple(range(g.n)))
+                g2.rollout = True
+                g2.rng = random.Random(self.seed0 * 1000003 + g.decisions * 97 + r)   # 候補間で同じ乱数（分散を減らす）
+                p2 = g2.players[p.pid]
+                g2.apply(p2, s, o)
+                g2.check_quests(p2)
+                g2.work_phase(resume=p.pid)
+                g2.end_round()
+                for _ in range(self.H):
+                    if g2.round >= NUM_ROUNDS:
+                        break
+                    g2.round += 1
+                    g2.start_round()
+                    g2.work_phase()
+                    g2.end_round()
+                tot += end_value(g2, p2, self.W)
+            m = tot / self.R + 0.15 * v0   # 1手評価も少し混ぜる
+            if m > bv:
+                best, bv = opts[i], m
+        return best
+
+    # ---- ドラフトの先読み：手札＋候補で、キャラ候補ごとの合計価値の最大
+    def hand_value(self, g, p, hand, chars):
+        best = -1e9
+        for ch in chars:
+            s = CHAR_RATING.get(ch, 0.0)
+            for c in hand:
+                card = CARDS[c]
+                s += rating(c) + (0.8 if ch in card['chars'] else 0) + 0.15 * len(card['tags'] & CHARACTERS[ch]['tags'])
+            best = max(best, s)
+        return best
+
+    def draft_pick(self, g, p, cards, kind, ingame=False):
+        chars = [p.char] if p.char else p.char_opts
+        return max(cards, key=lambda c: self.hand_value(g, p, p.hand + [c], chars) + self.rng.gauss(0, 0.05))
+
+    def pick_character(self, g, p, options):
+        return max(options, key=lambda ch: self.hand_value(g, p, p.hand, [ch]))
+
+
+def make_ai(level, seed=None, trade=True, arch=None):
+    if level == 'strong':
+        return RolloutAI(seed=seed, trade=trade, arch=arch)
+    return AI(level, seed=seed, trade=trade, arch=arch)
