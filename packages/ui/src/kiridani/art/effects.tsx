@@ -56,6 +56,29 @@ const FX: Record<string, { jp: string; d: ReactNode }> = {
   'season-change': { jp: '季節の変わり目', d: <>
     {[[K.moss3, 0], [K.fire2, 90], [K.gold, 180], [K.ice2, 270]].map(([c, a]) => <path key={a as number} d="M48 48V8a40 40 0 0 1 40 40z" fill={c as string} {...S} transform={`rotate(${a} 48 48)`} />)}
     <circle cx="48" cy="48" r="12" fill={K.parch} {...S} /><path d="M48 48l6-6" {...L} strokeWidth={3} /></> },
+  hit: { jp: '命中', d: <>{burst(8, 18, 40, K.fire3)}{burst(8, 10, 22, '#fff')}</> },
+  weakness: { jp: '弱点', d: <>{burst(10, 22, 40, K.thunder2)}
+    <circle cx="48" cy="48" r="16" fill={K.blood} {...S} /><circle cx="48" cy="48" r="9" fill="#fff" {...S} /><circle cx="48" cy="48" r="3.4" fill={K.blood} />
+    <path d="M48 20v12M48 64v12M20 48h12M64 48h12" {...L} strokeWidth={3} /></> },
+  counter: { jp: '反撃', d: <>
+    <path d="M78 22C56 30 36 50 24 78" {...L} stroke={INK} strokeWidth={9} /><path d="M78 22C56 30 36 50 24 78" {...L} stroke={K.blood2} strokeWidth={5} />
+    <path d="M14 70l10 12 12-8z" fill={K.blood2} {...S} /><Spark x={78} y={22} r={6} fill={K.fire3} /></> },
+  spark: { jp: 'きらめき', d: <><Spark x={48} y={48} r={22} fill={K.light2} /><Spark x={22} y={24} r={8} fill={K.gold3} /><Spark x={76} y={70} r={7} fill={K.gold3} /><Spark x={74} y={22} r={5} /></> },
+  coin: { jp: '金貨', d: <><circle cx="48" cy="48" r="22" fill={K.gold2} {...S} /><circle cx="48" cy="48" r="15" fill="none" stroke={K.gold} strokeWidth={3} />
+    <path d="M48 38v20M43 42h10" {...L} strokeWidth={2.4} /><Spark x={72} y={24} r={6} fill={K.gold3} /></> },
+  discontent: { jp: '不満', d: <><g transform="translate(16 16) scale(2)"><KIcon name="discontent" size={32} /></g>
+    <path d="M74 14l4 8 6-4-2 8" {...L} stroke={K.blood} strokeWidth={3} /></> },
+  'quest-stamp': { jp: '依頼達成', d: <><circle cx="48" cy="48" r="34" fill="none" stroke={K.blood} strokeWidth={6} /><circle cx="48" cy="48" r="26" fill="none" stroke={K.blood} strokeWidth={2} />
+    <path d="M34 48l10 10 20-22" {...L} stroke={K.blood} strokeWidth={7} /></> },
+  fame: { jp: '名声', d: <><circle cx="48" cy="48" r="38" fill={K.gold2} opacity={0.3} />{burst(12, 30, 40, K.gold3)}<g transform="translate(16 16) scale(2)"><KIcon name="fame" size={32} /></g></> },
+  'wall-block': { jp: '防壁で防ぐ', d: <><g transform="translate(16 22) scale(2)"><KIcon name="wall" size={32} /></g>
+    <path d="M12 18l12 10M84 18L72 28M48 4v12" {...L} stroke={K.blood2} strokeWidth={4} />{burst(6, 6, 12, '#fff')}</> },
+  'place-ring': { jp: '置いた印', d: <><circle cx="48" cy="48" r="40" fill="none" stroke={K.gold2} strokeWidth={6} /><circle cx="48" cy="48" r="40" fill="none" stroke={INK} strokeWidth={1.4} />
+    <circle cx="48" cy="48" r="30" fill="none" stroke="#fff" strokeWidth={2} strokeDasharray="5 6" /></> },
+  'boss-aura': { jp: '主の気配', d: <><circle cx="48" cy="48" r="44" fill={K.blood} opacity={0.25} />
+    {[0, 60, 120, 180, 240, 300].map((a) => <path key={a} d="M48 4c6 10 6 18 0 26-6-8-6-16 0-26z" fill={K.fire2} {...S} strokeWidth={1.4} opacity={0.85} transform={`rotate(${a} 48 48)`} />)}</> },
+  'card-glow': { jp: 'カードの光', d: <><rect x="14" y="6" width="68" height="84" rx="10" fill={K.light} opacity={0.35} />
+    <rect x="18" y="10" width="60" height="76" rx="8" fill="none" stroke={K.gold2} strokeWidth={4} /><Spark x={18} y={10} r={6} /><Spark x={78} y={86} r={6} /><Spark x={78} y={12} r={4} /></> },
 };
 export const EFFECT_IDS = Object.keys(FX);
 export const EFFECT_JP: Record<string, string> = Object.fromEntries(EFFECT_IDS.map((k) => [k, FX[k].jp]));

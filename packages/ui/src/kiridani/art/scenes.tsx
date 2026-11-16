@@ -119,6 +119,7 @@ const NESTS: Record<string, { jp: string; draw: ReactNode }> = {
     {[[30, 40], [130, 30], [80, 20]].map(([x, y], i) => <circle key={i} cx={x} cy={y} r="1.6" fill={K.fire2} />)}</> },
 };
 export const NEST_IDS = Object.keys(NESTS);
+export const NEST_DRAW: Record<string, ReactNode> = Object.fromEntries(NEST_IDS.map((k) => [k, NESTS[k].draw]));
 export const NEST_JP: Record<string, string> = Object.fromEntries(NEST_IDS.map((k) => [k, NESTS[k].jp]));
 
 /** 巣（戦闘の舞台）の絵 */

@@ -6,6 +6,7 @@ import { JobArt, JOB_IDS, JOB_LOOKS } from '../src/kiridani/art/jobs';
 import { ItemArt, ITEM_IDS, ITEM_NAMES } from '../src/kiridani/art/items';
 import { WeatherScene, WEATHER_JP, NestScene, NEST_IDS, NEST_JP } from '../src/kiridani/art/scenes';
 import { EffectArt, EFFECT_IDS, EFFECT_JP } from '../src/kiridani/art/effects';
+import { WeatherArt, TerrainArt, CardBackArt } from '../src/kiridani/art/tiles';
 import { MonsterArt, MONSTER_IDS, MONSTER_LOOKS } from '../src/kiridani/art/monsters';
 
 const box: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 12, padding: 16, fontFamily: '"Zen Maru Gothic",sans-serif', color: '#1E2433' };
@@ -15,6 +16,9 @@ function App() {
     <div style={box}>
       {Object.keys(WEATHER_JP).map((id) => <figure key={id} style={{ margin: 0, textAlign: 'center', fontSize: 12 }}><WeatherScene id={id} season="autumn" width={200} />{WEATHER_JP[id]}</figure>)}
       {NEST_IDS.map((id) => <figure key={id} style={{ margin: 0, textAlign: 'center', fontSize: 12 }}><NestScene id={id} width={200} />{NEST_JP[id]}</figure>)}
+      {['calm','storm','sprout','thaw','fog','newmoon','heat','harvestmoon','surge','drought','gale','festival','blizzard','cold','mild','fair'].map((id) => <WeatherArt key={id} id={id} size={64} />)}
+      {['forest','mine','meadow','spring','hunt','board','guild','forge','workshop','market','plaza','tavern','training','ruins','grove','market2','deepmine','peddler','herb2','outpost','nest_forest','lair'].map((id) => <TerrainArt key={id} id={id} size={64} />)}
+      <CardBackArt id="occ" size={64} /><CardBackArt id="item" size={64} />
       {EFFECT_IDS.map((id) => <figure key={id} style={{ margin: 0, textAlign: 'center', fontSize: 12, background: '#3E4A6B', color: '#fff', padding: 6, borderRadius: 8 }}><EffectArt id={id} size={90} />{EFFECT_JP[id]}</figure>)}
     </div>
   );

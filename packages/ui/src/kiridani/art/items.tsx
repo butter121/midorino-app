@@ -28,7 +28,7 @@ const Sword = ({ blade, guard = K.gold, grip = K.leather, w = 9, len = 54, rot =
   </g>
 );
 
-const DRAW: Record<string, ReactNode> = {
+export const ITEM_DRAW: Record<string, ReactNode> = {
   // ---------------- 武具
   i01: <g>
     <Tube d="M22 14c30 4 56 30 60 60" c={K.wood} w={5} />
@@ -314,7 +314,7 @@ export function ItemArt({ id, size = 96, label, frame = true }: { id: string; si
   return (
     <svg viewBox="0 0 96 96" width={size} height={size} role="img" aria-label={label ?? `${it[0]}（${ITEM_KIND_JP[it[1]]}）`} style={{ display: 'block' }}>
       {frame && <MistBg id={k} c1={c1} c2={c2} />}
-      <g clipPath={frame ? `url(#cl-${k})` : undefined}>{DRAW[id]}</g>
+      <g clipPath={frame ? `url(#cl-${k})` : undefined}>{ITEM_DRAW[id]}</g>
     </svg>
   );
 }
