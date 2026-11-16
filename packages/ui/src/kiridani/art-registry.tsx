@@ -17,6 +17,7 @@ export function EffectArt({ id, size }: { id: string; size?: number }) {
     : <P.EffectArt id={id} size={size} />;
 }
 
-// 本番にまだ無い部品（小さな天候アイコン・行動スペースの地形・カード裏）
-export const { WeatherArt, TerrainArt, CardBackArt, EFFECT_IDS } = P;
+// 小さな天候アイコン・行動スペースの地形・カード裏も本番の絵を使う。演出 id の一覧は画面側（仮の絵）の定義を正とする
+export const { WeatherArt, TerrainArt, CardBackArt } = A;
+export const { EFFECT_IDS } = P;
 export type { EffectId, ArtProps } from './placeholder';
