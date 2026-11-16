@@ -8,9 +8,10 @@ import {
 import '../src/styles/ui.css';
 import {
   ActionBar, ActionBoard, Button, CharacterCard, GameLayout, Icon, IconSprite, ImprovementCard, MarketPanel, MyPanel,
-  PlayerStrip, PlayersOverview, spaceEffect, Lobby, JoinScreen, DraftScreen, ResultScreen, TradeComposer, TradeOfferCard, MarketForm, OptionPicker, EventLog, SeasonBanner, StatusBar, Tabs, WeatherCard, Worker, type Alert, type SpaceView,
+  PlayerStrip, PlayersOverview, spaceEffect, PlacementFx, type PlacedMove, Lobby, JoinScreen, DraftScreen, ResultScreen, TradeComposer, TradeOfferCard, MarketForm, OptionPicker, EventLog, SeasonBanner, StatusBar, Tabs, WeatherCard, Worker, type Alert, type SpaceView,
 } from '../src';
 import { sampleGame } from './sample';
+import { AI, TUNED_W, apply, endRound, nextActor, startRound } from '@midorino/engine';
 
 const NAMES = ['ゆう', 'はると', 'けんた', 'みさき', 'そら', 'りん'];
 
@@ -26,11 +27,47 @@ function spacesFor(g: GameState, by: Record<string, number[]>, me: number): Spac
   });
 }
 
-function GameDemo({ n, round, placed, me }: { n: number; round: number; placed: number; me: number }) {
-  const [{ g, by, turn }] = useState(() => sampleGame(n, round, placed));
-  if (me < 0) me = turn;
+function GameDemo({ n, round, placed, me: me0 }: { n: number; round: number; placed: number; me: number }) {
+  // 見本ではAIたちが実際に手を進め、置くたびに演出が出る（あなたの番では選んで「ここに置く」）
+  const [st] = useState(() => {
+    const s0 = sampleGame(n, round, placed);
+    const ais = s0.g.players.map((_, i) => new AI('mid', TUNED_W, 900 + i));
+    return { ...s0, ais, last: null as number | null };
+  });
+  const [, force] = useState(0);
+  const [move, setMove] = useState<PlacedMove | null>(null);
+  const [busy, setBusy] = useState(false);
+  const { g, by } = st;
+  const me = me0 < 0 ? 1 % n : me0;
+  const turn = st.turn;
+  const play = (pid: number, sid?: string) => {
+    const p = g.players[pid];
+    let opts = legal(g, p);
+    if (sid) opts = opts.filter((m) => m[0] === sid);
+    if (!opts.length) return;
+    const before = { ...p.res };
+    const [s1, opt] = st.ais[pid].choose(g, p, opts);
+    apply(g, p, s1, opt); p.avail -= 1; st.last = pid;
+    (by[s1] ??= []).push(pid);
+    const gains = Object.fromEntries(Object.entries(p.res).map(([r, v]) => [r, v - before[r as keyof typeof before]]).filter(([, d]) => (d as number) > 0));
+    setMove({ key: Date.now(), seat: pid, sid: s1, gains, who: pid === me ? 'あなた' : `${NAMES[pid]}さん` });
+    setBusy(true);
+    let nx = nextActor(g, st.last);
+    if (nx === null && g.round < 12) {
+      endRound(g); g.round += 1; startRound(g); st.last = null;
+      for (const k of Object.keys(by)) delete by[k];
+      nx = nextActor(g, null);
+    }
+    st.turn = nx ?? -1;
+    force((x) => x + 1);
+  };
+  useEffect(() => {
+    if (busy || turn < 0 || turn === me) return;
+    const t = setTimeout(() => play(turn), 450);
+    return () => clearTimeout(t);
+  });
   const [tab, setTab] = useState<'me' | 'all' | 'market' | 'cards' | 'log'>('me');
-  const [sel, setSel] = useState<string | null>(() => spacesFor(g, by, me).find((s) => s.available && ACT[s.id].accum)?.id ?? null);
+  const [sel, setSel] = useState<string | null>(null);
   const p = g.players[me];
   const myTurn = turn === me;
   const winterW = 'odayaka';
@@ -46,7 +83,7 @@ function GameDemo({ n, round, placed, me }: { n: number; round: number; placed: 
         seat: q.pid, name: NAMES[q.pid], vp: score(q), left: q.avail, total: q.family, isTurn: q.pid === turn,
         isFirst: q.pid === g.first, isMe: q.pid === me,
       }))} />}
-      board={<ActionBoard spaces={spacesFor(g, by, me)} selected={sel} onPick={setSel} />}
+      board={<><ActionBoard spaces={spacesFor(g, by, me)} locked={turn !== me || busy} selected={sel} onPick={setSel} /><PlacementFx move={move} onDone={() => setBusy(false)} /></>}
       side={<>
         <Tabs value={tab} onChange={setTab} tabs={[{ id: 'me', label: 'わたし' }, { id: 'all', label: 'みんな' }, { id: 'market', label: '市場' }, { id: 'cards', label: '設備' }, { id: 'log', label: '記録' }]} />
         {tab === 'me' && <MyPanel player={p} sheepPer={sheepPerPlot(p)} />}
@@ -58,7 +95,7 @@ function GameDemo({ n, round, placed, me }: { n: number; round: number; placed: 
         ? <><Worker seat={me} size={28} /><span>{sel ? <>「{ACT[sel].name}」に置きますか？<span className="mi-sp-detail">{spaceEffect(sel)}</span></> : 'あなたの番です。置く場所を選んでください'}</span></>
         : <><Worker seat={turn} size={28} />{NAMES[turn]}さんが考えています…</>}>
         <Button><Icon name="i-trade" size={20} />取引</Button>
-        <Button kind="primary" disabled={!sel || !myTurn}>{sel ? 'ここに置く' : '置く'}</Button>
+        <Button kind="primary" disabled={!sel || !myTurn || busy} onClick={() => { if (sel) { play(me, sel); setSel(null); } }}>{sel ? 'ここに置く' : '置く'}</Button>
       </ActionBar>}
     />
   );
