@@ -1,0 +1,51 @@
+/* ミドリノ谷の四季 デザイントークン
+   アクセシビリティ方針：
+   - 本文の文字色は紙色の背景に対しコントラスト比 4.5:1 以上（--ink は約12:1、--ink2 は約7:1）
+   - 最小の文字は 12px、ボタンなど押せる所は 44px 以上
+   - プレイヤーは色だけでなく「印（●▲■★◆✚）」と名前でも区別する（色覚の違いに配慮した配色）
+   - 悪天候・警告は色に加えて文字（「悪天候」「足りない」）でも示す */
+:root {
+  --mi-paper: #FBF6EA;
+  --mi-paper2: #F3EBD8;
+  --mi-card: #FFFDF7;
+  --mi-line: #E3D9C2;
+  --mi-ink: #2B3A3A;
+  --mi-ink2: #4A5752;
+  --mi-leaf: #3E8E57;      /* 白文字を載せても 4.5:1 以上 */
+  --mi-leaf-d: #2F6B4F;
+  --mi-leaf-l: #DCEFD7;
+  --mi-bad: #B8382F;
+  --mi-bad-l: #FBE3E0;
+  --mi-warn: #8A5A00;
+  --mi-warn-l: #FFF1C9;
+  --mi-focus: #1F6FEB;
+
+  --mi-spring: #E77F9A; --mi-spring-l: #FCE6EC;
+  --mi-summer: #2C8FA6; --mi-summer-l: #DDF2F6;
+  --mi-autumn: #C8641E; --mi-autumn-l: #FBE5D2;
+  --mi-winter: #4E77B8; --mi-winter-l: #E6EDF8;
+
+  /* プレイヤー色（Okabe–Ito 配色ベース：色覚の違いがあっても区別しやすい） */
+  --mi-p0: #D55E00; --mi-p1: #0072B2; --mi-p2: #E6A700;
+  --mi-p3: #009E73; --mi-p4: #CC79A7; --mi-p5: #56B4E9;
+
+  --mi-radius: 14px;
+  --mi-tap: 44px;
+  --mi-font: 'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', 'BIZ UDPGothic', 'Meiryo', sans-serif;
+  --mi-fs-xs: 12px; --mi-fs-s: 13px; --mi-fs-m: 15px; --mi-fs-l: 18px; --mi-fs-xl: 22px;
+  --mi-shadow: 0 3px 0 var(--mi-line);
+}
+
+.mi-root {
+  font-family: var(--mi-font);
+  color: var(--mi-ink);
+  background: var(--mi-paper);
+  font-size: var(--mi-fs-m);
+  line-height: 1.45;
+  -webkit-text-size-adjust: 100%;
+}
+.mi-root *, .mi-root *::before, .mi-root *::after { box-sizing: border-box; }
+.mi-root :focus-visible { outline: 3px solid var(--mi-focus); outline-offset: 2px; border-radius: 8px; }
+.mi-root button { font: inherit; color: inherit; }
+@media (prefers-reduced-motion: reduce) { .mi-root * { animation: none !important; transition: none !important; } }
+.mi-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
