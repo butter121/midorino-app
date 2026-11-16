@@ -1,7 +1,19 @@
 # 霧谷の冒険者団 — 画面・演出・音（packages/ui/src/kiridani）
 
 農場版（ミドリノ谷の四季）の部品には手を付けず、新しいゲームの画面をここに作っています。
-エンジン（TypeScript 版）はまだ無いので、画面は **出来事の列（GameEvent）** を受け取って動く作りです。
+画面は **出来事の列（GameEvent）** を受け取って動く作りで、出来事はエンジン（`packages/engine/src/kiridani`、Python 版の写し）が出します。
+
+## エンジン（packages/engine/src/kiridani）
+
+- `engine.ts`・`ai.ts`：engine.py・ai.py を1行ずつ写したもの。乱数は `rng.ts` の mulberry32。
+- `data.ts`：数値の置き場はここ1つ（画面の `data.ts` は読み直すだけ）。`npm run kiridani:sync` で
+  Python 版の写し（tools/kiridani/py）を取り直し、data.ts と一致テストの記録を作り直す。
+- 一致テスト：`tools/kiridani/trace.py` が Python 版を同じ乱数で 20 試合流して手順・状態・得点を記録し、
+  `packages/engine/test/kiridani-golden.test.ts` が TypeScript 版で同じになるのを確かめる。
+- `session.ts`：`KiridaniSession`（人間1席＋AI）。`start()`／`answer(x)` が次に人間が選ぶ場面まで進めて出来事を返す。
+- 画面側は `play.tsx` の `KiridaniEngineGame`：ドラフト・キャラ・置き場所は既存の画面、
+  それ以外（何人で・どの方針で戦うか、共闘に加わるか、遺跡のカード、使い魔・天候の鈴などのはい/いいえ）は `ui/choice.tsx` のシート。
+  戦い方の方針（確実に／賭ける／削るだけ／待ち伏せ）が「矢・薬・秘術をどこまで使うか」を決める（エンジンの決め方のまま）。
 
 ## しくみ
 
@@ -28,7 +40,8 @@
 | `ui/table.tsx` | ゲーム画面全体（状況バー・プレイヤー列・タブ・自分の持ち物・重ねる演出）と、出来事ごとの飛ぶ演出 `runFx` |
 | `ui/screens.tsx` | ドラフト・キャラ選択・盤面・拠点・依頼・みんな・戦闘・冬・最終集計 |
 | `ui/fx.tsx` | 飛ぶ・浮かぶ・弾ける演出の層（Web Animations API。外部ライブラリなし） |
-| `sample/sim.ts` | 見本の試合の台本（エンジンができるまでカタログで使う。ルールは大まか） |
+| `sample/sim.ts` | 見本の試合の台本（`?sample=1` のときだけ使う。ルールは大まか） |
+| `play.tsx`・`ui/choice.tsx` | 本物のエンジンで遊ぶ画面と、選択のシート |
 
 ### エンジンとつなぐとき
 
@@ -90,8 +103,10 @@ slash fire ice thunder light dark heal shield injury fate-flip loot-drop trophy 
 
 ```bash
 npm run catalog -w @midorino/ui
-# http://localhost:5173/kiridani.html               最初から自動で1試合
-#   ?n=6&manual=1                                    6人・自分の番は自分で選ぶ（演出中でも先に選べる）
+# http://localhost:5173/kiridani.html               本物のエンジンで、あなた＋AI 3人の試合
+#   ?n=6&level=expert&seed=3                         人数・AI の腕前（novice|mid|expert）・種
+#   ?auto=1                                          自分の席も AI に任せて眺める
+#   ?sample=1                                        エンジン無しの台本の試合（&manual=1 で自分の番を選ぶ）
 #   ?at=draft|char|r5|combat|winter|boss|final       その場面の手前まで飛ばしてから再生
 #   ?speed=fast|minimal                              演出の速さ
 #   #gallery                                         仮の絵の一覧

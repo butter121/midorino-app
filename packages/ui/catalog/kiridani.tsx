@@ -1,6 +1,9 @@
-// 霧谷の冒険者団 画面カタログ：台本の試合（SampleGame）を最後まで流して、画面と演出をエンジン無しで確かめる。
-//   kiridani.html                     … 最初から（自動で進む）
-//   ?n=6&seed=3&manual=1              … 6人・自分の番は自分で選ぶ（演出中でも先に選べる）
+// 霧谷の冒険者団 画面カタログ：本物のエンジン（packages/engine/src/kiridani）で、あなた＋AI の試合を遊ぶ。
+//   kiridani.html                     … 4人（あなた＋AI 3人）で最初から。ドラフト・キャラ・置き場所・戦い方を自分で選ぶ
+//   ?n=6&seed=3&level=expert          … 人数・種・AI の腕前（novice|mid|expert）
+//   ?auto=1                           … 自分の席も AI に任せて眺める
+//   ?sample=1                         … エンジン無しの台本の試合（SampleGame。以下の manual はこちら用）
+//   ?n=6&seed=3&manual=1              … 台本：自分の番は自分で選ぶ
 //   ?at=draft|char|r5|combat|winter|boss|final … その場面の直前まで一気に進めてから再生
 //   ?speed=fast|minimal               … 演出の速さ
 //   #gallery                          … 仮の絵の一覧（本番の絵に差し替えたときの確認用）
@@ -9,7 +12,7 @@ import { createRoot } from 'react-dom/client';
 import '../src/kiridani/kiridani.css';
 import {
   BOSS, CHARACTERS, EFFECT_IDS, ITEMS, KIcon, MONSTERS, OCCUPATIONS, SampleGame, WEATHER_JP, KiridaniTable, useTable,
-  BossArt, CardBackArt, EffectArt, HeroArt, ItemArt, JobArt, MonsterArt, NestScene, TerrainArt, WeatherArt, WeatherScene, ACTIONS,
+  BossArt, CardBackArt, EffectArt, HeroArt, ItemArt, JobArt, MonsterArt, NestScene, TerrainArt, WeatherArt, WeatherScene, ACTIONS, KiridaniEngineGame,
   type Ask, type GameEvent, type Speed,
 } from '../src/kiridani';
 import { KICON_NAMES } from '../src/kiridani/art-registry';
@@ -101,6 +104,30 @@ function Demo() {
   return <KiridaniTable t={t} ask={ask} onAnswer={onAnswer} extra={extra} />;
 }
 
+const LEVEL = (['novice', 'mid', 'expert'] as const).find((x) => x === q.get('level')) ?? 'mid';
+
+function EngineDemo() {
+  const [key, setKey] = useState(0);
+  const [n, setN] = useState(N);
+  const [seed, setSeed] = useState(q.has('seed') ? SEED : Math.floor(Math.random() * 100000));
+  return (
+    <KiridaniEngineGame key={key} n={n} seed={seed} level={LEVEL} speed={SPEED} at={AT || undefined} auto={q.get('auto') === '1'}
+      extra={({ auto, setAuto }) => (
+        <details className="kd-cat-menu">
+          <summary aria-label="試合の設定">⚙</summary>
+          <div>
+            <label>人数 <select value={n} onChange={(e) => { setN(Number(e.target.value)); setKey((k) => k + 1); }}>{[3, 4, 5, 6].map((x) => <option key={x}>{x}</option>)}</select></label>
+            <button type="button" onClick={() => { setSeed(Math.floor(Math.random() * 100000)); setKey((k) => k + 1); }}>新しい試合</button>
+            <label><input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} /> 自分の席も AI に任せる</label>
+            <small>種 {seed}・AI {LEVEL === 'novice' ? '初心者' : LEVEL === 'expert' ? '上級' : '中級'}（?level=novice|mid|expert）</small>
+            <a href="./kiridani.html?sample=1">台本の試合（エンジン無し）</a>
+            <a href="#gallery" onClick={() => setTimeout(() => location.reload(), 0)}>絵の一覧</a>
+          </div>
+        </details>
+      )} />
+  );
+}
+
 function Gallery() {
   const G = ({ title, children }: { title: string; children: React.ReactNode }) => <section className="kd-sec"><h3>{title}</h3><div className="kd-gal">{children}</div></section>;
   const Cell = ({ label, children }: { label: string; children: React.ReactNode }) => <figure>{children}<figcaption>{label}</figcaption></figure>;
@@ -122,4 +149,4 @@ function Gallery() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode>{location.hash === '#gallery' ? <Gallery /> : <Demo />}</StrictMode>);
+createRoot(document.getElementById('root')!).render(<StrictMode>{location.hash === '#gallery' ? <Gallery /> : q.get('sample') === '1' ? <Demo /> : <EngineDemo />}</StrictMode>);

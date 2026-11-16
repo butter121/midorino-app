@@ -24,6 +24,8 @@ export interface TableProps {
   onAnswer?: (choice: string) => void;
   /** カタログの操作などを右上に足す */
   extra?: ReactNode;
+  /** 画面に無い選択のシート（ChoiceSheet など）を上に重ねる */
+  sheet?: ReactNode;
 }
 
 const nameOf = (v: GameView, s: Seat) => (s === v.me ? 'あなた' : v.players[s]?.name ?? '');
@@ -89,6 +91,16 @@ function runFx(fx: FxApi, p: Playing, v: GameView) {
       break;
     case 'fame': fx.float(`seat:${ev.seat}`, `名声${ev.amount >= 0 ? '+' : ''}${ev.amount}`, { ms, tone: 'gold' }); break;
     case 'first_pass': fx.fly(`seat:${(ev.seat + v.players.length - 1) % v.players.length}`, `seat:${ev.seat}`, <span className="kd-firstmark">先</span>, { ms, arc: 20, size: 24, spin: true }); break;
+    case 'familiar': fx.burst(`seat:${ev.seat}`, 'heal', { ms, size: 52 }); fx.float(`seat:${ev.seat}`, '使い魔+1', { ms, tone: 'good' }); break;
+    case 'trap': fx.burst(`space:${ev.nest}`, 'wall-block', { ms, size: 64 }); fx.float(`space:${ev.nest}`, `罠 -${ev.amount}`, { ms }); break;
+    case 'trade':
+      fx.fly(`seat:${ev.a}`, `seat:${ev.b}`, <KIcon name={(Object.keys(ev.give)[0] ?? 'gold') as Res} size={22} />, { ms: ms * 0.8, arc: 30 });
+      fx.fly(`seat:${ev.b}`, `seat:${ev.a}`, <KIcon name={(Object.keys(ev.get)[0] ?? 'gold') as Res} size={22} />, { ms: ms * 0.8, arc: 30, delay: ms * 0.15 });
+      break;
+    case 'discard': fx.float(`seat:${ev.seat}`, 'カードを失った', { ms, tone: 'bad' }); break;
+    case 'recall': fx.burst(`seat:${ev.seat}`, 'heal', { ms, size: 48 }); break;
+    case 'weather_set': fx.burst(`seat:${ev.seat}`, 'weather-change', { ms, size: 60 }); break;
+    case 'wait': fx.burst(`space:${ev.nest}`, 'place-ring', { ms, size: 70 }); fx.float(`space:${ev.nest}`, '待ち伏せ', { ms }); break;
     case 'dragon_fail': v.players.forEach((pl) => fx.float(`seat:${pl.seat}`, `-${ev.fame}`, { ms, tone: 'bad' })); break;
     default: break;
   }
@@ -126,7 +138,7 @@ function Overlay({ cur, v }: { cur: Playing | null; v: GameView }) {
   return null;
 }
 
-export function KiridaniTable({ t, ask, onAnswer, extra }: TableProps) {
+export function KiridaniTable({ t, ask, onAnswer, extra, sheet }: TableProps) {
   const { view: v, cur } = t;
   const rootRef = useRef<HTMLDivElement>(null);
   const fxRef = useRef<FxApi>(null);
@@ -136,7 +148,7 @@ export function KiridaniTable({ t, ask, onAnswer, extra }: TableProps) {
   const [queuedChoice, setQueuedChoice] = useState<string | null>(null);
 
   useLayoutEffect(() => { if (cur && fxRef.current) runFx(fxRef.current, cur, v); }, [cur?.key]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setSel(null); if (!ask) setQueuedChoice(null); }, [ask]);
+  useEffect(() => { setSel(null); setQueuedChoice(null); }, [ask]);
   // 拠点に関係する出来事は拠点タブで見せる（自分のときだけ）
   useEffect(() => {
     if (!cur) return;
@@ -207,6 +219,7 @@ export function KiridaniTable({ t, ask, onAnswer, extra }: TableProps) {
       <main className="kd-main">{main}</main>
       {v.combat && <div className="kd-ovwrap">{<CombatPanel view={v} cur={cur} />}</div>}
       {v.winter && !v.combat && <div className="kd-ovwrap">{<WinterPanel view={v} cur={cur} />}</div>}
+      {sheet}
       <Overlay cur={cur} v={v} />
       {me && v.phase !== 'final' && (
         <footer className="kd-mybar">

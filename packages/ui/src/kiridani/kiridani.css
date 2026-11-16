@@ -407,3 +407,28 @@ button.kd-card { cursor: pointer; }
 .kd-cat-menu a { color: var(--kd-gold-l); }
 .kd-cat-menu small { color: var(--kd-dim); width: 100%; }
 .kd-cat-menu select { font: inherit; }
+
+/* ---- 選択のシート（何人で・方針・共闘・カード・はい/いいえ） */
+.kd-sheetwrap { z-index: 45; }
+.kd-sheet { width: 100%; max-width: 520px; max-height: calc(100dvh - 120px); overflow-y: auto; border-radius: 18px; padding: 12px; background: linear-gradient(#2c2534, #1a1620); border: 2px solid var(--kd-gold); box-shadow: 0 10px 40px #000a; display: flex; flex-direction: column; gap: 8px; animation: kd-sheet-in .25s ease both; }
+@keyframes kd-sheet-in { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.kd-sheet-h { display: flex; align-items: center; gap: 10px; }
+.kd-sheet-h strong { display: block; font-size: 16px; font-weight: 900; }
+.kd-sheet-h small { display: block; color: var(--kd-ink2); font-size: 13px; }
+.kd-choices { display: flex; flex-direction: column; gap: 6px; }
+.kd-choice { display: flex; align-items: center; gap: 8px; min-height: var(--kd-tap); padding: 8px 10px; border-radius: 12px; border: 2px solid var(--kd-line); background: var(--kd-panel); text-align: left; cursor: pointer; }
+.kd-choice:hover { border-color: var(--kd-gold); }
+.kd-choice.is-primary { border-color: var(--kd-gold); background: #3a3120; }
+.kd-choice-card .kd-card { pointer-events: none; }
+.kd-choice-b { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.kd-choice-b strong { font-size: 14px; font-weight: 900; }
+.kd-choice-b small { color: var(--kd-ink2); font-size: 12px; }
+.kd-choice-uses { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.kd-choice-uses i { font-style: normal; font-size: 12px; font-weight: 700; background: var(--kd-panel2); border: 1px solid var(--kd-line); border-radius: 8px; padding: 0 6px; }
+.kd-meter { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 13px; font-weight: 700; }
+.kd-meter span { display: inline-flex; align-items: center; gap: 2px; }
+.kd-meter b { font-size: 16px; padding: 0 8px; border-radius: 10px; }
+.kd-meter.is-good b { background: #1f4a30; color: var(--kd-good); }
+.kd-meter.is-mid b { background: #4a3a10; color: var(--kd-gold-l); }
+.kd-meter.is-bad b { background: #4a1e1a; color: var(--kd-bad); }
+.kd-sheet-x { align-self: center; }

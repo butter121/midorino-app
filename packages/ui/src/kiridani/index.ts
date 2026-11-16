@@ -12,4 +12,6 @@ export { KiridaniTable, type Ask, type TableProps, type Tab } from './ui/table';
 export { DraftScreen, CharacterPick, Board, BaseView, QuestsView, Everyone, CombatPanel, WinterPanel, FinalScoring } from './ui/screens';
 export { CardFace, MonsterCard, FateDeck, Token, Num, ResCount, SEAT_COLORS } from './ui/parts';
 export { FxLayer, type FxApi } from './ui/fx';
+export { ChoiceSheet, type ChoiceItem, type ChoiceSpec, type ChoiceMeter } from './ui/choice';
 export { SampleGame, SAMPLE_NAMES, type SimWait } from './sample/sim';
+export { KiridaniEngineGame, uiFor, optionSheet, isSceneStart, ENGINE_NAMES, type EngineGameProps } from './play';
