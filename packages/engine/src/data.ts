@@ -71,7 +71,7 @@ export const ACTIONS: ActionDef[] = [
   { id: 'plow', name: '開墾', text: '畑を1区画作る' },
   { id: 'sow', name: '種まき', text: '空き畑に麦/野菜をまく' },
   { id: 'fence', name: '柵作り', text: '牧場区画を作る（1区画=木材2）' },
-  { id: 'build', name: '増築', text: '部屋を作る（家の素材5）' },
+  { id: 'build', name: '増築', text: '部屋を作る（1部屋＝家の素材4）' },
   { id: 'workshop', name: '工房', text: '設備を1枚獲得' },
   { id: 'market', name: '市場', text: '相場で売買' },
   { id: 'sheep', name: '羊の放牧地', accum: { sheep: 1 } },

@@ -79,6 +79,7 @@ describe('審判', () => {
     expect(handle(m, turn, { type: 'proposeTrade', to: other, give: { food: -1 } as any, get: {} }).ok).toBe(false);
     expect(handle(m, turn, { type: 'pickChar', char: 'toma' }).ok).toBe(false);
     expect(handle(m, turn, { type: 'place', sid: 'forest', opt: null })).toEqual({ ok: true });
+    expect(viewFor(m, other).placements.forest).toEqual([turn]);
     expect(handle(m, turn, { type: 'place', sid: 'claypit', opt: null }).ok).toBe(false);          // 連続で置けない
   });
 

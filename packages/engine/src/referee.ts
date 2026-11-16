@@ -24,6 +24,7 @@ export interface MatchState {
   turn: number | null;              // いま置く人
   last: number | null;              // 直前に置いた人
   offers: TradeOffer[];             // 回答待ちの取引提案
+  placements: Record<string, number[]>;   // このラウンドに誰がどこに置いたか（スペースID → 席番号）
   proposals: number;                // 手番の人がこの手番で出した提案の数
   nextOfferId: number;
   seq: number;                      // 状態が変わるたびに +1（同期用）
@@ -59,7 +60,7 @@ export function createMatch(participants: Seat[], seed: number): MatchState {
   const m: MatchState = {
     version: 1, seats, phase: 'draft', draft: { options, picked: seats.map(() => null) },
     setup: { weather, deck: rng.shuffle(DEV_IDS) }, game: null, turn: null, last: null,
-    offers: [], proposals: 0, nextOfferId: 1, seq: 0, events: [], aiSeed: Math.floor(rng.next() * 1e9),
+    offers: [], placements: {}, proposals: 0, nextOfferId: 1, seq: 0, events: [], aiSeed: Math.floor(rng.next() * 1e9),
     result: null,
   };
   seats.forEach((s, i) => { if (s.ai) m.draft.picked[i] = rng.choice(options[i]); });
@@ -92,6 +93,7 @@ function beginRound(m: MatchState, r: number) {
   startRound(g);
   flushLogs(m);
   m.last = null;
+  m.placements = {};
   setTurn(m, nextActor(g, null));
 }
 
@@ -191,6 +193,7 @@ function handleInner(m: MatchState, pid: number, cmd: Command): Result {
       const err = validatePlace(g, pid, cmd.sid, cmd.opt);
       if (err) return fail(err);
       apply(g, g.players[pid], cmd.sid, structuredClone(cmd.opt));
+      (m.placements[cmd.sid] ??= []).push(pid);
       g.players[pid].avail -= 1;
       flushLogs(m);
       m.last = pid;
@@ -276,6 +279,7 @@ export function runAI(m: MatchState) {
     const opts = legal(g, p);
     const [sid, opt] = bots[pid]!.choose(g, p, opts);
     apply(g, p, sid, opt);
+    (m.placements[sid] ??= []).push(pid);
     p.avail -= 1;
     flushLogs(m);
     m.last = pid;
@@ -295,6 +299,7 @@ export interface MatchView {
   turn: number | null;
   legalSpaces: string[];          // 自分の番に置けるスペース
   offers: TradeOffer[];           // 自分が関わる回答待ちの提案
+  placements: Record<string, number[]>;
   proposalsLeft: number;
   events: MatchEvent[];
   result: MatchState['result'];
@@ -321,6 +326,7 @@ export function viewFor(m: MatchState, pid: number): MatchView {
     game, turn: m.turn,
     legalSpaces: g && m.turn === pid ? [...new Set(legal(g, g.players[pid]).map(([s]) => s))] : [],
     offers: m.offers.filter((o) => o.from === pid || o.to === pid),
+    placements: structuredClone(m.placements),
     proposalsLeft: m.turn === pid ? limit - m.proposals : 0,
     events: m.events.slice(-60),
     result: m.result,
