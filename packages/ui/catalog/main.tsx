@@ -1,14 +1,14 @@
 // UIカタログ：部品を本物のゲーム状態で並べて確認するページ（#game / #cards / #parts）
-import { StrictMode, useState } from 'react';
+import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import {
   ACT, CHARACTER_IDS, IMPROVEMENTS, WEATHER, SEASONS, WEATHER_BY_ID, feedNeed, legal, score, sheepPerPlot,
-  type GameState,
+  buyPrice, marketBuyLimit, scoreBreakdown, sellPrice, type GameState,
 } from '@midorino/engine';
 import '../src/styles/ui.css';
 import {
   ActionBar, ActionBoard, Button, CharacterCard, GameLayout, Icon, IconSprite, ImprovementCard, MarketPanel, MyPanel,
-  PlayerStrip, PlayersOverview, spaceEffect, StatusBar, Tabs, WeatherCard, Worker, type Alert, type SpaceView,
+  PlayerStrip, PlayersOverview, spaceEffect, Lobby, JoinScreen, DraftScreen, ResultScreen, TradeComposer, TradeOfferCard, MarketForm, OptionPicker, EventLog, SeasonBanner, StatusBar, Tabs, WeatherCard, Worker, type Alert, type SpaceView,
 } from '../src';
 import { sampleGame } from './sample';
 
@@ -29,7 +29,7 @@ function spacesFor(g: GameState, by: Record<string, number[]>, me: number): Spac
 function GameDemo({ n, round, placed, me }: { n: number; round: number; placed: number; me: number }) {
   const [{ g, by, turn }] = useState(() => sampleGame(n, round, placed));
   if (me < 0) me = turn;
-  const [tab, setTab] = useState<'me' | 'all' | 'market' | 'cards'>('me');
+  const [tab, setTab] = useState<'me' | 'all' | 'market' | 'cards' | 'log'>('me');
   const [sel, setSel] = useState<string | null>(() => spacesFor(g, by, me).find((s) => s.available && ACT[s.id].accum)?.id ?? null);
   const p = g.players[me];
   const myTurn = turn === me;
@@ -48,7 +48,7 @@ function GameDemo({ n, round, placed, me }: { n: number; round: number; placed: 
       }))} />}
       board={<ActionBoard spaces={spacesFor(g, by, me)} selected={sel} onPick={setSel} />}
       side={<>
-        <Tabs value={tab} onChange={setTab} tabs={[{ id: 'me', label: 'わたし' }, { id: 'all', label: 'みんな' }, { id: 'market', label: '市場' }, { id: 'cards', label: '設備' }]} />
+        <Tabs value={tab} onChange={setTab} tabs={[{ id: 'me', label: 'わたし' }, { id: 'all', label: 'みんな' }, { id: 'market', label: '市場' }, { id: 'cards', label: '設備' }, { id: 'log', label: '記録' }]} />
         {tab === 'me' && <MyPanel player={p} sheepPer={sheepPerPlot(p)} />}
         {tab === 'all' && <PlayersOverview players={g.players} names={NAMES} mySeat={me} />}
         {tab === 'market' && <MarketPanel prices={g.prices} />}
@@ -77,11 +77,43 @@ function CardsPage() {
   );
 }
 
+function ScreensPage({ h }: { h: string }) {
+  const [{ g }] = useState(() => sampleGame(5, 12, 99));
+  const me = 1;
+  const p = g.players[me];
+  const names = NAMES.slice(0, g.n);
+  const noop = () => {};
+  if (h === 'lobby') return <Lobby isHost inviteUrl="https://example.github.io/midorino/#join=ABCD-1234" onCopy={noop}
+    members={[{ id: 'a', name: 'はると', status: 'host' }, { id: 'b', name: 'ゆう', status: 'joined' }, { id: 'c', name: 'AIさくら', status: 'ai' }, { id: 'd', name: 'けんた', status: 'waiting' }]} />;
+  if (h === 'join') return <JoinScreen hostName="はると" onJoin={noop} defaultName="みさき" />;
+  if (h === 'draft') return <DraftScreen options={['mina', 'yuki']} picked={[null, null, 'x', null, 'x']} names={names} you={me} onPick={noop} />;
+  if (h === 'result') {
+    const scores = g.players.map((q) => scoreBreakdown(q));
+    const ranking = [...scores.keys()].sort((a, b) => scores[b].total - scores[a].total);
+    return <ResultScreen names={names} scores={scores} ranking={ranking} you={me} onAgain={noop} />;
+  }
+  const bg = <div className="mi-root" style={{ padding: 16, height: '100%' }}>
+    <TradeOfferCard fromSeat={2} fromName="けんた" toName="あなた" give={{ wood: 2 }} get={{ food: 2 }} onAccept={noop} onDecline={noop} /></div>;
+  if (h === 'trade') return <>{bg}<TradeComposer you={me} players={names.map((name, seat) => ({ seat, name }))} myRes={p.res} theirRes={(s) => g.players[s].res} left={1} onSubmit={noop} onClose={noop} /></>;
+  if (h === 'market') return <>{bg}<MarketForm have={p.res} coin={p.res.coin} buyLimit={marketBuyLimit(p)} sellPrice={(gd) => sellPrice(g, p, gd)} buyPrice={(gd) => buyPrice(g, p, gd)} onSubmit={noop} onClose={noop} /></>;
+  if (h === 'sow') return <>{bg}<OptionPicker title="種まき：何をまきますか" onChoose={noop} onClose={noop} choices={[
+    { value: 1, label: '麦を2区画', detail: '麦2を使い、畑に麦6', icon: <Icon name="i-grain" size={28} /> },
+    { value: 2, label: '麦1区画・野菜1区画', detail: '麦1・野菜1を使い、麦3と野菜2', icon: <Icon name="i-veg" size={28} /> },
+    { value: 3, label: '野菜を1区画', detail: '野菜1を使い、野菜2', icon: <Icon name="i-veg" size={28} /> }]} /></>;
+  return <><div className="mi-root" style={{ padding: 16 }}><EventLog events={[{ seq: 1, round: 7, text: 'ゆうさんが森林で木材6を取りました' }, { seq: 2, round: 7, text: 'あなたが粘土坑で粘土4を取りました' }]} /></div>
+    <SeasonBanner title="秋の終わり：収穫と繁殖" lines={['畑から麦3・野菜1を収穫しました', '羊が1頭増えました', '台風：畑の作物が1ずつ減りました（貯蔵庫で防ぎました）']} onClose={noop} /></>;
+}
+
 function App() {
-  const h = location.hash.replace('#', '') || 'game';
+  const [h, setH] = useState(() => location.hash.replace('#', '') || 'game');
+  useEffect(() => { const f = () => setH(location.hash.replace('#', '') || 'game'); addEventListener('hashchange', f); return () => removeEventListener('hashchange', f); }, []);
   if (h === 'cards') return <CardsPage />;
-  const [n, round, placed, me] = (new URLSearchParams(location.search).get('s') ?? '5,7,6,-1').split(',').map(Number);
-  return <GameDemo n={n} round={round} placed={placed} me={me} />;
+  if (['lobby', 'join', 'draft', 'result', 'trade', 'market', 'sow', 'banner'].includes(h)) return <ScreensPage key={h} h={h} />;
+  // #game-人数-ラウンド-置いた数（例 #game-6-10-9）。?s=人数,ラウンド,置いた数,席 でも可
+  const m = h.match(/^game-(\d)-(\d+)-(\d+)$/);
+  const q = new URLSearchParams(location.search).get('s');
+  const [n, round, placed, me] = m ? [+m[1], +m[2], +m[3], -1] : (q ?? '5,7,6,-1').split(',').map(Number);
+  return <GameDemo key={h} n={n} round={round} placed={placed} me={me} />;
 }
 
 const css = document.createElement('style');
