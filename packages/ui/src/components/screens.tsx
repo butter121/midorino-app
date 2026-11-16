@@ -58,7 +58,7 @@ export function Lobby({ inviteUrl, qr, members, isHost, onApprove, onDecline, on
         {waiting.length > 0 && (
           <ul className="mi-wait" aria-label="参加申請">
             {waiting.map((m) => (
-              <li key={m.id}><b>{m.name}</b> さんが参加したいそうです
+              <li key={m.id}><span className="mi-wait-msg"><b>{m.name}</b> さんが参加したいそうです</span>
                 {isHost && <span><Button kind="primary" onClick={() => onApprove?.(m.id)}>承認</Button><Button onClick={() => onDecline?.(m.id)}>断る</Button></span>}
               </li>
             ))}
