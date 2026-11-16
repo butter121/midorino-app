@@ -1,0 +1,12 @@
+html, body { margin: 0; background: #15131c; }
+.kda-title { min-height: 100dvh; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+  padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); text-align: center; }
+.kda-heroes { display: flex; gap: 8px; }
+.kda-name { font-family: var(--kd-title); font-size: clamp(32px, 9vw, 48px); margin: 0; color: var(--kd-gold-l); letter-spacing: .08em; text-wrap: balance; }
+.kda-sub { margin: 0; color: var(--kd-ink2); max-width: 22em; }
+.kda-group { border: 0; padding: 0; margin: 0; display: grid; gap: 8px; width: min(100%, 360px); }
+.kda-group legend { color: var(--kd-dim); font-size: 13px; margin-bottom: 6px; padding: 0; }
+.kda-seg { display: flex; gap: 6px; }
+.kda-seg button { flex: 1; min-height: var(--kd-tap); border-radius: 12px; border: 2px solid var(--kd-line); background: var(--kd-panel); color: var(--kd-ink); font: inherit; font-weight: 800; cursor: pointer; }
+.kda-seg button.is-on { border-color: var(--kd-gold); background: var(--kd-panel2); color: var(--kd-gold-l); }
+.kd-root .kd-btn.kda-start { margin-top: 8px; min-width: 240px; background: var(--kd-gold); color: #1d1608; border-color: var(--kd-gold); font-size: 18px; }
