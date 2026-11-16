@@ -56,6 +56,8 @@ class Player:
         q.used, q.rest, q.injured = set(self.used), set(self.rest), set(self.injured)
         q.tools, q.weapons, q.occs, q.hand = list(self.tools), list(self.weapons), list(self.occs), list(self.hand)
         q.st = dict(self.st)
+        q.stats = dict(self.stats)
+        q.kills_log = list(self.kills_log)
         q.yearly, q.once = set(self.yearly), set(self.once)
         q.fate = list(self.fate)
         return q
@@ -167,7 +169,7 @@ class Game:
         self.spaces = [a['id'] for a in ACTIONS if a.get('min_p', 0) <= n]
         self.accum = {s: {} for s in self.spaces if 'accum' in ACT[s]}
         self.occ = {s: 0 for s in self.spaces}
-        self.nest_ids = list(NESTS[n])
+        self.nest_ids = list(NESTS[n]) + (['nest_mount'] if EXTRA_NEST and 'nest_mount' not in NESTS[n] else [])
         self.nests = {}
         self.prices = dict(MARKET_BASE)
         wr = random.Random(weather_seed if weather_seed is not None else self.rng.random())
@@ -195,6 +197,7 @@ class Game:
         self.kills = 0
         self.fights = 0
         self.dragon = None
+        self.rollout = False
 
     def log(self, *a):
         if self.log_on:
@@ -217,6 +220,7 @@ class Game:
         g.item_pool = list(self.item_pool)
         g.mdeck = {k: list(v) for k, v in self.mdeck.items()}
         g.log_on = False
+        g.errors = list(self.errors)
         g.rng = random.Random(0)
         g.storm_set = set(self.storm_set)
         return g
@@ -281,6 +285,15 @@ class Game:
                 pass   # 出したときに -1 を取り除く
 
     # ------------------------------------------------------------ 進行
+        if DEAL_COMP:
+            def strength(p):
+                return sum(5 * (RATING.get(c, 1.0) - 1) for c in p.hand) + 5 * CHAR_RATING.get(p.char, 0.0)
+            st_ = [strength(p) for p in self.players]
+            top = max(st_)
+            for p, x in zip(self.players, st_):
+                p.card_fame += int(round(DEAL_COMP * (top - x)))
+                p.st['deal_comp'] = int(round(DEAL_COMP * (top - x)))
+
     def play(self):
         self.setup()
         for r in range(1, NUM_ROUNDS + 1):
@@ -295,10 +308,15 @@ class Game:
     def start_round(self):
         r, w = self.round, self.cur_weather()
         self.log(f'=== R{r} {SEASON_JP[self.season()]} 天候:{WEATHER_JP[w]}')
+        if self.season() == 'spring' and CATCHUP_SUPPLY and r > 1:
+            sc = [score(p) for p in self.players]
+            for p, x in zip(self.players, sc):
+                if x == min(sc):
+                    add(p, CATCHUP_SUPPLY)
         if self.season() == 'spring':
             for p in self.players:
                 p.yearly = set()
-                p.fate = list(FATE_DECK)
+                p.fate = self.new_fate()
                 if 'o12' in p.occs:
                     p.fate.remove(min(p.fate)); p.fate.append(1)
         # 積み増し
@@ -346,7 +364,7 @@ class Game:
                     p.rest.add(i)
             p.injured = set()
             p.once = set()
-            p.extra = 0
+            p.extra = 1 if (EXTRA_WORKER_FROM and r >= EXTRA_WORKER_FROM) else 0
             p.fights = 0
             p.mana_round = 0
             if 'i11' in p.tools and p.st.get('furnace', 0) < 6:
@@ -385,19 +403,20 @@ class Game:
                     self.spell_used(p, 'i20')
                     p.extra += 1
 
-    def work_phase(self):
+    def work_phase(self, resume=None):
         order = [(self.first + i) % self.n for i in range(self.n)]
+        skip = order.index(resume) + 1 if resume is not None else 0
         guard = 0
         while any(self.players[i].avail() > 0 for i in order):
             guard += 1
             if guard > 50:
                 self.errors.append('work loop guard')
                 break
-            for i in order:
+            for i in order[skip:]:
                 p = self.players[i]
                 if p.avail() <= 0:
                     continue
-                if hasattr(p.ai, 'trade_phase'):
+                if hasattr(p.ai, 'trade_phase') and not self.rollout:
                     p.ai.trade_phase(self, p)
                 opts = self.legal(p)
                 sid, opt = p.ai.choose(self, p, opts)
@@ -405,6 +424,7 @@ class Game:
                 self.decisions += 1
                 p.stats[sid if not sid.startswith('nest') else 'nest'] = p.stats.get(sid if not sid.startswith('nest') else 'nest', 0) + 1
                 self.check_quests(p)
+            skip = 0
         # 待ち伏せのまま誰も来なかった巣は単独で戦う
         for nid, nd in self.nests.items():
             if nd.get('wait'):
@@ -436,7 +456,7 @@ class Game:
                 p.card_fame += 2
             # 天候の鈴
             if 'i21' in p.hand and r < NUM_ROUNDS:
-                c = self.spell_cost(p, {'mana': 2})
+                c = self.spell_cost(p, CARDS['i21']['cost'])
                 if can_pay(p, c):
                     nw = p.ai.weather_choice(self, p)
                     if nw:
@@ -450,6 +470,11 @@ class Game:
                     self.storm_set.add(('o16', self.year()))
             self.check_quests(p)
         self.first = (self.first + 1) % self.n
+        if CATCHUP_ORDER:
+            sc = [score(p) for p in self.players]
+            lo = min(sc)
+            cand = [i for i in range(self.n) if sc[i] == lo]
+            self.first = min(cand, key=lambda i: (i - self.first) % self.n)
         for p in self.players:
             for k, v in p.res.items():
                 if v < 0:
@@ -1008,6 +1033,12 @@ class Game:
         """{値: 確率}"""
         d = p.fate if p.fate else list(FATE_DECK)
         out = {}
+        if FATE_TOP_VISIBLE and p.fate:
+            if 'o27' in p.occs:
+                return {d[0] + (d[1] if len(d) > 1 else 0): 1.0}
+            if p.char == 'yuki' and self.yuki_left(p) > 0 and len(d) >= 2:
+                return {max(d[0], d[1]): 1.0}
+            return {d[0]: 1.0}
         if 'o27' in p.occs and len(d) >= 2:
             n = len(d)
             tot = n * (n - 1) / 2
@@ -1027,26 +1058,35 @@ class Game:
             out[x] = out.get(x, 0) + 1 / len(d)
         return out
 
+    def new_fate(self):
+        d = list(FATE_DECK)
+        if FATE_TOP_VISIBLE:
+            self.rng.shuffle(d)
+        return d
+
+    def fidx(self, p):
+        return 0 if FATE_TOP_VISIBLE else self.rng.randrange(len(p.fate))
+
     def yuki_left(self, p):
         y, used = p.st.get('yuki_y', (0, 0))
         return YUKI_PER_YEAR - (used if y == self.year() else 0)
 
     def draw_fate(self, p, need=None):
         if not p.fate:
-            p.fate = list(FATE_DECK)
+            p.fate = self.new_fate()
             if 'o12' in p.occs:
                 p.fate.remove(min(p.fate)); p.fate.append(1)
         if 'o27' in p.occs:
             if len(p.fate) < 2 or ('o27' not in p.yearly and sum(p.fate) / len(p.fate) < 0.4):
-                p.fate = list(FATE_DECK)
+                p.fate = self.new_fate()
                 if 'o12' in p.occs:
                     p.fate.remove(min(p.fate)); p.fate.append(1)
                 p.yearly.add('o27')
-            a = p.fate.pop(self.rng.randrange(len(p.fate)))
-            b = p.fate.pop(self.rng.randrange(len(p.fate))) if p.fate else 0
+            a = p.fate.pop(self.fidx(p))
+            b = p.fate.pop(self.fidx(p)) if p.fate else 0
             return a + b
         if p.char == 'yuki' and len(p.fate) >= 2 and self.yuki_left(p) > 0:
-            i, j = self.rng.sample(range(len(p.fate)), 2)
+            i, j = (0, 1) if FATE_TOP_VISIBLE else self.rng.sample(range(len(p.fate)), 2)
             a, b = p.fate[i], p.fate[j]
             if need is None or a < need:   # 1枚目で足りなければ2枚目を見る
                 y, used = p.st.get('yuki_y', (0, 0))
@@ -1056,11 +1096,11 @@ class Game:
                 return v
             p.fate.remove(a)
             return a
-        return p.fate.pop(self.rng.randrange(len(p.fate)))
+        return p.fate.pop(self.fidx(p))
 
     def remove_fate(self, p, v):
         if not p.fate:
-            p.fate = list(FATE_DECK)
+            p.fate = self.new_fate()
         if 'o27' in p.occs:
             for x in list(p.fate):
                 if len(p.fate) >= 2:
