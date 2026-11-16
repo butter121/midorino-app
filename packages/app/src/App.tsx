@@ -8,27 +8,203 @@ import {
   ActionBar, ActionBoard, Button, CharacterCard, GameLayout, Icon, ImprovementCard, MarketPanel, MyPanel,
   PlayerStrip, PlayersOverview, StatusBar, Tabs, Worker, spaceEffect, type Alert, type SpaceView,
 } from '@midorino/ui';
+import qrcode from 'qrcode-generator';
+import { viewFor, type Result } from '@midorino/engine';
 import { LocalHost } from './host';
+import { HostRoom } from './net/hostRoom';
+import { GuestClient } from './net/guestClient';
+import { inviteUrl, roomFromHash } from './net/protocol';
 import { SEAT_COLORS, charName, costText, optLabel, weatherName } from './labels';
 
 const ME = 0;   // 1台版では自分は「人間の席」。席順はランダムなので seatOf で探す
 
+type Mode =
+  | { kind: 'home' }
+  | { kind: 'local'; host: LocalHost }
+  | { kind: 'host'; room: HostRoom }
+  | { kind: 'guest'; client: GuestClient };
+
+function initialMode(): Mode {
+  const join = roomFromHash();
+  if (join) {
+    const name = savedName();
+    if (name) { const c = new GuestClient(join, name); c.connect(); return { kind: 'guest', client: c }; }
+    return { kind: 'home' };
+  }
+  return { kind: 'home' };
+}
+function savedName() { try { return localStorage.getItem('midorino.name') ?? ''; } catch { return ''; } }
+function saveName(n: string) { try { localStorage.setItem('midorino.name', n); } catch { /* 無視 */ } }
+
 export default function App() {
-  const [host, setHost] = useState<LocalHost | null>(() => LocalHost.load());
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [, setTick] = useState(0);
   const refresh = () => setTick((t) => t + 1);
-  if (!host) return <Lobby onStart={(seats) => setHost(LocalHost.create(seats))} />;
-  const me = host.m.seats.findIndex((s) => !s.ai);
-  const view = host.view(me < 0 ? ME : me);
-  const send = (cmd: Command) => { const r = host.send(view.you, cmd); refresh(); return r; };
-  const quit = () => { if (confirm('このゲームをやめてロビーに戻りますか？')) { LocalHost.clear(); setHost(null); } };
+  useEffect(() => {
+    if (mode.kind === 'host') return mode.room.subscribe(refresh);
+    if (mode.kind === 'guest') return mode.client.subscribe(refresh);
+  }, [mode]);
+  const goHome = () => { history.replaceState(null, '', location.pathname); setMode({ kind: 'home' }); };
+
+  if (mode.kind === 'home') return <><RotateHint /><Home onMode={setMode} /></>;
+
+  if (mode.kind === 'local') {
+    const host = mode.host;
+    const me = host.m.seats.findIndex((s) => !s.ai);
+    const view = host.view(me < 0 ? ME : me);
+    const send = async (cmd: Command) => { const r = host.send(view.you, cmd); refresh(); return r; };
+    const quit = () => { if (confirm('このゲームをやめてトップに戻りますか？')) { LocalHost.clear(); goHome(); } };
+    return <Play view={view} send={send} onQuit={quit} onBack={() => { LocalHost.clear(); goHome(); }} />;
+  }
+
+  if (mode.kind === 'host') {
+    const room = mode.room;
+    const quit = () => { if (confirm('部屋を閉じてトップに戻りますか？（参加者の接続も切れます）')) { room.close(); HostRoom.clear(); goHome(); } };
+    if (!room.match) return <><RotateHint /><HostLobby room={room} onQuit={quit} /></>;
+    const view = viewFor(room.match, room.mySeat);
+    const send = async (cmd: Command) => room.command(room.me.id, cmd);
+    return <Play view={view} send={send} onQuit={quit} onBack={() => { room.close(); HostRoom.clear(); goHome(); }} />;
+  }
+
+  const c = mode.client;
+  const leave = () => { if (confirm('部屋から抜けますか？')) { c.close(); goHome(); } };
+  if (c.view && c.status !== 'denied') {
+    return (
+      <>
+        {c.status === 'offline' && <div className="netbar">{c.reason}</div>}
+        <Play view={c.view} send={(cmd) => c.send(cmd)} onQuit={leave} onBack={() => { c.close(); goHome(); }} />
+      </>
+    );
+  }
+  return <><RotateHint /><GuestWaiting client={c} onLeave={() => { c.close(); goHome(); }} /></>;
+}
+
+function Play({ view, send, onQuit, onBack }: { view: MatchView; send: (c: Command) => Promise<Result>; onQuit: () => void; onBack: () => void }) {
   return (
     <>
       {view.phase !== 'work' && <RotateHint />}
       {view.phase === 'draft' && <Draft view={view} send={send} />}
-      {view.phase === 'work' && <Game view={view} send={send} onQuit={quit} />}
-      {view.phase === 'over' && <ResultScreen view={view} onBack={() => { LocalHost.clear(); setHost(null); }} />}
+      {view.phase === 'work' && <Game view={view} send={send} onQuit={onQuit} />}
+      {view.phase === 'over' && <ResultScreen view={view} onBack={onBack} />}
     </>
+  );
+}
+
+// ------------------------------------------------------------ トップ
+function Home({ onMode }: { onMode: (m: Mode) => void }) {
+  const join = roomFromHash();
+  const [name, setName] = useState(savedName);
+  const nick = () => { const n = name.trim().slice(0, 12) || 'あなた'; saveName(n); return n; };
+  const resumeHost = useMemo(() => HostRoom.resume(), []);
+  const resumeLocal = useMemo(() => LocalHost.load(), []);
+  if (join) {
+    return (
+      <div className="lobby">
+        <h1>ミドリノ谷の四季</h1>
+        <p className="sub">招待された部屋に参加します</p>
+        <label>ニックネーム<input value={name} maxLength={12} onChange={(e) => setName(e.target.value)} placeholder="ほかの人に表示される名前" /></label>
+        <button className="primary big" onClick={() => { const c = new GuestClient(join, nick()); c.connect(); onMode({ kind: 'guest', client: c }); }}>参加する</button>
+      </div>
+    );
+  }
+  return (
+    <div className="lobby">
+      <h1>ミドリノ谷の四季</h1>
+      <label>ニックネーム<input value={name} maxLength={12} onChange={(e) => setName(e.target.value)} placeholder="ほかの人に表示される名前" /></label>
+      {resumeHost && (
+        <button className="primary big" onClick={() => { const r = HostRoom.resume()!; r.open(); onMode({ kind: 'host', room: r }); }}>
+          {resumeHost.match ? '中断したオンライン対戦を再開する' : '作った部屋に戻る'}
+        </button>
+      )}
+      <button className={resumeHost ? 'big' : 'primary big'} onClick={() => {
+        HostRoom.clear(); const r = new HostRoom(nick()); r.open(); onMode({ kind: 'host', room: r });
+      }}>友だちと遊ぶ（部屋を作る）</button>
+      <LocalStart onStart={(seats) => onMode({ kind: 'local', host: LocalHost.create(seats) })} nick={nick} />
+      {resumeLocal && <button onClick={() => onMode({ kind: 'local', host: LocalHost.load()! })}>中断した1人用ゲームを続ける</button>}
+      <p className="muted small">友だちは、部屋を作った人から届く招待リンクを開くと参加できます。</p>
+    </div>
+  );
+}
+
+function LocalStart({ onStart, nick }: { onStart: (s: Seat[]) => void; nick: () => string }) {
+  const [open, setOpen] = useState(false);
+  const [n, setN] = useState(4);
+  const [level, setLevel] = useState<Level>('mid');
+  if (!open) return <button className="big" onClick={() => setOpen(true)}>AIと1台で遊ぶ</button>;
+  const names = ['ハナ', 'ソウタ', 'ユイ', 'ケン', 'ミオ'];
+  return (
+    <div className="box">
+      <label>人数<div className="seg">{[3, 4, 5, 6].map((k) => <button key={k} className={k === n ? 'on' : ''} onClick={() => setN(k)}>{k}人</button>)}</div></label>
+      <label>AIの強さ<div className="seg">{([['novice', 'やさしい'], ['mid', 'ふつう'], ['expert', 'つよい']] as [Level, string][]).map(([k, t]) =>
+        <button key={k} className={k === level ? 'on' : ''} onClick={() => setLevel(k)}>{t}</button>)}</div></label>
+      <button className="primary big" onClick={() => onStart([{ name: nick(), ai: null }, ...names.slice(0, n - 1).map((nm) => ({ name: `${nm}（AI）`, ai: level }))])}>ゲームを始める</button>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------ ホストのロビー
+function HostLobby({ room, onQuit }: { room: HostRoom; onQuit: () => void }) {
+  const url = inviteUrl(room.roomId);
+  const qr = useMemo(() => { const q = qrcode(0, 'M'); q.addData(url); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }, [url]);
+  const [msg, setMsg] = useState('');
+  const players = room.members.filter((m) => m.status !== 'waiting');
+  const share = async () => {
+    try {
+      if (navigator.share) await navigator.share({ title: 'ミドリノ谷の四季', text: '一緒に遊ぼう！', url });
+      else { await navigator.clipboard.writeText(url); setMsg('リンクをコピーしました'); }
+    } catch { /* キャンセル */ }
+  };
+  return (
+    <div className="hostlobby">
+      <div className="invite">
+        <h2>友だちを招待</h2>
+        {room.status === 'connecting' && <p className="muted">部屋を準備しています…</p>}
+        {room.status === 'error' && <p className="err">部屋を開けませんでした：{room.error}</p>}
+        <div className="qr" dangerouslySetInnerHTML={{ __html: qr }} />
+        <button className="primary" onClick={share}>招待リンクを送る</button>
+        {msg && <p className="muted">{msg}</p>}
+        <p className="muted small">このリンクを知っている人だけが参加を申し込めます。参加には、あなたの承認が必要です。部屋を作った画面は、ゲーム中ずっと開いたままにしてください。</p>
+      </div>
+      <div className="members">
+        <h2>メンバー（{players.length}/{room.maxPlayers}人）</h2>
+        <ul>
+          {room.members.map((m) => (
+            <li key={m.id} className={m.status}>
+              <span className={`dot ${m.online ? 'on' : ''}`} />
+              <b>{m.name}</b>
+              <small>{{ host: 'ホスト（あなた）', joined: '参加', waiting: '承認待ち', ai: 'AI' }[m.status]}</small>
+              <span className="spacer" />
+              {m.status === 'waiting' && <><button className="primary" onClick={() => room.approve(m.id, true)}>承認</button><button onClick={() => room.approve(m.id, false)}>見送る</button></>}
+              {(m.status === 'joined' || m.status === 'ai') && <button onClick={() => room.kick(m.id)}>外す</button>}
+            </li>
+          ))}
+        </ul>
+        <div className="row">
+          <button disabled={players.length >= room.maxPlayers} onClick={() => room.addAI('mid')}>AIを追加</button>
+          <button className="primary" disabled={players.length < 3} onClick={() => { const e = room.start(); if (e) setMsg(e); }}>
+            この{players.length}人で始める
+          </button>
+        </div>
+        {players.length < 3 && <p className="muted small">3人から遊べます。人数が足りないときはAIを追加してください。</p>}
+        <button className="link" onClick={onQuit}>部屋を閉じる</button>
+      </div>
+    </div>
+  );
+}
+
+function GuestWaiting({ client, onLeave }: { client: GuestClient; onLeave: () => void }) {
+  const lobby = client.lobby;
+  return (
+    <div className="lobby">
+      <h1>ミドリノ谷の四季</h1>
+      {client.status === 'connecting' && <p>ホストにつないでいます…</p>}
+      {client.status === 'waiting' && <p>ホストの承認を待っています…</p>}
+      {client.status === 'joined' && <p>参加しました。ホストがゲームを始めるのを待っています…</p>}
+      {client.status === 'offline' && <p className="err">{client.reason}</p>}
+      {client.status === 'denied' && <p className="err">{client.reason}</p>}
+      {lobby && <ul className="memberlist">{lobby.members.filter((m) => m.status !== 'waiting').map((m) => <li key={m.id}>{m.name}{m.id === client.memberId ? '（あなた）' : ''}</li>)}</ul>}
+      <button onClick={onLeave}>{client.status === 'denied' ? 'トップに戻る' : 'やめる'}</button>
+    </div>
   );
 }
 
@@ -36,36 +212,8 @@ function RotateHint() {
   return <div className="rotate-hint"><div>📱↻</div><p>スマホを横向きにしてください</p></div>;
 }
 
-// ------------------------------------------------------------ ロビー（1台でAIと遊ぶ）
-function Lobby({ onStart }: { onStart: (s: Seat[]) => void }) {
-  const [name, setName] = useState(() => { try { return localStorage.getItem('midorino.name') ?? ''; } catch { return ''; } });
-  const [n, setN] = useState(4);
-  const [level, setLevel] = useState<Level>('mid');
-  const start = () => {
-    const nick = name.trim() || 'あなた';
-    try { localStorage.setItem('midorino.name', nick); } catch { /* 無視 */ }
-    const names = ['ハナ', 'ソウタ', 'ユイ', 'ケン', 'ミオ'];
-    onStart([{ name: nick, ai: null }, ...names.slice(0, n - 1).map((nm) => ({ name: `${nm}（AI）`, ai: level }))]);
-  };
-  return (
-    <div className="lobby">
-      <h1>ミドリノ谷の四季</h1>
-      <p className="sub">AIを相手に1台で遊ぶ（動作確認版）</p>
-      <label>ニックネーム<input value={name} maxLength={12} onChange={(e) => setName(e.target.value)} placeholder="あなた" /></label>
-      <label>人数
-        <div className="seg">{[3, 4, 5, 6].map((k) => <button key={k} className={k === n ? 'on' : ''} onClick={() => setN(k)}>{k}人</button>)}</div>
-      </label>
-      <label>AIの強さ
-        <div className="seg">{([['novice', 'やさしい'], ['mid', 'ふつう'], ['expert', 'つよい']] as [Level, string][]).map(([k, t]) =>
-          <button key={k} className={k === level ? 'on' : ''} onClick={() => setLevel(k)}>{t}</button>)}</div>
-      </label>
-      <button className="primary big" onClick={start}>ゲームを始める</button>
-    </div>
-  );
-}
-
 // ------------------------------------------------------------ キャラクター選択
-function Draft({ view, send }: { view: MatchView; send: (c: Command) => void }) {
+function Draft({ view, send }: { view: MatchView; send: (c: Command) => Promise<Result> }) {
   const opts = view.draft!.options!;
   const mine = view.draft!.picked[view.you];
   return (
@@ -100,7 +248,7 @@ function spaceViews(view: MatchView, g: GameState): SpaceView[] {
   });
 }
 
-function Game({ view, send, onQuit }: { view: MatchView; send: (c: Command) => { ok: boolean; error?: string }; onQuit: () => void }) {
+function Game({ view, send, onQuit }: { view: MatchView; send: (c: Command) => Promise<Result>; onQuit: () => void }) {
   const g = view.game! as unknown as GameState;
   const me = g.players[view.you];
   const myTurn = view.turn === view.you;
@@ -110,9 +258,9 @@ function Game({ view, send, onQuit }: { view: MatchView; send: (c: Command) => {
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2500); return () => clearTimeout(t); }, [toast]);
   useEffect(() => { if (sel && !view.legalSpaces.includes(sel)) setSel(null); }, [view.seq]);   // eslint-disable-line
-  const act = (cmd: Command) => {
-    const r = send(cmd);
-    if (!r.ok) setToast(r.error ?? 'できませんでした');
+  const act = async (cmd: Command) => {
+    const r = await send(cmd);
+    if (!r.ok) setToast(r.error);
     else { setSheet(null); setSel(null); }
   };
   const incoming = view.offers.find((o) => o.to === view.you);
