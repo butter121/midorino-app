@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ACT, GOODS, JP, MARKET_SPACES, RES, SEASONS,
   buyPrice, feedNeed, legal, marketBuyLimit, score, sellPrice, sellValue, sheepPerPlot, validateMarket,
   type Command, type Cost, type GameState, type Good, type Level, type MatchView, type Opt, type Player, type Res, type Seat, type SellBuy,
 } from '@midorino/engine';
 import {
-  ActionBar, ActionBoard, Button, CharacterCard, GameLayout, Icon, ImprovementCard, MarketPanel, MyPanel,
+  ActionBar, ActionBoard, Button, PlacementFx, type PlacedMove, CharacterCard, GameLayout, Icon, ImprovementCard, MarketPanel, MyPanel,
   PlayerStrip, PlayersOverview, StatusBar, Tabs, Worker, spaceEffect, type Alert, type SpaceView,
 } from '@midorino/ui';
 import qrcode from 'qrcode-generator';
@@ -239,10 +239,10 @@ function spaceViews(view: MatchView, g: GameState): SpaceView[] {
   return g.spaces.map((id) => {
     const a = ACT[id];
     const notYet = (a.from_round ?? 1) > g.round;
-    const can = myTurn && view.legalSpaces.includes(id);
+    const can = view.legalSpaces.includes(id);
     const taken = (view.placements[id]?.length ?? 0) > 0 && !a.unlimited;
     const reason = notYet ? `ラウンド${a.from_round}から` : g.closed.includes(id) ? `${weatherName(w)}で使えない`
-      : !can && !taken && myTurn ? '条件を満たしていない' : undefined;
+      : !can && !taken ? '条件を満たしていない' : undefined;
     const bonus = w === 'harusame' && id === 'sow' ? '春雨で畑ごと+2' : w === 'hareten' && id === 'plow' ? '晴天続きで+1区画' : undefined;
     return { id, accum: g.accum[id], by: view.placements[id], available: can, reason, bonus };
   });
@@ -256,6 +256,16 @@ function Game({ view, send, onQuit }: { view: MatchView; send: (c: Command) => P
   const [tab, setTab] = useState<Tab>('me');
   const [sel, setSel] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // 置かれた手の演出：新しい手を順番に1つずつ再生する
+  const shownN = useRef(view.moves.length ? view.moves[view.moves.length - 1].n : 0);
+  const [fxQueue, setFxQueue] = useState<PlacedMove[]>([]);
+  useEffect(() => {
+    const fresh = view.moves.filter((mv) => mv.n > shownN.current);
+    if (!fresh.length) return;
+    shownN.current = fresh[fresh.length - 1].n;
+    setFxQueue((q) => [...q, ...fresh.map((mv) => ({ key: mv.n, seat: mv.seat, sid: mv.sid, gains: mv.gains, who: mv.seat === view.you ? 'あなた' : `${view.seats[mv.seat].name}さん` }))].slice(-8));
+  }, [view.seq]);   // eslint-disable-line
+  const playing = fxQueue.length > 0;
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2500); return () => clearTimeout(t); }, [toast]);
   useEffect(() => { if (sel && !view.legalSpaces.includes(sel)) setSel(null); }, [view.seq]);   // eslint-disable-line
   const act = async (cmd: Command) => {
@@ -289,7 +299,8 @@ function Game({ view, send, onQuit }: { view: MatchView; send: (c: Command) => P
           seat: q.pid, name: names[q.pid], vp: score(q), left: q.avail, total: q.family, isTurn: q.pid === view.turn,
           isFirst: q.pid === g.first, isMe: q.pid === view.you,
         }))} onSelect={() => setTab('all')} />}
-        board={<ActionBoard spaces={spaceViews(view, g)} selected={sel} onPick={(id) => myTurn && view.legalSpaces.includes(id) && setSel(id)} />}
+        board={<><ActionBoard spaces={spaceViews(view, g)} selected={sel} locked={!myTurn || playing} onPick={(id) => myTurn && !playing && view.legalSpaces.includes(id) && setSel(id)} />
+          <PlacementFx move={fxQueue[0] ?? null} onDone={() => setFxQueue((q) => q.slice(1))} /></>}
         side={<>
           <Tabs value={tab} onChange={setTab} tabs={[{ id: 'me', label: 'わたし' }, { id: 'all', label: 'みんな' }, { id: 'market', label: '市場' }, { id: 'cards', label: '設備' }, { id: 'log', label: '記録' }]} />
           {tab === 'me' && <MyPanel player={me} sheepPer={sheepPerPlot(me)} />}
