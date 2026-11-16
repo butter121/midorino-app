@@ -88,3 +88,6 @@ button.big { font-size: 1.1rem; padding: 10px 24px; }
 .stepper button { padding: 0 8px; }
 .stepper b { min-width: 1.2em; text-align: center; }
 .result tr.me { background: var(--can); }
+.app-cards { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.app-quit { margin-top: 12px; display: flex; justify-content: flex-end; }
+.draft .cards > * { flex: 1; }
