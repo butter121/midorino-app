@@ -2,11 +2,16 @@
   "name": "midorino-app",
   "private": true,
   "type": "module",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p packages/engine --noEmit",
-    "golden": "python3 tools/trace_golden.py ../農場ボードゲーム/engine golden/golden.json 200"
+    "golden": "python3 tools/trace_golden.py ../農場ボードゲーム/engine golden/golden.json 200",
+    "typecheck:ui": "tsc -p packages/ui",
+    "kiridani:sync": "sh tools/kiridani/sync.sh",
+    "kiridani:golden": "python3 tools/kiridani/trace.py"
   },
   "devDependencies": {
     "typescript": "5.6.3",

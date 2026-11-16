@@ -41,3 +41,8 @@ npm run catalog -w @midorino/ui        # 開発サーバー
 # ?s=人数,ラウンド,置いた数,自分の席(-1=手番の人)  例: ?s=6,10,9,-1
 # #cards でカード全種
 ```
+
+## 霧谷の冒険者団（新しい画面）
+
+新しいゲーム「霧谷の冒険者団」の画面・演出・音・仮の絵は `src/kiridani/` にあります（農場版の部品とは独立）。
+詳しくは [src/kiridani/README.md](src/kiridani/README.md)。カタログは `kiridani.html`（`npm run catalog -w @midorino/ui` のあと `/kiridani.html`）。
