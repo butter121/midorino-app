@@ -148,7 +148,7 @@ export function KiridaniTable({ t, ask, onAnswer, extra, sheet }: TableProps) {
   const [queuedChoice, setQueuedChoice] = useState<string | null>(null);
 
   useLayoutEffect(() => { if (cur && fxRef.current) runFx(fxRef.current, cur, v); }, [cur?.key]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setSel(null); setQueuedChoice(null); }, [ask]);
+  useEffect(() => { setSel(null); setQueuedChoice(null); if (ask?.kind === 'place') { setTab('board'); setPeek(null); } }, [ask]);
   // 拠点に関係する出来事は拠点タブで見せる（自分のときだけ）
   useEffect(() => {
     if (!cur) return;
@@ -156,7 +156,7 @@ export function KiridaniTable({ t, ask, onAnswer, extra, sheet }: TableProps) {
     if ((e.t === 'build' || e.t === 'hire' || e.t === 'train') && e.seat === v.me && tab !== 'base') setTab('base');
     if (e.t === 'turn' && e.seat === v.me) setTab('board');
     if (e.t === 'round_start') setTab('board');
-    if (e.t === 'quest_done' && tab !== 'quests') setTab('quests');
+    if (e.t === 'quest_done' && tab !== 'quests' && ask?.kind !== 'place') setTab('quests');
   }, [cur?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const me = v.players[v.me];
