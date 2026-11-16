@@ -1,0 +1,252 @@
+/* ミドリノ谷の四季 画面部品のスタイル。横向き（landscape）が基本、縦向きは予備 */
+@import './tokens.css';
+
+/* ---------- 基本部品 ---------- */
+.mi-rc { display: inline-flex; align-items: center; gap: 2px; font-weight: 900; }
+.mi-rc.is-zero { opacity: .4; }
+.mi-btn {
+  min-height: var(--mi-tap); padding: 0 16px; border: 0; border-radius: 12px; cursor: pointer;
+  background: var(--mi-paper2); box-shadow: 0 3px 0 var(--mi-line); font-weight: 900; font-size: var(--mi-fs-m);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.mi-btn.is-primary { background: var(--mi-leaf); color: #fff; box-shadow: 0 3px 0 var(--mi-leaf-d); }
+.mi-btn.is-danger { background: var(--mi-bad); color: #fff; box-shadow: 0 3px 0 #7F241E; }
+.mi-btn.is-wide { width: 100%; }
+.mi-btn:active { transform: translateY(2px); box-shadow: none; }
+.mi-btn:disabled { opacity: .45; cursor: not-allowed; }
+.mi-tag { display: inline-block; font-size: var(--mi-fs-xs); font-weight: 900; border-radius: 8px; padding: 0 6px; margin-left: 4px; color: #fff; background: var(--mi-ink); vertical-align: 2px; line-height: 1.6; }
+.mi-tag.is-bad { background: var(--mi-bad); } .mi-tag.is-warn { background: var(--mi-warn); } .mi-tag.is-leaf { background: var(--mi-leaf); }
+.mi-tag.is-spring { background: var(--mi-spring); } .mi-tag.is-summer { background: var(--mi-summer); }
+.mi-tag.is-autumn { background: var(--mi-autumn); } .mi-tag.is-winter { background: var(--mi-winter); }
+
+/* ---------- 状況バー ---------- */
+.mi-status { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 4px 12px; padding: 6px 12px; border-bottom: 2px solid var(--mi-line); }
+.mi-status.is-spring { background: linear-gradient(90deg, var(--mi-spring-l), var(--mi-paper)); }
+.mi-status.is-summer { background: linear-gradient(90deg, var(--mi-summer-l), var(--mi-paper)); }
+.mi-status.is-autumn { background: linear-gradient(90deg, var(--mi-autumn-l), var(--mi-paper)); }
+.mi-status.is-winter { background: linear-gradient(90deg, var(--mi-winter-l), var(--mi-paper)); }
+.mi-status-row { display: contents; }
+.mi-status-title { display: flex; align-items: center; gap: 6px; grid-column: 1; }
+.mi-status-title small { display: block; font-size: var(--mi-fs-xs); color: var(--mi-ink2); font-weight: 700; line-height: 1.1; }
+.mi-status-title h1 { margin: 0; font-size: var(--mi-fs-xl); line-height: 1.1; }
+.mi-status-wx { display: flex; gap: 6px; grid-column: 3; }
+.mi-wchip { display: flex; align-items: center; gap: 4px; background: var(--mi-card); border-radius: 10px; padding: 2px 8px 2px 4px; box-shadow: 0 2px 0 var(--mi-line); font-size: var(--mi-fs-s); line-height: 1.2; }
+.mi-wchip-lb { display: block; font-size: var(--mi-fs-xs); color: var(--mi-ink2); }
+.mi-wchip:not(:first-child) { opacity: .85; }
+.mi-track { grid-column: 2; grid-row: 1; display: flex; gap: 2px; list-style: none; margin: 0; padding: 0; min-width: 0; }
+.mi-track li { flex: 1; min-width: 0; height: 26px; border-radius: 6px; position: relative; display: flex; align-items: center; justify-content: center; font-size: var(--mi-fs-xs); font-weight: 900; color: var(--mi-ink); }
+.mi-track li.is-spring { background: var(--mi-spring-l); } .mi-track li.is-summer { background: var(--mi-summer-l); }
+.mi-track li.is-autumn { background: var(--mi-autumn-l); } .mi-track li.is-winter { background: var(--mi-winter-l); }
+.mi-track li.is-past { opacity: .45; }
+.mi-track li.is-now { background: var(--mi-ink); color: #fff; box-shadow: 0 0 0 2px var(--mi-ink); }
+.mi-track li i { position: absolute; top: -7px; right: -2px; font-style: normal; font-size: 10px; background: var(--mi-card); color: var(--mi-ink); border: 1.5px solid var(--mi-ink); border-radius: 6px; padding: 0 2px; line-height: 1.2; }
+.mi-alerts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 8px; list-style: none; margin: 0; padding: 0; font-size: var(--mi-fs-s); }
+.mi-alerts li { border-radius: 8px; padding: 1px 8px; background: var(--mi-card); }
+.mi-alerts li.is-bad { background: var(--mi-bad-l); color: var(--mi-bad); font-weight: 900; }
+.mi-alerts li.is-warn { background: var(--mi-warn-l); color: var(--mi-warn); font-weight: 900; }
+.mi-alerts li.is-leaf { background: var(--mi-leaf-l); color: var(--mi-leaf-d); font-weight: 900; }
+
+/* ---------- プレイヤー ---------- */
+.mi-players { display: flex; gap: 6px; list-style: none; margin: 0; padding: 0; }
+.mi-players li { flex: 1; min-width: 0; }
+.mi-pl { width: 100%; min-height: var(--mi-tap); display: grid; grid-template-columns: auto 1fr auto; grid-template-rows: auto auto; align-items: center; column-gap: 4px;
+  background: var(--mi-card); border: 2px solid transparent; border-radius: 12px; padding: 2px 6px; position: relative; cursor: pointer; text-align: left; }
+.mi-pl svg { grid-row: 1 / 3; }
+.mi-pl-nm { font-size: var(--mi-fs-s); font-weight: 900; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mi-pl-vp { font-size: var(--mi-fs-s); font-weight: 900; grid-column: 3; grid-row: 1; }
+.mi-pl-dots { grid-column: 2 / 4; display: flex; gap: 3px; }
+.mi-pl-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--mi-ink); }
+.mi-pl-dots i.u { background: none; box-shadow: inset 0 0 0 1.5px var(--mi-ink2); }
+.mi-pl.is-turn { border-color: var(--mi-ink); box-shadow: 0 3px 0 var(--mi-ink); }
+.mi-pl.is-off { opacity: .5; }
+.mi-pl-first, .mi-pl-turn, .mi-pl-warn { position: absolute; top: -8px; font-size: 10px; font-weight: 900; border-radius: 6px; padding: 0 4px; color: #fff; line-height: 1.5; }
+.mi-pl-first { right: 2px; background: var(--mi-leaf); }
+.mi-pl-turn { left: 2px; background: var(--mi-ink); }
+.mi-pl-warn { right: 2px; top: auto; bottom: -8px; background: var(--mi-bad); }
+
+/* ---------- アクションボード ---------- */
+.mi-board { display: flex; flex-direction: column; gap: 8px; }
+.mi-board-group h3 { margin: 0 0 4px; font-size: var(--mi-fs-s); display: flex; align-items: center; gap: 4px; color: var(--mi-ink); }
+.mi-board-group h3 small { margin-left: auto; font-size: var(--mi-fs-xs); color: var(--mi-ink2); font-weight: 700; }
+.mi-board-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.mi-sp { position: relative; min-height: 64px; border-radius: var(--mi-radius); border: 2px solid var(--mi-line); background: var(--mi-card); padding: 6px 4px 4px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; text-align: center; }
+.mi-sp:hover:not(:disabled) { border-color: var(--mi-leaf); }
+.mi-sp-ic { display: flex; } .mi-sp-ic svg { width: 26px; height: 26px; }
+.mi-sp-nm { font-size: var(--mi-fs-s); font-weight: 900; line-height: 1.2; }
+.mi-sp-ef { font-size: var(--mi-fs-xs); color: var(--mi-ink2); line-height: 1.25; }
+.mi-sp-ef em { font-style: normal; color: var(--mi-leaf-d); font-weight: 900; }
+.mi-sp-acc { position: absolute; top: -8px; left: -4px; display: flex; gap: 2px; background: var(--mi-leaf); color: #fff; border-radius: 10px; padding: 0 6px 0 2px; font-weight: 900; font-size: var(--mi-fs-s); box-shadow: 0 2px 0 var(--mi-leaf-d); }
+.mi-sp-acc span { display: inline-flex; align-items: center; }
+.mi-sp-acc svg { background: #fff; border-radius: 50%; margin-right: 1px; }
+.mi-sp-why { font-size: var(--mi-fs-xs); font-weight: 900; color: var(--mi-ink2); background: var(--mi-paper2); border-radius: 6px; padding: 0 4px; margin-top: 2px; }
+.mi-sp-by { position: absolute; right: 2px; bottom: 0; display: flex; }
+.mi-sp.is-taken { background: var(--mi-paper2); border-style: dashed; cursor: default; }
+.mi-sp.is-taken .mi-sp-ic, .mi-sp.is-taken .mi-sp-nm, .mi-sp.is-taken .mi-sp-ef { opacity: .45; }
+.mi-sp.is-off:not(.is-taken) { background: var(--mi-paper); border-style: dashed; cursor: not-allowed; }
+.mi-sp.is-off:not(.is-taken) .mi-sp-ic { opacity: .35; }
+.mi-sp.is-sel { border-color: var(--mi-leaf); box-shadow: 0 0 0 4px var(--mi-leaf-l); background: #F4FBF1; }
+.mi-sp.is-sel::after { content: '✓'; position: absolute; top: 2px; right: 6px; font-weight: 900; color: var(--mi-leaf); }
+.mi-sp.is-wide { grid-column: 1 / -1; flex-direction: row; gap: 8px; min-height: 48px; }
+
+/* ---------- 農場 ---------- */
+.mi-farm { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 6px; border-radius: 16px; background: #CFE7B4; box-shadow: inset 0 0 0 3px #B4D894; }
+.mi-plot { aspect-ratio: 1; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; align-content: center; position: relative; }
+.mi-plot svg { width: 46%; height: 46%; }
+.mi-plot.is-room { background: #FFF3DA; box-shadow: inset 0 0 0 2px #E8D3A8; }
+.mi-plot.is-room svg { width: 80%; height: 80%; }
+.mi-plot.is-field { background: repeating-linear-gradient(0deg, #8B5C39 0 4px, #9C6B45 4px 11px); }
+.mi-plot.is-field svg { width: 60%; height: 60%; }
+.mi-plot.is-field b { position: absolute; right: 3px; bottom: 2px; background: var(--mi-card); border-radius: 6px; padding: 0 4px; font-size: var(--mi-fs-xs); }
+.mi-plot.is-pasture { background: #A9D67B; box-shadow: inset 0 0 0 3px #C98A4B; }
+.mi-plot.is-pasture svg { width: 42%; height: 42%; }
+.mi-plot.is-empty { background: rgba(255,255,255,.35); border: 2px dashed rgba(47,107,79,.45); }
+.mi-res { display: grid; gap: 4px 2px; }
+.mi-res .mi-rc { font-size: var(--mi-fs-m); }
+.mi-family { display: flex; gap: 2px; }
+.mi-family .is-used { opacity: .45; }
+
+/* ---------- カード ---------- */
+.mi-card { display: flex; flex-direction: column; background: var(--mi-card); border-radius: 16px; overflow: hidden; box-shadow: var(--mi-shadow); border: 2px solid transparent; padding: 0; text-align: left; }
+button.mi-card { cursor: pointer; }
+.mi-card.is-sel { border-color: var(--mi-leaf); box-shadow: 0 0 0 4px var(--mi-leaf-l); }
+.mi-card.is-off { opacity: .6; }
+.mi-card-art { display: flex; justify-content: center; align-items: flex-end; position: relative; height: 96px; overflow: hidden; }
+.mi-card-body { padding: 6px 10px 10px; }
+.mi-card h4 { margin: 0; font-size: var(--mi-fs-m); line-height: 1.25; }
+.mi-card h4 small { display: block; font-size: var(--mi-fs-xs); color: var(--mi-ink2); }
+.mi-card p { margin: 4px 0 0; font-size: var(--mi-fs-s); line-height: 1.45; color: var(--mi-ink); }
+.mi-card-note { color: var(--mi-leaf-d) !important; font-weight: 900; }
+.mi-card-why { color: var(--mi-bad) !important; font-weight: 900; }
+.mi-wcard .mi-card-art { height: 110px; }
+.mi-wcard.is-neg { border-color: var(--mi-bad); }
+.mi-icard .mi-card-art { background: #FBEFD2; align-items: center; }
+.mi-icard.is-basic .mi-card-art { background: #EEF3E4; }
+.mi-vp { position: absolute; top: 6px; right: 6px; background: var(--mi-leaf); color: #fff; font-weight: 900; font-size: var(--mi-fs-xs); border-radius: 8px; padding: 0 6px; }
+.mi-cost { display: flex; gap: 6px; margin-top: 2px; }
+.mi-card.is-small .mi-card-art { height: 64px; }
+.mi-card.is-small p { font-size: var(--mi-fs-xs); }
+
+/* ---------- 市場 ---------- */
+.mi-market h3 { margin: 0 0 4px; font-size: var(--mi-fs-m); display: flex; justify-content: space-between; align-items: baseline; }
+.mi-market h3 small { font-size: var(--mi-fs-xs); color: var(--mi-ink2); }
+.mi-market table { width: 100%; border-collapse: collapse; }
+.mi-market th { display: flex; align-items: center; gap: 4px; font-size: var(--mi-fs-s); width: 64px; white-space: nowrap; padding: 1px 0; }
+.mi-mtrack { display: flex; gap: 2px; width: 100%; padding: 0 4px; }
+.mi-mtrack i { flex: 1; height: 18px; border-radius: 4px; background: var(--mi-paper2); font-style: normal; font-size: var(--mi-fs-xs); font-weight: 900; color: #fff; text-align: center; line-height: 18px; }
+.mi-mtrack i.is-base { box-shadow: inset 0 0 0 2px var(--mi-leaf); }
+.mi-mtrack i.is-cur { background: var(--mi-ink); }
+.mi-mdiff { width: 32px; font-size: var(--mi-fs-xs); font-weight: 900; text-align: center; }
+.mi-mdiff.is-up { color: var(--mi-bad); } .mi-mdiff.is-dn { color: var(--mi-winter); }
+.mi-msell { width: 36px; font-size: var(--mi-fs-xs); color: var(--mi-ink2); text-align: right; }
+.mi-market-note { font-size: var(--mi-fs-xs); color: var(--mi-ink2); margin: 4px 0 0; }
+
+/* ---------- タブ・操作帯 ---------- */
+.mi-tabs { display: flex; gap: 4px; background: var(--mi-paper2); border-radius: 12px; padding: 3px; }
+.mi-tabs button { flex: 1; min-height: 36px; border: 0; border-radius: 9px; background: none; font-weight: 900; font-size: var(--mi-fs-s); color: var(--mi-ink2); cursor: pointer; position: relative; }
+.mi-tabs button.is-on { background: var(--mi-card); color: var(--mi-ink); box-shadow: 0 2px 0 var(--mi-line); }
+.mi-badge { position: absolute; top: -4px; right: 2px; background: var(--mi-bad); color: #fff; border-radius: 8px; font-size: 10px; padding: 0 4px; }
+.mi-actionbar { display: flex; align-items: center; gap: 10px; background: var(--mi-card); border-radius: 16px; padding: 8px 10px; box-shadow: 0 -2px 12px rgba(43,58,58,.10); }
+.mi-actionbar.is-turn { box-shadow: 0 0 0 3px var(--mi-leaf), 0 -2px 12px rgba(43,58,58,.10); }
+.mi-actionbar-msg { flex: 1; font-weight: 900; font-size: var(--mi-fs-s); display: flex; align-items: center; gap: 6px; }
+.mi-actionbar-btns { display: flex; gap: 6px; }
+
+/* ---------- ゲーム画面の骨組み ---------- */
+.mi-game { height: 100dvh; display: flex; flex-direction: column; overflow: hidden;
+  padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+.mi-rotate { margin: 0; padding: 6px 12px; background: var(--mi-warn-l); color: var(--mi-warn); font-weight: 900; font-size: var(--mi-fs-s); text-align: center; }
+.mi-game-main { flex: 1; min-height: 0; display: flex; gap: 8px; padding: 6px 8px 6px; }
+.mi-game-board { flex: 1; min-width: 0; min-height: 0; overflow: auto; padding: 8px 2px 2px; }
+.mi-game-side { width: clamp(250px, 34vw, 420px); flex: none; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.mi-game-sidebody { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.mi-game-action .mi-actionbar { flex-direction: column; align-items: stretch; gap: 6px; padding: 6px 8px; }
+.mi-game-action .mi-actionbar-btns > * { flex: 1; }
+.mi-short { display: none; }
+.mi-sp-detail { font-size: var(--mi-fs-xs); color: var(--mi-ink2); font-weight: 700; display: block; }
+
+/* 横向き（基本）：状況は1行、プレイヤーは左端の縦列、ボードは「グループ＝列」で一画面に収める */
+@media (orientation: landscape) {
+  .mi-rotate { display: none; }
+  .mi-game .mi-status { grid-template-columns: auto minmax(0, 1fr) auto auto; padding: 4px 10px; gap: 8px; }
+  .mi-game .mi-status-title h1 { font-size: var(--mi-fs-l); white-space: nowrap; }
+  .mi-game .mi-status-title h1 span { font-size: var(--mi-fs-s); }
+  .mi-game .mi-alerts { grid-column: 3; grid-row: 1; flex-wrap: nowrap; }
+  .mi-game .mi-alerts li { white-space: nowrap; }
+  .mi-game .mi-status-wx { grid-column: 4; }
+  .mi-game .mi-wchip svg { width: 24px; height: 24px; }
+  .mi-game .mi-track li { height: 22px; }
+
+  .mi-game-players { width: 62px; flex: none; overflow-y: auto; padding-top: 6px; }
+  .mi-game .mi-players { flex-direction: column; gap: 4px; }
+  .mi-game .mi-pl { grid-template-columns: auto auto; grid-template-rows: auto auto auto; justify-content: center; align-items: center;
+    column-gap: 2px; row-gap: 1px; min-height: 0; padding: 4px 2px 3px; line-height: 1.1; }
+  .mi-game .mi-pl svg { grid-row: 1; grid-column: 1; width: 20px; height: 20px; }
+  .mi-game .mi-pl-vp { grid-row: 1; grid-column: 2; font-size: var(--mi-fs-s); }
+  .mi-game .mi-pl-nm { grid-row: 2; grid-column: 1 / 3; font-size: var(--mi-fs-xs); max-width: 56px; text-align: center; }
+  .mi-game .mi-pl-dots { grid-row: 3; grid-column: 1 / 3; justify-content: center; gap: 2px; }
+  .mi-game .mi-pl-dots i { width: 5px; height: 5px; }
+  .mi-game .mi-pl-first, .mi-game .mi-pl-turn { top: -7px; font-size: 9px; }
+  .mi-game .mi-sp-by { top: -7px; right: -5px; bottom: auto; }
+  .mi-game .mi-sp-by svg { width: 20px; height: 20px; }
+
+  .mi-game .mi-board { flex-direction: row; gap: 6px; height: 100%; }
+  .mi-game .mi-board-group { flex: var(--cols) 0 0; min-width: calc(var(--cols) * 64px); min-height: 0; display: flex; flex-direction: column; }
+  .mi-game .mi-board-group h3 { white-space: nowrap; font-size: var(--mi-fs-xs); margin-bottom: 8px; }
+  .mi-game .mi-board-group h3 svg { width: 16px; height: 16px; }
+  .mi-game .mi-board-group h3 small, .mi-game .mi-long { display: none; }
+  .mi-game .mi-short { display: inline; }
+  .mi-game .mi-board-grid { flex: 1; grid-template-rows: repeat(var(--rows), minmax(0, 1fr)); grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr); grid-template-columns: none; gap: 8px 5px; min-height: 0; }
+  .mi-game .mi-sp { min-height: 0; padding: 2px; border-radius: 10px; overflow: visible; }
+  .mi-game .mi-sp-nm { line-height: 1.1; }
+  .mi-game .mi-sp-ic svg { width: 20px; height: 20px; }
+  .mi-game .mi-sp-nm { font-size: var(--mi-fs-xs); }
+  .mi-game .mi-sp-ef, .mi-game .mi-sp-why { display: none; }
+  .mi-game .mi-sp-acc { top: -9px; left: -3px; font-size: var(--mi-fs-xs); }
+  .mi-game .mi-sp.is-wide { grid-column: auto; flex-direction: column; gap: 0; }
+  .mi-game .mi-sp.is-off:not(.is-taken) .mi-sp-nm { color: var(--mi-ink2); }
+
+  .mi-game .mi-me-head p { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mi-game .mi-tabs button { min-height: 32px; }
+}
+/* 縦向き（予備）：1列 */
+@media (orientation: portrait) {
+  .mi-game { height: auto; min-height: 100dvh; overflow: visible; }
+  .mi-game-main { flex-direction: column; }
+  .mi-game-side { width: auto; display: contents; }
+  .mi-game-sidebody { order: 3; overflow: visible; }
+  .mi-game-board { order: 2; overflow: visible; }
+  .mi-game-players { order: 1; }
+  .mi-game .mi-players { flex-wrap: wrap; }
+  .mi-game .mi-players li { flex: 1 1 30%; }
+  .mi-game-action { order: 4; position: sticky; bottom: 0; padding-bottom: env(safe-area-inset-bottom); }
+  .mi-game .mi-status { grid-template-columns: auto 1fr; }
+  .mi-game .mi-status-wx { grid-column: 1 / -1; grid-row: 2; }
+  .mi-game .mi-track { grid-column: 2; }
+  .mi-game .mi-alerts { grid-row: 3; }
+}
+
+/* ---------- みんな（比較表） ---------- */
+.mi-overview { width: 100%; border-collapse: separate; border-spacing: 0 3px; font-size: var(--mi-fs-s); }
+.mi-overview th, .mi-overview td { text-align: center; padding: 3px 2px; background: var(--mi-card); }
+.mi-overview thead th { background: none; }
+.mi-overview tbody th { text-align: left; display: flex; align-items: center; gap: 4px; border-radius: 10px 0 0 10px; white-space: nowrap; }
+.mi-overview tbody th small { display: block; font-size: 10px; color: var(--mi-ink2); line-height: 1; }
+.mi-overview tbody th span { line-height: 1.15; font-weight: 900; }
+.mi-overview td:last-child { border-radius: 0 10px 10px 0; }
+.mi-overview tr.is-me th, .mi-overview tr.is-me td { background: var(--mi-leaf-l); }
+
+/* ---------- 自分のパネル ---------- */
+.mi-me-head { display: flex; gap: 8px; align-items: center; }
+.mi-me-head .mi-portrait { width: 48px; height: 48px; border-radius: 50%; overflow: hidden; flex: none; border: 3px solid currentColor; }
+.mi-me-head b { font-size: var(--mi-fs-m); display: block; line-height: 1.2; }
+.mi-me-head p { margin: 0; font-size: var(--mi-fs-xs); color: var(--mi-ink2); line-height: 1.35; }
+.mi-me-row { display: flex; gap: 8px; align-items: flex-start; }
+.mi-me-row > .mi-farm { flex: 0 0 46%; }
+.mi-me-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.mi-h { font-size: var(--mi-fs-xs); font-weight: 900; color: var(--mi-ink2); margin: 0; }
+.mi-imps { display: flex; flex-wrap: wrap; gap: 4px; }
+.mi-imps span { background: var(--mi-card); border: 2px solid var(--mi-line); border-radius: 8px; padding: 0 6px; font-size: var(--mi-fs-xs); font-weight: 900; }
+.mi-score { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: var(--mi-fs-s); }
+.mi-score b { font-size: var(--mi-fs-l); }
+.mi-score .is-bad { font-size: var(--mi-fs-xs); font-weight: 900; color: var(--mi-bad); background: var(--mi-bad-l); border-radius: 6px; padding: 0 4px; }
