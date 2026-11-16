@@ -6,7 +6,8 @@
   "scripts": {
     "test": "vitest run",
     "typecheck": "tsc -p packages/engine --noEmit",
-    "golden": "python3 tools/trace_golden.py ../農場ボードゲーム/engine golden/golden.json 200"
+    "golden": "python3 tools/trace_golden.py ../農場ボードゲーム/engine golden/golden.json 200",
+    "typecheck:ui": "tsc -p packages/ui"
   },
   "devDependencies": {
     "typescript": "5.6.3",
