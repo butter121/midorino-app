@@ -11,7 +11,7 @@ import {
 } from './engine.js';
 
 // ------------------------------------------------------------ 型
-export interface Seat { name: string; ai: Level | null }   // ai が null なら人間
+export interface Seat { name: string; ai: Level | null; id?: string }   // ai が null なら人間。id はオンライン時の参加者ID
 export interface TradeOffer { id: number; from: number; to: number; give: Cost; get: Cost }
 export interface MatchEvent { seq: number; round: number; text: string }
 export interface MatchState {
