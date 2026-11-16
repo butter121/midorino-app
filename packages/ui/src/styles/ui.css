@@ -207,7 +207,7 @@ button.mi-card { cursor: pointer; }
   .mi-game .mi-board-grid { flex: 1; grid-template-rows: repeat(var(--rows), minmax(0, 1fr)); grid-auto-flow: column;
     grid-auto-columns: minmax(0, 1fr); grid-template-columns: none; gap: 7px 5px; min-height: 0; }
   .mi-game .mi-sp { min-height: 0; padding: 2px; border-radius: 10px; overflow: visible; container-type: size; }
-  @container (max-height: 50px) { .mi-sp-ic { display: none !important; } }
+  @container (max-height: 44px) { .mi-sp-ic { display: none !important; } }
   .mi-game .mi-sp-nm { line-height: 1.1; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
   .mi-game .mi-sp-ic svg { width: 20px; height: 20px; }
   .mi-game .mi-sp-nm { font-size: var(--mi-fs-xs); }
@@ -345,3 +345,23 @@ button.mi-card { cursor: pointer; }
 .mi-bd th, .mi-bd td { padding: 3px 8px; border-bottom: 1px solid var(--mi-line); text-align: center; white-space: nowrap; }
 .mi-bd tbody th { text-align: left; } .mi-bd td.is-bad { color: var(--mi-bad); font-weight: 900; }
 .mi-bd-total td, .mi-bd-total th { font-weight: 900; font-size: var(--mi-fs-m); border-top: 2px solid var(--mi-ink); }
+
+/* ---------- 置いたときの演出 ---------- */
+.mi-fx { position: fixed; inset: 0; pointer-events: none; z-index: 40; }
+.mi-fx-fly { position: fixed; left: 0; top: 0; display: none; filter: drop-shadow(0 4px 3px rgba(43,58,58,.35)); will-change: transform; }
+.mi-fx-gain { position: fixed; display: flex; align-items: center; gap: 2px; background: var(--mi-card); border: 2px solid var(--mi-leaf); border-radius: 12px;
+  padding: 1px 6px 1px 3px; font-weight: 900; font-size: var(--mi-fs-m); color: var(--mi-leaf-d); box-shadow: 0 3px 8px rgba(43,58,58,.2); white-space: nowrap; }
+.mi-fx-toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 52px); transform: translateX(-50%); display: flex; align-items: center; gap: 6px;
+  background: var(--mi-ink); color: #fff; border-radius: 14px; padding: 4px 12px 4px 6px; font-size: var(--mi-fs-s); max-width: 90vw;
+  animation: mi-toast 2.4s ease both; }
+@keyframes mi-toast { 0% { opacity: 0; transform: translate(-50%, -8px); } 10%, 80% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+.mi-sp.mi-fx-ring { animation: mi-ring .9s ease-out; }
+@keyframes mi-ring {
+  0% { box-shadow: 0 0 0 0 var(--fx-color, var(--mi-leaf)); transform: scale(1); }
+  20% { transform: scale(1.06); }
+  100% { box-shadow: 0 0 0 14px transparent; transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mi-sp.mi-fx-ring { animation: none; outline: 4px solid var(--fx-color, var(--mi-leaf)); }
+  .mi-fx-toast { animation: none; }
+}

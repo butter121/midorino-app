@@ -14,7 +14,7 @@ export function PlayerStrip({ players, onSelect }: { players: PlayerChip[]; onSe
     <ul className={`mi-players n${players.length}`} aria-label="プレイヤー">
       {players.map((p) => (
         <li key={p.seat}>
-          <button type="button" className={`mi-pl${p.isTurn ? ' is-turn' : ''}${p.offline ? ' is-off' : ''}`} onClick={() => onSelect?.(p.seat)}
+          <button type="button" data-seat={p.seat} className={`mi-pl${p.isTurn ? ' is-turn' : ''}${p.offline ? ' is-off' : ''}`} onClick={() => onSelect?.(p.seat)}
             aria-label={`${p.name}${p.isMe ? '（あなた）' : ''}、${p.vp}点、コマ残り${p.left}/${p.total}${p.isTurn ? '、手番' : ''}${p.isFirst ? '、先手' : ''}${p.offline ? '、接続切れ' : ''}`}>
             {p.isFirst && <span className="mi-pl-first" aria-hidden>先手</span>}
             {p.isTurn && <span className="mi-pl-turn" aria-hidden>番</span>}
@@ -73,15 +73,15 @@ export function spaceEffect(id: string): string {
   return (a.text ?? '').replace(/（.*?）/g, '');
 }
 
-export function ActionSpace({ s, selected, onPick }: { s: SpaceView; selected?: boolean; onPick?: (id: string) => void }) {
+export function ActionSpace({ s, selected, onPick, locked }: { s: SpaceView; selected?: boolean; onPick?: (id: string) => void; locked?: boolean }) {
   const a = ACT[s.id];
   const accum = s.accum && Object.entries(s.accum).filter(([, n]) => n);
   const icons = SPACE_ICONS[s.id] ?? (a.accum ? Object.keys(a.accum).map((r) => RES_ICON[r as Res]) : []);
   const taken = !!s.by?.length && !a.unlimited;
   const label = `${a.name}：${spaceEffect(s.id)}${accum?.length ? `。いま ${costText(Object.fromEntries(accum))}` : ''}${taken ? '。使用中' : ''}${!s.available && s.reason ? `。${s.reason}` : ''}`;
   return (
-    <button type="button" className={`mi-sp${taken ? ' is-taken' : ''}${!s.available ? ' is-off' : ''}${selected ? ' is-sel' : ''}${a.unlimited ? ' is-wide' : ''}`}
-      disabled={!s.available} aria-pressed={selected} aria-label={label} onClick={() => onPick?.(s.id)}>
+    <button type="button" data-space={s.id} className={`mi-sp${taken ? ' is-taken' : ''}${!s.available ? ' is-off' : ''}${selected ? ' is-sel' : ''}${a.unlimited ? ' is-wide' : ''}`}
+      disabled={!s.available || locked} aria-pressed={selected} aria-label={label} onClick={() => onPick?.(s.id)}>
       {!!accum?.length && (
         <span className="mi-sp-acc" aria-hidden>{accum.map(([r, n]) => <span key={r}><Icon name={RES_ICON[r as Res]} size={18} />{n}</span>)}</span>
       )}
@@ -97,8 +97,10 @@ export function ActionSpace({ s, selected, onPick }: { s: SpaceView; selected?: 
 }
 
 /** アクションボード全体。spaces に無いIDのスペース（人数で出ないもの）は表示しない */
-export function ActionBoard({ spaces, selected, onPick, rows }: {
+export function ActionBoard({ spaces, selected, onPick, rows, locked }: {
   spaces: SpaceView[]; selected?: string | null; onPick?: (id: string) => void;
+  /** ほかの人の番・演出中など：見た目はそのままで押せなくする */
+  locked?: boolean;
   /** 横向きのとき1列に並べる段数（省略時：6人用ボードは6段、それ以外は5段） */
   rows?: number;
 }) {
@@ -114,7 +116,7 @@ export function ActionBoard({ spaces, selected, onPick, rows }: {
           <section key={g.title} className="mi-board-group" aria-label={g.title} style={{ ['--cols' as string]: Math.ceil(list.length / R) }}>
             <h3><Icon name={g.icon} size={20} /><span className="mi-long">{g.title}</span><span className="mi-short">{g.short}</span><small>置ける {open}/{list.length}</small></h3>
             <div className="mi-board-grid">
-              {list.map((id) => <ActionSpace key={id} s={byId[id]} selected={selected === id} onPick={onPick} />)}
+              {list.map((id) => <ActionSpace key={id} s={byId[id]} selected={selected === id} onPick={onPick} locked={locked} />)}
             </div>
           </section>
         );
