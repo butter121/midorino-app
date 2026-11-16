@@ -94,22 +94,9 @@ export interface ScoreBreakdown {
   cattle: number; diversity: number; house: number; family: number; imps: number; coin: number;
   empty: number; begging: number;
 }
-/**
- * 得点計算のモード。
- * - 'rulebook'：ルールブック8章どおり（豚1頭1VP、牛1頭2VP、多様性は5種類を数える）
- * - 'legacy'  ：バランステストに使った Python 版の計算をそのまま再現する。Python 版には
- *               変数の取り違えがあり、豚が0VP・牛が1頭3VP・多様性で豚が数えられず牛が2回数えられる。
- *               一致テスト専用。
- */
-export type ScoringMode = 'rulebook' | 'legacy';
-let scoringMode: ScoringMode = 'rulebook';
-export const setScoringMode = (m: ScoringMode) => { scoringMode = m; };
-export const getScoringMode = () => scoringMode;
-
 export function scoreBreakdown(p: Player): { total: number; breakdown: ScoreBreakdown } {
   const g = grainTotal(p), v = vegTotal(p);
-  const s = p.res.sheep, ca = p.res.cattle;
-  const pg = scoringMode === 'legacy' ? p.res.cattle : p.res.pig;
+  const s = p.res.sheep, pg = p.res.pig, ca = p.res.cattle;
   const kinds = [g, v, s, pg, ca].filter((x) => x > 0).length;
   const b: ScoreBreakdown = {
     fields: Math.min(FIELD_SCORE_CAP, p.fields.length),

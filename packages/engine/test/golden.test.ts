@@ -3,7 +3,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  setScoringMode, apply, endRound, legal, newGame, nextActor, scoreBreakdown, startRound, trade,
+  apply, endRound, legal, newGame, nextActor, scoreBreakdown, startRound, trade,
   type GameState, type Player,
 } from '../src/index.js';
 import { evaluate, DEFAULT_W } from '../src/ai.js';
@@ -22,8 +22,6 @@ function sameState(g: GameState, rec: any, msg: string) {
   expect(gstate(g), msg).toEqual(rest);
   evals(g).forEach((v, k) => expect(v, `${msg} 評価値P${k}`).toBeCloseTo(ev[k], 5));
 }
-
-setScoringMode('legacy');   // Python 版の得点計算（豚・牛の取り違えあり）で比較する
 
 describe('Python版との完全一致', () => {
   it('記録がある', () => expect(games.length).toBeGreaterThan(0));
