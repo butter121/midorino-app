@@ -57,10 +57,12 @@ export function ResCount({ res, n, size = 24, showZero = true, signed = false }:
   );
 }
 
-export function Button({ children, onClick, kind = 'normal', disabled, wide }: {
+export function Button({ children, onClick, kind = 'normal', disabled, wide, submit }: {
   children: ReactNode; onClick?: () => void; kind?: 'normal' | 'primary' | 'danger'; disabled?: boolean; wide?: boolean;
+  /** フォームの送信ボタンにする（Enterキーでも押せる） */
+  submit?: boolean;
 }) {
-  return <button type="button" className={`mi-btn is-${kind}${wide ? ' is-wide' : ''}`} onClick={onClick} disabled={disabled}>{children}</button>;
+  return <button type={submit ? 'submit' : 'button'} className={`mi-btn is-${kind}${wide ? ' is-wide' : ''}`} onClick={onClick} disabled={disabled}>{children}</button>;
 }
 
 export function Tag({ children, tone = 'ink' }: { children: ReactNode; tone?: 'ink' | 'bad' | 'warn' | 'leaf' | 'spring' | 'summer' | 'autumn' | 'winter' }) {
