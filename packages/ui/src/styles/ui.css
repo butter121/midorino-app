@@ -250,3 +250,88 @@ button.mi-card { cursor: pointer; }
 .mi-score { margin: 2px 0 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: var(--mi-fs-s); }
 .mi-score b { font-size: var(--mi-fs-l); }
 .mi-score .is-bad { font-size: var(--mi-fs-xs); font-weight: 900; color: var(--mi-bad); background: var(--mi-bad-l); border-radius: 6px; padding: 0 4px; }
+
+/* ---------- 下から出る画面 ---------- */
+.mi-sheet-bg { position: fixed; inset: 0; z-index: 50; background: rgba(43,58,58,.35); display: flex; align-items: flex-end; justify-content: center; }
+.mi-sheet { width: min(720px, 100%); max-height: 92dvh; display: flex; flex-direction: column; background: var(--mi-paper); border-radius: 20px 20px 0 0;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 24px rgba(43,58,58,.2); }
+.mi-sheet header { display: flex; align-items: center; justify-content: space-between; }
+.mi-sheet h2 { margin: 0; font-size: var(--mi-fs-l); }
+.mi-sheet-body { overflow-y: auto; min-height: 0; flex: 1; padding: 6px 0; }
+.mi-sheet footer { display: flex; flex-direction: column; gap: 6px; padding-top: 6px; border-top: 2px dashed var(--mi-line); }
+.mi-x { min-width: var(--mi-tap); min-height: var(--mi-tap); border: 0; background: none; font-size: 26px; cursor: pointer; color: var(--mi-ink2); }
+@media (orientation: landscape) { .mi-sheet { max-height: 96dvh; border-radius: 20px 20px 0 0; } }
+
+.mi-step { display: grid; grid-template-columns: 1fr var(--mi-tap) 2.2em var(--mi-tap); align-items: center; gap: 4px; padding: 2px 0; }
+.mi-step-lb { display: flex; align-items: center; gap: 4px; font-weight: 700; font-size: var(--mi-fs-s); }
+.mi-step button { min-height: var(--mi-tap); border: 0; border-radius: 12px; background: var(--mi-card); box-shadow: 0 2px 0 var(--mi-line); font-size: 20px; font-weight: 900; cursor: pointer; }
+.mi-step button:disabled { opacity: .35; cursor: not-allowed; }
+.mi-step output { text-align: center; font-weight: 900; font-size: var(--mi-fs-l); }
+.mi-trade-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mi-trade-cols fieldset { border: 2px solid var(--mi-line); border-radius: 14px; margin: 0; padding: 4px 8px 8px; min-width: 0; }
+.mi-trade-cols legend { font-weight: 900; font-size: var(--mi-fs-s); padding: 0 4px; }
+@media (max-width: 520px) { .mi-trade-cols { grid-template-columns: 1fr; } }
+.mi-trade-to, .mi-choices { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.mi-trade-to button, .mi-choices button { min-height: var(--mi-tap); display: inline-flex; align-items: center; gap: 6px; padding: 4px 12px; border-radius: 12px;
+  border: 2px solid var(--mi-line); background: var(--mi-card); font-weight: 900; cursor: pointer; text-align: left; }
+.mi-trade-to button.is-on, .mi-choices button.is-on { border-color: var(--mi-leaf); box-shadow: 0 0 0 3px var(--mi-leaf-l); }
+.mi-choices button span small { display: block; font-weight: 700; color: var(--mi-ink2); font-size: var(--mi-fs-xs); }
+.mi-hint { font-size: var(--mi-fs-s); color: var(--mi-ink2); margin: 6px 0 0; }
+.mi-sum { margin: 0; font-size: var(--mi-fs-s); } .mi-sum b { font-size: var(--mi-fs-l); } .mi-sum.is-bad { color: var(--mi-bad); font-weight: 900; }
+.mi-err { color: var(--mi-bad); font-weight: 900; }
+
+.mi-offer { display: flex; align-items: center; gap: 8px; background: var(--mi-card); border: 3px solid var(--mi-p1); border-radius: 16px; padding: 8px 10px; }
+.mi-offer-body { flex: 1; min-width: 0; font-size: var(--mi-fs-s); }
+.mi-offer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; } .mi-offer-row > span { color: var(--mi-ink2); font-size: var(--mi-fs-xs); width: 6.5em; }
+.mi-offer-btns { display: flex; flex-direction: column; gap: 4px; }
+
+/* ---------- ロビー・参加・キャラ選択 ---------- */
+.mi-lobby { min-height: 100dvh; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 16px; padding: 16px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left)); }
+@media (orientation: portrait) { .mi-lobby { grid-template-columns: 1fr; } }
+.mi-lobby h2 { font-size: var(--mi-fs-l); margin: 0 0 8px; } .mi-lobby h2 small { font-size: var(--mi-fs-xs); color: var(--mi-ink2); }
+.mi-lobby-invite { background: var(--mi-card); border-radius: 20px; padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.mi-qr { width: 160px; height: 160px; background: #fff; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 0 0 2px var(--mi-line); }
+.mi-qr > * { max-width: 100%; max-height: 100%; }
+.mi-qr-ph { font-weight: 900; color: var(--mi-ink2); }
+.mi-url { margin: 0; font-size: var(--mi-fs-xs); word-break: break-all; color: var(--mi-ink2); user-select: all; }
+.mi-wait { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.mi-wait li { background: var(--mi-warn-l); border-radius: 12px; padding: 6px 10px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; font-size: var(--mi-fs-s); }
+.mi-wait li span { display: flex; gap: 6px; }
+.mi-members { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.mi-members li { display: flex; align-items: center; gap: 6px; background: var(--mi-card); border-radius: 12px; padding: 4px 4px 4px 8px; min-height: var(--mi-tap); }
+.mi-members li span { flex: 1; min-width: 0; font-size: var(--mi-fs-s); }
+.mi-members em { font-style: normal; font-size: var(--mi-fs-xs); background: var(--mi-paper2); border-radius: 6px; padding: 0 4px; margin-left: 4px; }
+.mi-members li.is-off { opacity: .5; }
+.mi-lobby-btns { display: flex; gap: 8px; margin-top: 12px; } .mi-lobby-btns > * { flex: 1; }
+.mi-join { min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 16px; text-align: center; }
+.mi-join h1 { margin: 0; font-size: var(--mi-fs-xl); }
+.mi-join form { display: flex; flex-direction: column; gap: 8px; width: min(320px, 100%); text-align: left; }
+.mi-join label { font-weight: 900; font-size: var(--mi-fs-s); }
+.mi-join input { min-height: var(--mi-tap); font: inherit; font-size: 18px; border: 2px solid var(--mi-line); border-radius: 12px; padding: 0 12px; background: var(--mi-card); }
+.mi-draft { min-height: 100dvh; padding: 12px max(16px, env(safe-area-inset-right)) 12px max(16px, env(safe-area-inset-left)); display: flex; flex-direction: column; gap: 10px; }
+.mi-draft h1 { margin: 0; font-size: var(--mi-fs-l); }
+.mi-draft-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 260px)); gap: 12px; justify-content: center; }
+.mi-draft-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; }
+.mi-draft-foot ul { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; font-size: var(--mi-fs-s); }
+.mi-draft-foot li { display: flex; align-items: center; gap: 2px; }
+
+/* ---------- 記録・知らせ・結果 ---------- */
+.mi-log { list-style: none; margin: 0; padding: 0; font-size: var(--mi-fs-s); display: flex; flex-direction: column; gap: 2px; }
+.mi-log li { background: var(--mi-card); border-radius: 8px; padding: 2px 8px; }
+.mi-log span { font-size: var(--mi-fs-xs); color: var(--mi-ink2); margin-right: 6px; font-weight: 900; }
+.mi-banner { position: fixed; z-index: 60; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(420px, 92vw); background: var(--mi-card); border-radius: 20px;
+  padding: 14px 16px; box-shadow: 0 10px 40px rgba(43,58,58,.3); border: 3px solid var(--mi-leaf); text-align: center; }
+.mi-banner.is-bad { border-color: var(--mi-bad); }
+.mi-banner h2 { margin: 0 0 6px; } .mi-banner ul { text-align: left; padding-left: 1.2em; margin: 0 0 10px; font-size: var(--mi-fs-s); }
+.mi-result { min-height: 100dvh; padding: 12px max(16px, env(safe-area-inset-right)) 16px max(16px, env(safe-area-inset-left)); display: flex; flex-direction: column; gap: 10px; align-items: center; }
+.mi-result h1 { margin: 0; }
+.mi-podium { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.mi-podium li { display: flex; align-items: center; gap: 6px; background: var(--mi-card); border-radius: 14px; padding: 6px 12px; box-shadow: var(--mi-shadow); }
+.mi-podium li.is-win { border: 3px solid var(--mi-p2); } .mi-podium li.is-me { background: var(--mi-leaf-l); }
+.mi-rank { font-weight: 900; } .mi-total { font-weight: 900; font-size: var(--mi-fs-l); }
+.mi-bd-wrap { max-width: 100%; overflow-x: auto; }
+.mi-bd { border-collapse: collapse; font-size: var(--mi-fs-s); font-variant-numeric: tabular-nums; }
+.mi-bd caption { font-weight: 900; text-align: left; padding-bottom: 4px; }
+.mi-bd th, .mi-bd td { padding: 3px 8px; border-bottom: 1px solid var(--mi-line); text-align: center; white-space: nowrap; }
+.mi-bd tbody th { text-align: left; } .mi-bd td.is-bad { color: var(--mi-bad); font-weight: 900; }
+.mi-bd-total td, .mi-bd-total th { font-weight: 900; font-size: var(--mi-fs-m); border-top: 2px solid var(--mi-ink); }
