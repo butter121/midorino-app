@@ -2,7 +2,7 @@
 //
 // 本番の絵（src/kiridani/art/）は同じ名前・同じ props で作られている。art/ に index.ts（下の名前をまとめて
 // export するだけのファイル）を置いたら、次の1行の './placeholder' を './art' に替えれば画面全体が差し替わる。
-import * as A from './placeholder';
+import * as A from './art';
 // 仮の絵（本番に無い id・部品の受け皿として残す）
 import * as P from './placeholder';
 
