@@ -98,7 +98,7 @@ export function JoinScreen({ hostName, waiting, error, onJoin, defaultName = '' 
           <label htmlFor="mi-nick">ニックネーム（8文字まで）</label>
           <input id="mi-nick" value={name} maxLength={8} autoComplete="nickname" onChange={(e) => setName(e.target.value)} />
           {error && <p className="mi-err" role="alert">{error}</p>}
-          <Button kind="primary" wide disabled={!ok}>参加する</Button>
+          <Button kind="primary" wide submit disabled={!ok}>参加する</Button>
         </form>
       )}
     </div>

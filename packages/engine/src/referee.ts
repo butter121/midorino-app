@@ -13,6 +13,8 @@ import {
 // ------------------------------------------------------------ 型
 export interface Seat { name: string; ai: Level | null; id?: string }   // ai が null なら人間。id はオンライン時の参加者ID
 export interface TradeOffer { id: number; from: number; to: number; give: Cost; get: Cost }
+/** 置かれた手の記録（演出用）。gains は持ち物の増えた分 */
+export interface PlacedMoveLog { n: number; seat: number; sid: string; gains: Cost }
 export interface MatchEvent { seq: number; round: number; text: string }
 export interface MatchState {
   version: 1;
@@ -25,6 +27,8 @@ export interface MatchState {
   last: number | null;              // 直前に置いた人
   offers: TradeOffer[];             // 回答待ちの取引提案
   placements: Record<string, number[]>;   // このラウンドに誰がどこに置いたか（スペースID → 席番号）
+  moves: PlacedMoveLog[];           // 最近置かれた手（演出用。n は通し番号）
+  moveCount: number;
   proposals: number;                // 手番の人がこの手番で出した提案の数
   nextOfferId: number;
   seq: number;                      // 状態が変わるたびに +1（同期用）
@@ -60,7 +64,7 @@ export function createMatch(participants: Seat[], seed: number): MatchState {
   const m: MatchState = {
     version: 1, seats, phase: 'draft', draft: { options, picked: seats.map(() => null) },
     setup: { weather, deck: rng.shuffle(DEV_IDS) }, game: null, turn: null, last: null,
-    offers: [], placements: {}, proposals: 0, nextOfferId: 1, seq: 0, events: [], aiSeed: Math.floor(rng.next() * 1e9),
+    offers: [], placements: {}, moves: [], moveCount: 0, proposals: 0, nextOfferId: 1, seq: 0, events: [], aiSeed: Math.floor(rng.next() * 1e9),
     result: null,
   };
   seats.forEach((s, i) => { if (s.ai) m.draft.picked[i] = rng.choice(options[i]); });
@@ -192,8 +196,9 @@ function handleInner(m: MatchState, pid: number, cmd: Command): Result {
       if (typeof cmd.sid !== 'string') return fail('形式が正しくありません');
       const err = validatePlace(g, pid, cmd.sid, cmd.opt);
       if (err) return fail(err);
+      const before = { ...g.players[pid].res };
       apply(g, g.players[pid], cmd.sid, structuredClone(cmd.opt));
-      (m.placements[cmd.sid] ??= []).push(pid);
+      recordMove(m, pid, cmd.sid, before);
       g.players[pid].avail -= 1;
       flushLogs(m);
       m.last = pid;
@@ -244,6 +249,16 @@ function handleInner(m: MatchState, pid: number, cmd: Command): Result {
   return fail('不明な操作です');
 }
 
+function recordMove(m: MatchState, pid: number, sid: string, before: Record<Res, number>) {
+  (m.placements[sid] ??= []).push(pid);
+  const after = m.game!.players[pid].res;
+  const gains: Cost = {};
+  for (const r of RES) if (after[r] > before[r]) gains[r] = after[r] - before[r];
+  m.moveCount = (m.moveCount ?? 0) + 1;
+  (m.moves ??= []).push({ n: m.moveCount, seat: pid, sid, gains });
+  if (m.moves.length > 40) m.moves.splice(0, m.moves.length - 40);
+}
+
 function resolveOffer(m: MatchState, o: TradeOffer, accept: boolean) {
   const g = m.game!;
   const a = g.players[o.from], b = g.players[o.to];
@@ -278,8 +293,9 @@ export function runAI(m: MatchState) {
     bots[pid]!.tradePhase(g, p, bots);   // AI 同士の取引のみ
     const opts = legal(g, p);
     const [sid, opt] = bots[pid]!.choose(g, p, opts);
+    const before = { ...p.res };
     apply(g, p, sid, opt);
-    (m.placements[sid] ??= []).push(pid);
+    recordMove(m, pid, sid, before);
     p.avail -= 1;
     flushLogs(m);
     m.last = pid;
@@ -297,9 +313,10 @@ export interface MatchView {
     deckCount: number;
   }) | null;
   turn: number | null;
-  legalSpaces: string[];          // 自分の番に置けるスペース
+  legalSpaces: string[];          // 自分が置ける（自分の番なら置ける）スペース
   offers: TradeOffer[];           // 自分が関わる回答待ちの提案
   placements: Record<string, number[]>;
+  moves: PlacedMoveLog[];
   proposalsLeft: number;
   events: MatchEvent[];
   result: MatchState['result'];
@@ -324,9 +341,10 @@ export function viewFor(m: MatchState, pid: number): MatchView {
     you: pid, seq: m.seq, phase: m.phase, seats: m.seats,
     draft: m.phase === 'draft' ? { options: m.draft.options[pid], picked: m.draft.picked.map((c, i) => (i === pid ? c : c ? '?' : null)) } : null,
     game, turn: m.turn,
-    legalSpaces: g && m.turn === pid ? [...new Set(legal(g, g.players[pid]).map(([s]) => s))] : [],
+    legalSpaces: g && m.phase === 'work' ? [...new Set(legal(g, g.players[pid]).map(([s]) => s))] : [],
     offers: m.offers.filter((o) => o.from === pid || o.to === pid),
     placements: structuredClone(m.placements),
+    moves: structuredClone(m.moves ?? []),
     proposalsLeft: m.turn === pid ? limit - m.proposals : 0,
     events: m.events.slice(-60),
     result: m.result,
