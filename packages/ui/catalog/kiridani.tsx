@@ -4,11 +4,18 @@ import { BossArt, BOSS_IDS, BOSS_NAMES } from '../src/kiridani/art/bosses';
 import { KIcon, KICON_NAMES, KICON_JP } from '../src/kiridani/art/icons';
 import { JobArt, JOB_IDS, JOB_LOOKS } from '../src/kiridani/art/jobs';
 import { ItemArt, ITEM_IDS, ITEM_NAMES } from '../src/kiridani/art/items';
+import { CoolRiku, CoolMina, CoolWolf, CoolDragon } from '../src/kiridani/art/proto-cool';
 import { MonsterArt, MONSTER_IDS, MONSTER_LOOKS } from '../src/kiridani/art/monsters';
 
 const box: React.CSSProperties = { display: 'flex', flexWrap: 'wrap', gap: 12, padding: 16, fontFamily: '"Zen Maru Gothic",sans-serif', color: '#1E2433' };
 const sec = new URLSearchParams(location.search).get('s') ?? 'heroes';
 function App() {
+  if (sec === 'cool') return (
+    <div style={{ ...box, background: '#15131C', color: '#EDE3C8' }}>
+      {[[<CoolRiku size={260} />, 'リク（魔物狩り）'], [<CoolMina size={260} />, 'ミナ（土くれの魔導士）'], [<CoolWolf size={260} />, 'はぐれ狼'], [<CoolDragon size={260} />, '谷底の古竜']].map(([el, n], i) => (
+        <figure key={i} style={{ margin: 0, textAlign: 'center', fontSize: 14 }}>{el}<figcaption>{n}</figcaption></figure>))}
+    </div>
+  );
   if (sec === 'sheet') return <Sheet />;
   if (sec === 'bosses') return (
     <div style={box}>{BOSS_IDS.map((id) => (
