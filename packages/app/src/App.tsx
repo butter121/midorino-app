@@ -1,32 +1,210 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ACT, BASE_PRICE, CHARACTERS, FARM_PLOTS, GOODS, IMPROVEMENTS, JP, MARKET_SPACES, PRICE_SPAN, RES,
-  buyPrice, legal, marketBuyLimit, sellPrice, sellValue, validateMarket,
+  ACT, GOODS, JP, MARKET_SPACES, RES, SEASONS,
+  buyPrice, feedNeed, legal, marketBuyLimit, score, sellPrice, sellValue, sheepPerPlot, validateMarket,
   type Command, type Cost, type GameState, type Good, type Level, type MatchView, type Opt, type Player, type Res, type Seat, type SellBuy,
 } from '@midorino/engine';
-import { LocalHost } from './host';
 import {
-  SEAT_COLORS, charName, costText, impLabel, optLabel, seasonOf, weatherName, weatherText, yearOf,
-} from './labels';
+  ActionBar, ActionBoard, Button, CharacterCard, GameLayout, Icon, ImprovementCard, MarketPanel, MyPanel,
+  PlayerStrip, PlayersOverview, StatusBar, Tabs, Worker, spaceEffect, type Alert, type SpaceView,
+} from '@midorino/ui';
+import qrcode from 'qrcode-generator';
+import { viewFor, type Result } from '@midorino/engine';
+import { LocalHost } from './host';
+import { HostRoom } from './net/hostRoom';
+import { GuestClient } from './net/guestClient';
+import { inviteUrl, roomFromHash } from './net/protocol';
+import { SEAT_COLORS, charName, costText, optLabel, weatherName } from './labels';
 
 const ME = 0;   // 1台版では自分は「人間の席」。席順はランダムなので seatOf で探す
 
+type Mode =
+  | { kind: 'home' }
+  | { kind: 'local'; host: LocalHost }
+  | { kind: 'host'; room: HostRoom }
+  | { kind: 'guest'; client: GuestClient };
+
+function initialMode(): Mode {
+  const join = roomFromHash();
+  if (join) {
+    const name = savedName();
+    if (name) { const c = new GuestClient(join, name); c.connect(); return { kind: 'guest', client: c }; }
+    return { kind: 'home' };
+  }
+  return { kind: 'home' };
+}
+function savedName() { try { return localStorage.getItem('midorino.name') ?? ''; } catch { return ''; } }
+function saveName(n: string) { try { localStorage.setItem('midorino.name', n); } catch { /* 無視 */ } }
+
 export default function App() {
-  const [host, setHost] = useState<LocalHost | null>(() => LocalHost.load());
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [, setTick] = useState(0);
   const refresh = () => setTick((t) => t + 1);
-  if (!host) return <Lobby onStart={(seats) => setHost(LocalHost.create(seats))} />;
-  const me = host.m.seats.findIndex((s) => !s.ai);
-  const view = host.view(me < 0 ? ME : me);
-  const send = (cmd: Command) => { const r = host.send(view.you, cmd); refresh(); return r; };
-  const quit = () => { if (confirm('このゲームをやめてロビーに戻りますか？')) { LocalHost.clear(); setHost(null); } };
+  useEffect(() => {
+    if (mode.kind === 'host') return mode.room.subscribe(refresh);
+    if (mode.kind === 'guest') return mode.client.subscribe(refresh);
+  }, [mode]);
+  const goHome = () => { history.replaceState(null, '', location.pathname); setMode({ kind: 'home' }); };
+
+  if (mode.kind === 'home') return <><RotateHint /><Home onMode={setMode} /></>;
+
+  if (mode.kind === 'local') {
+    const host = mode.host;
+    const me = host.m.seats.findIndex((s) => !s.ai);
+    const view = host.view(me < 0 ? ME : me);
+    const send = async (cmd: Command) => { const r = host.send(view.you, cmd); refresh(); return r; };
+    const quit = () => { if (confirm('このゲームをやめてトップに戻りますか？')) { LocalHost.clear(); goHome(); } };
+    return <Play view={view} send={send} onQuit={quit} onBack={() => { LocalHost.clear(); goHome(); }} />;
+  }
+
+  if (mode.kind === 'host') {
+    const room = mode.room;
+    const quit = () => { if (confirm('部屋を閉じてトップに戻りますか？（参加者の接続も切れます）')) { room.close(); HostRoom.clear(); goHome(); } };
+    if (!room.match) return <><RotateHint /><HostLobby room={room} onQuit={quit} /></>;
+    const view = viewFor(room.match, room.mySeat);
+    const send = async (cmd: Command) => room.command(room.me.id, cmd);
+    return <Play view={view} send={send} onQuit={quit} onBack={() => { room.close(); HostRoom.clear(); goHome(); }} />;
+  }
+
+  const c = mode.client;
+  const leave = () => { if (confirm('部屋から抜けますか？')) { c.close(); goHome(); } };
+  if (c.view && c.status !== 'denied') {
+    return (
+      <>
+        {c.status === 'offline' && <div className="netbar">{c.reason}</div>}
+        <Play view={c.view} send={(cmd) => c.send(cmd)} onQuit={leave} onBack={() => { c.close(); goHome(); }} />
+      </>
+    );
+  }
+  return <><RotateHint /><GuestWaiting client={c} onLeave={() => { c.close(); goHome(); }} /></>;
+}
+
+function Play({ view, send, onQuit, onBack }: { view: MatchView; send: (c: Command) => Promise<Result>; onQuit: () => void; onBack: () => void }) {
   return (
     <>
-      <RotateHint />
+      {view.phase !== 'work' && <RotateHint />}
       {view.phase === 'draft' && <Draft view={view} send={send} />}
-      {view.phase === 'work' && <Game view={view} send={send} onQuit={quit} />}
-      {view.phase === 'over' && <ResultScreen view={view} onBack={() => { LocalHost.clear(); setHost(null); }} />}
+      {view.phase === 'work' && <Game view={view} send={send} onQuit={onQuit} />}
+      {view.phase === 'over' && <ResultScreen view={view} onBack={onBack} />}
     </>
+  );
+}
+
+// ------------------------------------------------------------ トップ
+function Home({ onMode }: { onMode: (m: Mode) => void }) {
+  const join = roomFromHash();
+  const [name, setName] = useState(savedName);
+  const nick = () => { const n = name.trim().slice(0, 12) || 'あなた'; saveName(n); return n; };
+  const resumeHost = useMemo(() => HostRoom.resume(), []);
+  const resumeLocal = useMemo(() => LocalHost.load(), []);
+  if (join) {
+    return (
+      <div className="lobby">
+        <h1>ミドリノ谷の四季</h1>
+        <p className="sub">招待された部屋に参加します</p>
+        <label>ニックネーム<input value={name} maxLength={12} onChange={(e) => setName(e.target.value)} placeholder="ほかの人に表示される名前" /></label>
+        <button className="primary big" onClick={() => { const c = new GuestClient(join, nick()); c.connect(); onMode({ kind: 'guest', client: c }); }}>参加する</button>
+      </div>
+    );
+  }
+  return (
+    <div className="lobby">
+      <h1>ミドリノ谷の四季</h1>
+      <label>ニックネーム<input value={name} maxLength={12} onChange={(e) => setName(e.target.value)} placeholder="ほかの人に表示される名前" /></label>
+      {resumeHost && (
+        <button className="primary big" onClick={() => { const r = HostRoom.resume()!; r.open(); onMode({ kind: 'host', room: r }); }}>
+          {resumeHost.match ? '中断したオンライン対戦を再開する' : '作った部屋に戻る'}
+        </button>
+      )}
+      <button className={resumeHost ? 'big' : 'primary big'} onClick={() => {
+        HostRoom.clear(); const r = new HostRoom(nick()); r.open(); onMode({ kind: 'host', room: r });
+      }}>友だちと遊ぶ（部屋を作る）</button>
+      <LocalStart onStart={(seats) => onMode({ kind: 'local', host: LocalHost.create(seats) })} nick={nick} />
+      {resumeLocal && <button onClick={() => onMode({ kind: 'local', host: LocalHost.load()! })}>中断した1人用ゲームを続ける</button>}
+      <p className="muted small">友だちは、部屋を作った人から届く招待リンクを開くと参加できます。</p>
+    </div>
+  );
+}
+
+function LocalStart({ onStart, nick }: { onStart: (s: Seat[]) => void; nick: () => string }) {
+  const [open, setOpen] = useState(false);
+  const [n, setN] = useState(4);
+  const [level, setLevel] = useState<Level>('mid');
+  if (!open) return <button className="big" onClick={() => setOpen(true)}>AIと1台で遊ぶ</button>;
+  const names = ['ハナ', 'ソウタ', 'ユイ', 'ケン', 'ミオ'];
+  return (
+    <div className="box">
+      <label>人数<div className="seg">{[3, 4, 5, 6].map((k) => <button key={k} className={k === n ? 'on' : ''} onClick={() => setN(k)}>{k}人</button>)}</div></label>
+      <label>AIの強さ<div className="seg">{([['novice', 'やさしい'], ['mid', 'ふつう'], ['expert', 'つよい']] as [Level, string][]).map(([k, t]) =>
+        <button key={k} className={k === level ? 'on' : ''} onClick={() => setLevel(k)}>{t}</button>)}</div></label>
+      <button className="primary big" onClick={() => onStart([{ name: nick(), ai: null }, ...names.slice(0, n - 1).map((nm) => ({ name: `${nm}（AI）`, ai: level }))])}>ゲームを始める</button>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------ ホストのロビー
+function HostLobby({ room, onQuit }: { room: HostRoom; onQuit: () => void }) {
+  const url = inviteUrl(room.roomId);
+  const qr = useMemo(() => { const q = qrcode(0, 'M'); q.addData(url); q.make(); return q.createSvgTag({ cellSize: 4, margin: 2, scalable: true }); }, [url]);
+  const [msg, setMsg] = useState('');
+  const players = room.members.filter((m) => m.status !== 'waiting');
+  const share = async () => {
+    try {
+      if (navigator.share) await navigator.share({ title: 'ミドリノ谷の四季', text: '一緒に遊ぼう！', url });
+      else { await navigator.clipboard.writeText(url); setMsg('リンクをコピーしました'); }
+    } catch { /* キャンセル */ }
+  };
+  return (
+    <div className="hostlobby">
+      <div className="invite">
+        <h2>友だちを招待</h2>
+        {room.status === 'connecting' && <p className="muted">部屋を準備しています…</p>}
+        {room.status === 'error' && <p className="err">部屋を開けませんでした：{room.error}</p>}
+        <div className="qr" dangerouslySetInnerHTML={{ __html: qr }} />
+        <button className="primary" onClick={share}>招待リンクを送る</button>
+        {msg && <p className="muted">{msg}</p>}
+        <p className="muted small">このリンクを知っている人だけが参加を申し込めます。参加には、あなたの承認が必要です。部屋を作った画面は、ゲーム中ずっと開いたままにしてください。</p>
+      </div>
+      <div className="members">
+        <h2>メンバー（{players.length}/{room.maxPlayers}人）</h2>
+        <ul>
+          {room.members.map((m) => (
+            <li key={m.id} className={m.status}>
+              <span className={`dot ${m.online ? 'on' : ''}`} />
+              <b>{m.name}</b>
+              <small>{{ host: 'ホスト（あなた）', joined: '参加', waiting: '承認待ち', ai: 'AI' }[m.status]}</small>
+              <span className="spacer" />
+              {m.status === 'waiting' && <><button className="primary" onClick={() => room.approve(m.id, true)}>承認</button><button onClick={() => room.approve(m.id, false)}>見送る</button></>}
+              {(m.status === 'joined' || m.status === 'ai') && <button onClick={() => room.kick(m.id)}>外す</button>}
+            </li>
+          ))}
+        </ul>
+        <div className="row">
+          <button disabled={players.length >= room.maxPlayers} onClick={() => room.addAI('mid')}>AIを追加</button>
+          <button className="primary" disabled={players.length < 3} onClick={() => { const e = room.start(); if (e) setMsg(e); }}>
+            この{players.length}人で始める
+          </button>
+        </div>
+        {players.length < 3 && <p className="muted small">3人から遊べます。人数が足りないときはAIを追加してください。</p>}
+        <button className="link" onClick={onQuit}>部屋を閉じる</button>
+      </div>
+    </div>
+  );
+}
+
+function GuestWaiting({ client, onLeave }: { client: GuestClient; onLeave: () => void }) {
+  const lobby = client.lobby;
+  return (
+    <div className="lobby">
+      <h1>ミドリノ谷の四季</h1>
+      {client.status === 'connecting' && <p>ホストにつないでいます…</p>}
+      {client.status === 'waiting' && <p>ホストの承認を待っています…</p>}
+      {client.status === 'joined' && <p>参加しました。ホストがゲームを始めるのを待っています…</p>}
+      {client.status === 'offline' && <p className="err">{client.reason}</p>}
+      {client.status === 'denied' && <p className="err">{client.reason}</p>}
+      {lobby && <ul className="memberlist">{lobby.members.filter((m) => m.status !== 'waiting').map((m) => <li key={m.id}>{m.name}{m.id === client.memberId ? '（あなた）' : ''}</li>)}</ul>}
+      <button onClick={onLeave}>{client.status === 'denied' ? 'トップに戻る' : 'やめる'}</button>
+    </div>
   );
 }
 
@@ -34,46 +212,16 @@ function RotateHint() {
   return <div className="rotate-hint"><div>📱↻</div><p>スマホを横向きにしてください</p></div>;
 }
 
-// ------------------------------------------------------------ ロビー（1台でAIと遊ぶ）
-function Lobby({ onStart }: { onStart: (s: Seat[]) => void }) {
-  const [name, setName] = useState(() => { try { return localStorage.getItem('midorino.name') ?? ''; } catch { return ''; } });
-  const [n, setN] = useState(4);
-  const [level, setLevel] = useState<Level>('mid');
-  const start = () => {
-    const nick = name.trim() || 'あなた';
-    try { localStorage.setItem('midorino.name', nick); } catch { /* 無視 */ }
-    const names = ['ハナ', 'ソウタ', 'ユイ', 'ケン', 'ミオ'];
-    onStart([{ name: nick, ai: null }, ...names.slice(0, n - 1).map((nm) => ({ name: `${nm}（AI）`, ai: level }))]);
-  };
-  return (
-    <div className="lobby">
-      <h1>ミドリノ谷の四季</h1>
-      <p className="sub">AIを相手に1台で遊ぶ（動作確認版）</p>
-      <label>ニックネーム<input value={name} maxLength={12} onChange={(e) => setName(e.target.value)} placeholder="あなた" /></label>
-      <label>人数
-        <div className="seg">{[3, 4, 5, 6].map((k) => <button key={k} className={k === n ? 'on' : ''} onClick={() => setN(k)}>{k}人</button>)}</div>
-      </label>
-      <label>AIの強さ
-        <div className="seg">{([['novice', 'やさしい'], ['mid', 'ふつう'], ['expert', 'つよい']] as [Level, string][]).map(([k, t]) =>
-          <button key={k} className={k === level ? 'on' : ''} onClick={() => setLevel(k)}>{t}</button>)}</div>
-      </label>
-      <button className="primary big" onClick={start}>ゲームを始める</button>
-    </div>
-  );
-}
-
 // ------------------------------------------------------------ キャラクター選択
-function Draft({ view, send }: { view: MatchView; send: (c: Command) => void }) {
+function Draft({ view, send }: { view: MatchView; send: (c: Command) => Promise<Result> }) {
   const opts = view.draft!.options!;
   const mine = view.draft!.picked[view.you];
   return (
-    <div className="draft">
+    <div className="draft mi-root">
       <h2>キャラクターを1人選んでください</h2>
       <div className="cards">
         {opts.map((c) => (
-          <button key={c} className={`card ${mine === c ? 'on' : ''}`} disabled={!!mine} onClick={() => send({ type: 'pickChar', char: c })}>
-            <b>{CHARACTERS[c].name}</b><span>{CHARACTERS[c].text}</span>
-          </button>
+          <CharacterCard key={c} id={c} selected={mine === c} onSelect={mine ? undefined : (id) => send({ type: 'pickChar', char: id })} />
         ))}
       </div>
       {mine && <p>ほかの人の選択を待っています…</p>}
@@ -82,82 +230,85 @@ function Draft({ view, send }: { view: MatchView; send: (c: Command) => void }) 
 }
 
 // ------------------------------------------------------------ ゲーム画面
-type Sheet = { kind: 'space'; sid: string } | { kind: 'market'; sid: string } | { kind: 'trade' } | { kind: 'player'; pid: number } | { kind: 'log' } | null;
+type Sheet = { kind: 'space'; sid: string } | { kind: 'market'; sid: string } | { kind: 'trade' } | { kind: 'log' } | null;
+type Tab = 'me' | 'all' | 'market' | 'cards' | 'log';
 
-function Game({ view, send, onQuit }: { view: MatchView; send: (c: Command) => { ok: boolean; error?: string }; onQuit: () => void }) {
+function spaceViews(view: MatchView, g: GameState): SpaceView[] {
+  const myTurn = view.turn === view.you;
+  const w = g.weather[g.round - 1];
+  return g.spaces.map((id) => {
+    const a = ACT[id];
+    const notYet = (a.from_round ?? 1) > g.round;
+    const can = myTurn && view.legalSpaces.includes(id);
+    const taken = (view.placements[id]?.length ?? 0) > 0 && !a.unlimited;
+    const reason = notYet ? `ラウンド${a.from_round}から` : g.closed.includes(id) ? `${weatherName(w)}で使えない`
+      : !can && !taken && myTurn ? '条件を満たしていない' : undefined;
+    const bonus = w === 'harusame' && id === 'sow' ? '春雨で畑ごと+2' : w === 'hareten' && id === 'plow' ? '晴天続きで+1区画' : undefined;
+    return { id, accum: g.accum[id], by: view.placements[id], available: can, reason, bonus };
+  });
+}
+
+function Game({ view, send, onQuit }: { view: MatchView; send: (c: Command) => Promise<Result>; onQuit: () => void }) {
   const g = view.game! as unknown as GameState;
   const me = g.players[view.you];
   const myTurn = view.turn === view.you;
   const [sheet, setSheet] = useState<Sheet>(null);
+  const [tab, setTab] = useState<Tab>('me');
+  const [sel, setSel] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 2500); return () => clearTimeout(t); }, [toast]);
-  const act = (cmd: Command) => {
-    const r = send(cmd);
-    if (!r.ok) setToast(r.error ?? 'できませんでした');
-    else setSheet(null);
+  useEffect(() => { if (sel && !view.legalSpaces.includes(sel)) setSel(null); }, [view.seq]);   // eslint-disable-line
+  const act = async (cmd: Command) => {
+    const r = await send(cmd);
+    if (!r.ok) setToast(r.error);
+    else { setSheet(null); setSel(null); }
   };
   const incoming = view.offers.find((o) => o.to === view.you);
+  const names = view.seats.map((s) => s.name);
+  const w = g.weather[g.round - 1];
+  const forecast = view.game!.weather.slice(g.round, g.round + 2).filter((x): x is string => !!x);
+  const winterW = SEASONS[(g.round - 1) % 4] === 'winter' ? (w ?? 'odayaka') : 'odayaka';
+  const need = feedNeed(me, winterW);
+  const alerts: Alert[] = [{ tone: me.res.food < need ? 'bad' : 'leaf', text: `冬越しの食料 ${me.res.food}/${need}${me.res.food >= need ? ' ✓' : ''}` }];
 
-  const clickSpace = (sid: string) => {
-    if (!myTurn || !view.legalSpaces.includes(sid)) return;
-    if (MARKET_SPACES.has(sid)) { setSheet({ kind: 'market', sid }); return; }
-    setSheet({ kind: 'space', sid });
+  const place = () => {
+    if (!sel) return;
+    if (MARKET_SPACES.has(sel)) setSheet({ kind: 'market', sid: sel });
+    else {
+      const opts = optionsForView(view, sel);
+      if (opts.length === 1 && opts[0] === null) act({ type: 'place', sid: sel, opt: null });
+      else setSheet({ kind: 'space', sid: sel });
+    }
   };
 
   return (
-    <div className="game">
-      <header className="topbar">
-        <span className="round">{yearOf(g.round)}年目 {seasonOf(g.round)}（{g.round}/12）</span>
-        <span className="weather" title={weatherText(view.game!.weather[g.round - 1])}>天気：<b>{weatherName(view.game!.weather[g.round - 1])}</b></span>
-        <span className="forecast">予報：{view.game!.weather.slice(g.round, g.round + 2).map((w, i) => <span key={i}>{w ? weatherName(w) : ''}</span>)}</span>
-        <span className="turn" style={{ color: view.turn !== null ? SEAT_COLORS[view.turn] : undefined }}>
-          {myTurn ? 'あなたの番です' : view.turn !== null ? `${view.seats[view.turn].name} の番` : ''}
-        </span>
-        <span className="spacer" />
-        <button onClick={() => setSheet({ kind: 'log' })}>記録</button>
-        <button onClick={onQuit}>やめる</button>
-      </header>
-      <main className="panes">
-        <section className="board">
-          <div className="spaces">
-            {g.spaces.filter((s) => (ACT[s].from_round ?? 1) <= g.round).map((sid) => {
-              const a = ACT[sid];
-              const by = view.placements[sid] ?? [];
-              const can = myTurn && view.legalSpaces.includes(sid);
-              const acc = g.accum[sid];
-              return (
-                <button key={sid} className={`space ${can ? 'can' : ''} ${g.closed.includes(sid) ? 'closed' : ''}`} onClick={() => clickSpace(sid)} disabled={!can}>
-                  <b>{a.name}</b>
-                  <small>{acc ? `${costText(acc)}` : a.give ? costText(a.give) : a.text}</small>
-                  <span className="pawns">{by.map((pid, i) => <i key={i} style={{ background: SEAT_COLORS[pid] }} />)}</span>
-                </button>
-              );
-            })}
-          </div>
-          <Market g={g} />
-          <div className="imps">
-            <span>発展設備：</span>{g.display.map((id) => <span key={id} className="chip" title={IMPROVEMENTS[id].text}>{IMPROVEMENTS[id].name}</span>)}
-            <span className="muted">（山札 {view.game!.deckCount}枚）</span>
-          </div>
-        </section>
-        <section className="mine">
-          <FarmPanel p={me} name={view.seats[view.you].name} color={SEAT_COLORS[view.you]} />
-          <div className="actions">
-            <button disabled={!myTurn || view.proposalsLeft <= 0 || view.offers.length > 0} onClick={() => setSheet({ kind: 'trade' })}>
-              取引を提案{myTurn ? `（あと${view.proposalsLeft}回）` : ''}
-            </button>
-          </div>
-          <div className="others">
-            {g.players.map((p, i) => i !== view.you && (
-              <button key={i} className="other" onClick={() => setSheet({ kind: 'player', pid: i })} style={{ borderColor: SEAT_COLORS[i] }}>
-                <b style={{ color: SEAT_COLORS[i] }}>{view.seats[i].name}</b> {charName(p.char)}
-                <small>家族{p.family}・コマ残り{p.avail}・畑{p.fields.length}・牧場{p.pastures}・部屋{p.rooms}</small>
-              </button>
-            ))}
-          </div>
-          <ol className="log mini">{view.events.slice(-4).map((e, i) => <li key={i}>{e.text}</li>)}</ol>
-        </section>
-      </main>
+    <>
+      <GameLayout
+        status={<StatusBar round={g.round} weather={w} forecast={forecast} alerts={alerts} />}
+        players={<PlayerStrip players={g.players.map((q) => ({
+          seat: q.pid, name: names[q.pid], vp: score(q), left: q.avail, total: q.family, isTurn: q.pid === view.turn,
+          isFirst: q.pid === g.first, isMe: q.pid === view.you,
+        }))} onSelect={() => setTab('all')} />}
+        board={<ActionBoard spaces={spaceViews(view, g)} selected={sel} onPick={(id) => myTurn && view.legalSpaces.includes(id) && setSel(id)} />}
+        side={<>
+          <Tabs value={tab} onChange={setTab} tabs={[{ id: 'me', label: 'わたし' }, { id: 'all', label: 'みんな' }, { id: 'market', label: '市場' }, { id: 'cards', label: '設備' }, { id: 'log', label: '記録' }]} />
+          {tab === 'me' && <MyPanel player={me} sheepPer={sheepPerPlot(me)} />}
+          {tab === 'all' && <PlayersOverview players={g.players} names={names} mySeat={view.you} />}
+          {tab === 'market' && <MarketPanel prices={g.prices} />}
+          {tab === 'cards' && <div className="app-cards">{g.display.map((id) => <ImprovementCard key={id} id={id} small />)}
+            <p className="muted">山札 {view.game!.deckCount}枚</p></div>}
+          {tab === 'log' && <ol className="log">{[...view.events].reverse().map((e, i) => <li key={i}>{e.text}</li>)}</ol>}
+          <div className="app-quit"><Button onClick={onQuit}>ゲームをやめる</Button></div>
+        </>}
+        action={<ActionBar tone={myTurn ? 'turn' : 'wait'} message={myTurn
+          ? <><Worker seat={view.you} size={28} /><span>{sel ? <>「{ACT[sel].name}」に置きますか？<span className="mi-sp-detail">{spaceEffect(sel)}</span></> : 'あなたの番です。置く場所を選んでください'}</span></>
+          : view.turn !== null ? <><Worker seat={view.turn} size={28} />{names[view.turn]}さんが考えています…</> : null}>
+          <Button disabled={!myTurn || view.proposalsLeft <= 0 || view.offers.length > 0} onClick={() => setSheet({ kind: 'trade' })}>
+            <Icon name="i-trade" size={20} />取引{myTurn && view.proposalsLeft > 0 ? `（${view.proposalsLeft}）` : ''}
+          </Button>
+          <Button kind="primary" disabled={!sel || !myTurn} onClick={place}>{sel ? 'ここに置く' : '置く'}</Button>
+        </ActionBar>}
+      />
       {toast && <div className="toast">{toast}</div>}
       {incoming && (
         <Modal title="取引の提案が届きました" onClose={() => act({ type: 'respondTrade', id: incoming.id, accept: false })}>
@@ -184,17 +335,7 @@ function Game({ view, send, onQuit }: { view: MatchView; send: (c: Command) => {
           <TradeBuilder view={view} g={g} onSend={(to, give, get) => act({ type: 'proposeTrade', to, give, get })} />
         </Modal>
       )}
-      {sheet?.kind === 'player' && (
-        <Modal title={view.seats[sheet.pid].name} onClose={() => setSheet(null)}>
-          <FarmPanel p={g.players[sheet.pid]} name={view.seats[sheet.pid].name} color={SEAT_COLORS[sheet.pid]} />
-        </Modal>
-      )}
-      {sheet?.kind === 'log' && (
-        <Modal title="これまでの記録" onClose={() => setSheet(null)}>
-          <ol className="log">{[...view.events].reverse().map((e, i) => <li key={i}>{e.text}</li>)}</ol>
-        </Modal>
-      )}
-    </div>
+    </>
   );
 }
 
@@ -222,17 +363,6 @@ function SpaceOptions({ sid, opts, p, onPick }: { sid: string; opts: Opt[]; p: P
   );
 }
 
-function Market({ g }: { g: GameState }) {
-  return (
-    <div className="market">
-      {GOODS.map((gd) => {
-        const pr = g.prices[gd], base = BASE_PRICE[gd];
-        return <span key={gd} className={pr > base ? 'up' : pr < base ? 'down' : ''}>{JP[gd]}<b>{pr}</b></span>;
-      })}
-      <span className="muted">（上限は基準+{PRICE_SPAN}）</span>
-    </div>
-  );
-}
 
 function MarketBuilder({ g, pid, onDone }: { g: GameState; pid: number; onDone: (o: Opt) => void }) {
   const p = g.players[pid];
@@ -302,25 +432,6 @@ function Stepper({ v, max, on, disabled }: { v: number; max: number; on: (v: num
   );
 }
 
-function FarmPanel({ p, name, color }: { p: Player; name: string; color: string }) {
-  const plots = useMemo(() => {
-    const out: { k: string; t: string }[] = [];
-    for (let i = 0; i < p.rooms; i++) out.push({ k: `room-${p.house}`, t: { wood: '木の部屋', clay: '土の部屋', stone: '石の部屋' }[p.house] });
-    for (const [k, n] of p.fields) out.push({ k: `field ${k ?? 'empty'}`, t: k ? `${k === 'grain' ? '麦' : '野菜'}${n}` : '畑' });
-    for (let i = 0; i < p.pastures; i++) out.push({ k: 'pasture', t: '牧場' });
-    while (out.length < FARM_PLOTS) out.push({ k: 'free', t: '' });
-    return out;
-  }, [p]);
-  return (
-    <div className="farm">
-      <div className="farmhead"><b style={{ color }}>{name}</b> <span>{charName(p.char)}</span>
-        <small title={CHARACTERS[p.char].text}>ⓘ</small> <span className="muted">家族{p.family}人（今年生まれ{p.born_year}）・借り{p.begging}</span></div>
-      <div className="plots">{plots.map((x, i) => <div key={i} className={`plot ${x.k}`}>{x.t}</div>)}</div>
-      <div className="res">{RES.map((r) => <span key={r} className={p.res[r] ? '' : 'zero'}>{JP[r as Res]}<b>{p.res[r]}</b></span>)}</div>
-      {p.imps.length > 0 && <div className="imps">{p.imps.map((i) => <span key={i} className="chip" title={IMPROVEMENTS[i].text}>{IMPROVEMENTS[i].name}</span>)}</div>}
-    </div>
-  );
-}
 
 function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (

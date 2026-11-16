@@ -34,3 +34,21 @@ npm run build -w @midorino/app    # 公開用ファイルを packages/app/dist �
 ```
 
 main に push すると GitHub Actions がテストと公開（GitHub Pages）を行います。
+
+## オンライン対戦の仕組み
+
+- ホストが「友だちと遊ぶ（部屋を作る）」を押すと、推測できない部屋ID（128ビット）の招待リンクとQRコードができます。
+- 参加者はリンクを開いてニックネームを入れ、ホストが承認すると席に着きます。再接続用の合言葉は各端末に自動で保存されます。
+- スマホ同士は WebRTC（PeerJS）で直接つながります。最初に相手を見つけるときだけ PeerJS の無料公開サーバーを使います。
+- 審判はホストの端末（`packages/app/src/net/hostRoom.ts`）。参加者には `viewFor` で作った「その席から見てよい情報」だけを送ります。
+- ホストの端末には毎手、部屋とゲームの状態が保存され、開き直すと「再開」できます。
+
+## オンライン対戦のテスト
+
+```bash
+node tools/peer-server.cjs &                       # テスト用の PeerJS サーバー（127.0.0.1:9000）
+VITE_PEER_HOST=127.0.0.1 VITE_PEER_PORT=9000 VITE_PEER_SECURE=false \
+  npm run build -w @midorino/app
+npx vite preview --port 4174 packages/app &
+node tools/e2e-online.cjs
+```
