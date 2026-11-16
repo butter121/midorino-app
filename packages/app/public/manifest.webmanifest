@@ -1,0 +1,10 @@
+{
+  "name": "ミドリノ谷の四季",
+  "short_name": "ミドリノ谷",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#f4efe1",
+  "theme_color": "#4f7a3a",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}

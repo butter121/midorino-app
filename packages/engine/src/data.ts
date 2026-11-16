@@ -52,7 +52,7 @@ export const DIVERSITY: Record<number, number> = { 3: 1, 4: 3, 5: 5 };
 
 // ---- 開始資源（席順） ----
 export const START_FOOD = 3;
-export const SEAT_BONUS: Record<number, number[]> = { 3: [1, 1, 0], 4: [0, 2, 1, 1], 5: [1, 0, 4, 4, 7], 6: [2, 4, 4, 5, 2, 0] };
+export const SEAT_BONUS: Record<number, number[]> = { 3: [1, 1, 0], 4: [0, 2, 1, 1], 5: [1, 0, 3, 4, 7], 6: [2, 4, 4, 5, 2, 0] };
 export const START_COIN = [2, 2, 2, 2, 2, 2];
 
 // ---- アクションスペース ----
@@ -71,7 +71,7 @@ export const ACTIONS: ActionDef[] = [
   { id: 'plow', name: '開墾', text: '畑を1区画作る' },
   { id: 'sow', name: '種まき', text: '空き畑に麦/野菜をまく' },
   { id: 'fence', name: '柵作り', text: '牧場区画を作る（1区画=木材2）' },
-  { id: 'build', name: '増築', text: '部屋を作る（家の素材5）' },
+  { id: 'build', name: '増築', text: '部屋を作る（1部屋＝家の素材4）' },
   { id: 'workshop', name: '工房', text: '設備を1枚獲得' },
   { id: 'market', name: '市場', text: '相場で売買' },
   { id: 'sheep', name: '羊の放牧地', accum: { sheep: 1 } },
@@ -99,8 +99,8 @@ export const MARKET_SPACES = new Set(['market', 'market2']);
 
 // ---- キャラクター ----
 export const CHARACTERS: Record<string, { name: string; text: string }> = {
-  toma: { name: '木こりのトーマ', text: '「森林」から取るとき木材+1' },
-  mina: { name: '陶工のミナ', text: '粘土が積み増されるスペースから取るたび粘土+1。土の部屋は1部屋2VP。かまど・大かまどの粘土コスト-1' },
+  toma: { name: '木こりのトーマ', text: '木材が積み増されるスペース（森林・雑木林・森の奥）から取るたび木材+1' },
+  mina: { name: '陶工のミナ', text: '「粘土坑」から取るたび粘土+1。土の部屋は1部屋2VP。かまど・大かまどの粘土コスト-1' },
   gan: { name: '鍛冶屋のガン', text: '開始時石材2。設備を獲得するとき、資材（木材・粘土・石材）の費用を合計3少なく払える' },
   leo: { name: '商人のレオ', text: '市場で売値=相場（差額なし）、買値=相場-1（最低1）。開始時コイン+2' },
   haru: { name: '羊飼いのハル', text: '開始時、牧場1区画と羊1。羊の放牧地から取るたび羊+1。羊は牧場1区画に3頭入る。羊は1頭1VP' },

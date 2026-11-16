@@ -7,6 +7,7 @@
 
 | フォルダ | 中身 |
 |---|---|
+| `packages/app` | スマホ画面（Vite + React、横向き） |
 | `packages/engine` | ルールエンジン（Python版 engine.py / data.py / ai.py の TypeScript 移植） |
 | `tools/trace_golden.py` | Python版を自動対戦させ、一致テスト用の記録を作るスクリプト |
 | `golden/` | 一致テスト用の記録（大きいのでGitには入れない。下の手順で作る） |
@@ -23,3 +24,13 @@ npm test
 ```
 
 ルールを変えるときは、まず Python 版を変えてバランスを確認し、同じ変更を TypeScript 版に入れてからこのテストを通します。
+
+## 画面を動かす
+
+```bash
+npm install
+npm run dev -w @midorino/app      # 開発用サーバー（同じWi-Fiのスマホからも開ける）
+npm run build -w @midorino/app    # 公開用ファイルを packages/app/dist に作る
+```
+
+main に push すると GitHub Actions がテストと公開（GitHub Pages）を行います。
