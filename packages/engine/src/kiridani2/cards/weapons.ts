@@ -132,7 +132,7 @@ export const WEAPONS: CardDef[] = [
       { when: 'fight', do: [{ counter: -1 }] },
       { when: 'win_race:beast', do: [{ gain: { food: 1, mat: 1 } }] },
     ],
-    text: '守り+1。持ち手が出た戦闘で反撃−1。獣に勝つと食料1・素材1を得る。',
+    text: '守り+1。持ち手が出た戦闘で反撃−1。その戦闘で獣に勝つと食料1・素材1を得る。',
   },
   // ---- gather ----
   {
