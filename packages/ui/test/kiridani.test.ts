@@ -76,7 +76,7 @@ describe('霧谷：演出キュー', () => {
   });
 
   for (const speed of SPEEDS) {
-    it(`6人でも1ラウンドの演出が約1分以内（${speed}）`, () => {
+    it(`6人でも1ラウンドの演出が約1分半以内（${speed}）`, () => {
       const evs = new SampleGame(6, 3).runToEnd();
       const fc = fakeClock();
       const q = new AnimQueue({ me: 0, speed, clock: fc.clock, onEvent: () => {} });
@@ -92,5 +92,13 @@ describe('霧谷：演出キュー', () => {
     expect(ms[0]).toBeGreaterThan(ms[1]);
     expect(ms[1]).toBeGreaterThan(ms[2]);
     expect(ms[2]).toBe(200);
+  });
+
+  it('標準は以前より約1.5倍ゆっくり、速いは以前の標準くらい', () => {
+    const ev: GameEvent = { t: 'gather', seat: 0, space: 'forest', gain: { wood: 3 } };
+    const [normal, fast] = (['normal', 'fast'] as const).map((s) => new AnimQueue({ me: 0, speed: s, onEvent: () => {} }).plannedMs(ev));
+    expect(normal).toBe(900);
+    expect(fast).toBe(600);
+    expect(ROUND_BUDGET_MS).toBe(90_000);
   });
 });
