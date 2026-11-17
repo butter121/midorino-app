@@ -147,6 +147,9 @@ function opText(op: Record<string, unknown>): string {
     case 'train': return '熟練+1';
     case 'occ': return '職能を出す';
     case 'exchange': return '売り買い';
+    case 'gain_per': { const g = v as { gain: Cost }; return `${costJP(g.gain)}（数に応じて）`; }
+    case 'fame_per': return '名声（数に応じて）';
+    case 'others_gain': return `他の人全員が${costJP(v)}を得る`;
     default: return '';
   }
 }

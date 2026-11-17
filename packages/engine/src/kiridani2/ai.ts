@@ -23,7 +23,7 @@ export interface W {
   quest: number; tag: number; loop: number; pet: number; ancient: number;
 }
 export const DEFAULT_W: W = {
-  res: { wood: 0.35, iron: 0.5, herb: 0.4, mana: 0.7, food: 0.45, gold: 0.2, mat: 0.5 },
+  res: { wood: 0.35, iron: 0.5, herb: 0.4, mana: 0.7, food: 0.55, gold: 0.2, mat: 0.5 },
   act: 0.5, short: 1.6, inj: 0.9, perm: 0.35, defn: 0.15, wall: 0.5, hand: 0.35, played: 1.0, quest: 0.5, tag: 0.35, loop: 3.0, pet: 0.5, ancient: 0.6,
 };
 /** 強い動きごとの重み（v1 の ARCHETYPES に当たる） */
@@ -33,33 +33,33 @@ export const ENGINE_W: Partial<Record<EngineTag, (w: W) => void>> = {
   trade: (w) => { w.res.gold += 0.1; w.res.mat += 0.1; },
   fort: (w) => { w.wall += 0.5; w.res.wood += 0.1; },
   smith: (w) => { w.res.iron += 0.15; w.perm += 0.08; },
-  family: (w) => { w.res.food += 0.1; },
+  family: (w) => { w.res.food += 0.05; },
   arcane: (w) => { w.res.mana += 0.3; },
   beast: (w) => { w.pet += 0.6; w.res.food += 0.1; },
   quest: (w) => { w.quest += 0.5; w.res.gold += 0.05; },
   ally: (w) => { w.perm += 0.05; },
   ruins: (w) => { w.ancient += 0.5; w.res.mana += 0.1; },
-  boss: (w) => { w.defn += 0.05; },
+  boss: (w) => { w.defn += 0.1; w.perm += 0.1; w.res.herb += 0.1; w.res.food += 0.1; },
   bridge: (w) => { w.played += 0.2; },
 };
 
 /** 強い動きの「一周」：ラウンドの中でそろえたい手順の組（どれか1つで満たす）。測定（tools/kiridani2/sim.ts）も同じ定義を使う */
 // 一周＝「その動きの入口（材料を得る）」と「出口（材料を名声・力に変える）」の両方を同じラウンドにした。
 // 印は engine.ts が p.acts に入れる：マス（sp:<id>）、得た資源の種類（wood…）、払った資源（pay:<res>）、
-// accum・fight（戦闘に出た）・win・win:<race>・coop・boss・tame・craft・build・hire・train・occ・spell・draw・exchange・sell・buy・trade・donate・board。
+// accum・fight（戦闘に出た）・win・win:<race>・coop・boss・tame・craft・build・hire・train・occ・spell・draw・exchange・sell・buy・trade・donate・board・quest（共通の依頼を達成）。
 export const LOOPS: Record<EngineTag, string[][]> = {
-  hunt: [['fight'], ['sell', 'craft', 'buy', 'train', 'heal', 'herb']],
+  hunt: [['fight'], ['sell', 'craft', 'buy', 'train', 'heal', 'herb', 'pay:mat', 'build', 'trade', 'donate']],
   gather: [['accum'], ['build', 'craft', 'donate', 'occ', 'pay:wood', 'pay:herb']],
   trade: [['sell'], ['buy', 'trade', 'donate']],
-  fort: [['build'], ['wood', 'iron']],
+  fort: [['build', 'train', 'craft'], ['wood', 'iron']],
   smith: [['craft', 'sell'], ['iron', 'wood', 'mat']],
   family: [['hire', 'train', 'occ', 'heal'], ['food']],
   arcane: [['mana'], ['spell', 'pay:mana', 'draw']],
-  beast: [['tame', 'win'], ['food']],
-  quest: [['board', 'donate'], ['win', 'build', 'craft', 'occ']],
+  beast: [['tame', 'win', 'fight'], ['food', 'pay:food']],
+  quest: [['board', 'donate', 'quest', 'gold'], ['win', 'build', 'craft', 'occ', 'fight', 'train']],
   ally: [['coop', 'trade', 'fight'], ['accum', 'sell', 'buy', 'food']],
   ruins: [['draw', 'sp:ruins', 'sp:altar', 'sp:treasury'], ['sell', 'craft', 'build', 'occ', 'mana']],
-  boss: [['fight', 'train'], ['craft', 'heal', 'herb', 'iron', 'buy']],
+  boss: [['fight', 'train'], ['craft', 'heal', 'herb', 'iron', 'buy', 'pay:mat', 'build', 'trade']],
   bridge: [['build', 'craft', 'occ'], ['win', 'sell', 'buy']],
 };
 export function loopDone(tag: EngineTag, acts: string[]): number {
@@ -101,6 +101,9 @@ export function opsValue(ops: Op[]): number {
     if (o.donate) v += o.donate.fame - costValue(o.donate.pay);
     if (o.place_again || o.ignore_full) v += 0.6;
     if (o.first) v += 0.3;
+    if (o.fame_per) v += 0.6 * Math.min(o.fame_per.max ?? 4, 4);
+    if (o.gain_per) v += costValue(o.gain_per.gain) * 0.6 * Math.min(o.gain_per.max ?? 3, 3);
+    if (o.others_gain) v -= 0.3 * costValue(o.others_gain);
   }
   return v;
 }

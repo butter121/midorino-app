@@ -174,6 +174,8 @@ export const MON_ROLL = {
   base: 5, slope: 8, sd: 1.2, clip: 2.5, lootSd: 0.5, lootClip: 2,
   /** 証＝round(強さ/trophyDiv + n)、反撃＝round(強さ/counterDiv)（調整：仕様は 2.5 と 3） */
   trophyDiv: 5.5, counterDiv: 2.5, bossTrophy: 3.5,
+  /** 冬の襲撃＝round(強さ/raidDiv)（調整：仕様は 4。防壁を持たない動きが襲撃で負けすぎるので弱めた） */
+  raidDiv: 5,
   /** 空いた巣に予告の魔物が入る確率（調整：毎ラウンド全部は埋まらない） */
   spawnP: 0.85,
 };

@@ -477,7 +477,7 @@ export class Game {
     for (let i = 0; i < lootN; i++) { const r = type.loot[i % type.loot.length]; loot[r] = (loot[r] ?? 0) + 1; }
     return {
       uid: ++this.uid, type: type.id, name: type.name, race: type.race, weak: type.weak, str, counter: Math.round(str / R.counterDiv), loot,
-      trophy: Math.max(1, Math.round((str / R.trophyDiv) * (boss ? R.bossTrophy : 1) + n)), raid: Math.round(str / 4), boss, year, wounds: 0,
+      trophy: Math.max(1, Math.round((str / R.trophyDiv) * (boss ? R.bossTrophy : 1) + n)), raid: Math.round(str / R.raidDiv), boss, year, wounds: 0,
     };
   }
   private refillForecast() {
@@ -692,7 +692,7 @@ export class Game {
           if (!opts.some((x) => sameOpt(x, o))) throw new Error(`illegal option ${JSON.stringify(o)}`);
         }
         yield* this.apply(p, o);
-        this.checkQuests(p);
+        yield* this.questsGen(p);
       }
     }
     // 待ち伏せのまま誰も来なかった巣は単独で戦う（ラウンドの終わり）
@@ -702,7 +702,7 @@ export class Game {
         nd.wait = null;
         const p = this.players[w.pid];
         yield* this.fight(nd, [{ p, idxs: w.idxs, mode: 'gamble' }]);
-        this.checkQuests(p);
+        yield* this.questsGen(p);
       }
     }
     if (this.bossOf[this.round]) yield* this.resolveLair();
@@ -727,7 +727,7 @@ export class Game {
       }
     }
     if (this.isWinter()) yield* this.winter();
-    for (const p of this.players) { this.checkQuests(p); p.history.push(p.acts); p.cardHist.push(this.activeCards(p)); }
+    for (const p of this.players) { yield* this.questsGen(p); p.history.push(p.acts); p.cardHist.push(this.activeCards(p)); }
     if (this.nextFirst !== null && this.nextFirst !== this.first) { this.first = this.nextFirst; this.emit({ t: 'first_pass', seat: this.first }); }
     this.emit({ t: 'round_end', round: this.round });
   }
@@ -1112,6 +1112,7 @@ export class Game {
           this.spend(p, c);
           yield* this.playOcc(p, id, true);
           p.acts.push('occ');
+          yield* this.fire(p, 'occ', {});
           break;
         }
         case 'exchange': {
@@ -1170,6 +1171,23 @@ export class Game {
           break;
         }
         case 'steal_gain': gainRes(p, op.steal_gain!); this.emit({ t: 'gain', seat: p.pid, gain: op.steal_gain!, reason: ctx.card ?? 'other' }); break;
+        case 'fame_per': {
+          const fp = op.fame_per!;
+          const n = Math.min(fp.max ?? Infinity, Math.floor(this.stat(p, fp.stat) / fp.per));
+          if (n <= 0) break;
+          const f = Math.round(n * (ctx.fameScale ?? 1));
+          p.fame.effect += f; this.emit({ t: 'fame', seat: p.pid, amount: f, reason: ctx.card ?? '' }); p.acts.push('fame');
+          break;
+        }
+        case 'gain_per': {
+          const gp = op.gain_per!;
+          const n = Math.min(gp.max ?? Infinity, Math.floor(this.stat(p, gp.stat) / gp.per));
+          if (n <= 0) break;
+          const got = addCost({}, gp.gain, n);
+          gainRes(p, got); this.emit({ t: 'gain', seat: p.pid, gain: got, reason: ctx.card ?? '' }); this.actGain(p, got);
+          break;
+        }
+        case 'others_gain': for (const q of this.players) if (q !== p) { gainRes(q, op.others_gain!); this.emit({ t: 'gain', seat: q.pid, gain: op.others_gain!, reason: ctx.card ?? 'other' }); } break;
         default: throw new Error(`unknown op ${k}`);
       }
     }
@@ -1514,6 +1532,7 @@ export class Game {
         const loot: Cost = {};
         for (const r of pick) loot[r] = (loot[r] ?? 0) + 1;
         gainRes(p, loot);
+        this.actGain(p, loot);
         if (costUnits(loot)) this.emit({ t: 'loot', seat: p.pid, gain: loot });
         const tro = Math.max(1, Math.round((mon.trophy + pl.trophy) * (coop ? Math.max(share, 0.5) : 1)));
         if (mon.type === D.ANCIENT_DRAGON.id) { p.fame.dragon += tro + D.DRAGON.join; this.emit({ t: 'trophy', seat: p.pid, monster: mon.type, fame: tro + D.DRAGON.join }); }
@@ -1575,7 +1594,9 @@ export class Game {
   trade(a: Player, b: Player, give: Cost, get: Cost) { drive(this.tradeGen(a, b, give, get)); }
 
   // ------------------------------------------------------------ 依頼（§9）
-  checkQuests(p: Player) {
+  /** 共通の依頼を確かめる（達成した数を返す。呼ぶ側が when 'quest' を出す） */
+  checkQuests(p: Player): number {
+    let done = 0;
     for (const q of this.quests) {
       if (q.done.includes(p.pid) || q.done.length >= D.QUEST_FAME.length) continue;
       const qd = this.quest.get(q.id)!;
@@ -1584,8 +1605,15 @@ export class Game {
       q.done.push(p.pid);
       p.quests.push(q.id);
       p.fame.quest += fame;
+      p.acts.push('quest');
       this.emit({ t: 'quest_done', seat: p.pid, quest: q.id, fame });
+      done++;
     }
+    return done;
+  }
+  *questsGen(p: Player): Gen {
+    const n = this.checkQuests(p);
+    for (let i = 0; i < n; i++) yield* this.fire(p, 'quest', {});
   }
 
   scoreRows(): ScoreRow[] {

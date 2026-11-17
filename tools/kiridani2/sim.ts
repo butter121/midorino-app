@@ -237,7 +237,16 @@ async function main() {
   rmSync(workerFile, { force: true });
   const all = years.map((y) => summarize(y, recs.filter((g) => g.years === y && !g.mixed), recs.filter((g) => g.years === y && g.mixed)));
   print(all);
+  // カードの勝ちへの効きを年数をまたいでまとめる（5年換算の「名声 − 卓の平均」。カードが多いので1つの年数では30局に届かないものがある）
+  const byCard: Record<string, number[]> = {};
+  for (const g of recs) if (!g.mixed) for (const p of g.players) for (const c of new Set(p.picked)) (byCard[c] ??= []).push(p.rel / (g.years / 5));
+  const cardsAll = Object.entries(byCard).filter(([, v]) => v.length >= 30).map(([c, v]) => ({ c, n: v.length, d: avg(v) })).sort((a, b) => b.d - a.d);
+  const out = cardsAll.filter((x) => Math.abs(x.d) > 3);
+  console.log(`\n--- カードの勝ちへの効き（全年数、5年換算、30局以上）: ±3 を超える ${out.length}/${cardsAll.length} 枚（${Object.keys(byCard).length} 枚が出た）`);
+  for (const x of out) console.log(`  ${x.c.padEnd(20)} ${f1(x.d).padStart(6)}  (${x.n})`);
+  if (process.env.SIM_CARDS) for (const x of cardsAll) console.log(`  ~ ${x.c.padEnd(20)} ${f1(x.d).padStart(6)}  (${x.n})`);
   console.log(`\n(${n}人、${((Date.now() - t0) / 1000).toFixed(0)}秒)`);
+  if (process.env.SIM_CARDS_JSON) writeFileSync(process.env.SIM_CARDS_JSON, JSON.stringify(cardsAll));
   if (process.env.SIM_JSON) writeFileSync(process.env.SIM_JSON, JSON.stringify(all, null, 1));
 }
 

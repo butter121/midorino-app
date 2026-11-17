@@ -29,6 +29,7 @@ export type CardKind = 'occ' | 'weapon' | 'armor' | 'tool' | 'spell' | 'leader' 
  * - `fight` / `win` / `lose` / `win_race:<race>`
  * - `round_start` / `round_end` / `winter` / `game_end` / `setup`（準備段階の終わりに1回。リーダーの始めの持ち物など）
  * - `build` / `hire` / `craft` / `sell` / `buy` / `trade` / `donate` / `spell` / `tame`
+ * - `occ`（ギルドなどで職能を出した）/ `quest`（共通の依頼を達成した）
  * - `other:<space>` 他の人がそのマスを使ったとき
  * - `play` 秘術：手番の前に手札から使う（使い切り）
  * - `passive` 常に効く修正（do の代わりに mod）
@@ -39,6 +40,7 @@ export type When =
   | 'fight' | 'win' | 'lose' | `win_race:${Race}`
   | 'round_start' | 'round_end' | 'winter' | 'game_end' | 'setup'
   | 'build' | 'hire' | 'craft' | 'sell' | 'buy' | 'trade' | 'donate' | 'spell' | 'tame'
+  | 'occ' | 'quest'
   | `other:${string}`
   | 'play'
   | 'passive';
@@ -60,6 +62,8 @@ export interface Cond {
   coop?: boolean;
   /** 戦闘中：送った仲間の数がこれ以上 */
   k_min?: number;
+  /** 戦闘中：送った仲間の数がこれ以下（一騎打ちなど） */
+  k_max?: number;
   /** 戦闘中：主（古竜を含む） */
   boss?: boolean;
   /** 戦闘中：弱点を突いている */
@@ -112,6 +116,13 @@ export interface Op {
   first?: boolean;
   /** 寄進：pay を払って fame を得る（donate_rate で値引き、donate の効果が効く） */
   donate?: { pay: Cost; fame: number };
+  // ---- v2 拡張（カード 270 枚化で足したもの）
+  /** 数に応じた名声：floor(stat / per) 点（max まで）。game_end では年数の倍率がかかる */
+  fame_per?: { stat: StatKey; per: number; max?: number };
+  /** 数に応じた資源：gain × floor(stat / per)（max 回まで） */
+  gain_per?: { stat: StatKey; per: number; gain: Cost; max?: number };
+  /** 他の人全員が得る（施し・おすそ分け。軽い対人） */
+  others_gain?: Cost;
 }
 
 /** passive の修正（mod）。知らないキーはエンジンが例外にする */

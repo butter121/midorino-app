@@ -9,14 +9,14 @@ export class DslError extends Error {
 
 export const WHEN_FIXED = new Set([
   'use', 'fight', 'win', 'lose', 'round_start', 'round_end', 'winter', 'game_end', 'setup',
-  'build', 'hire', 'craft', 'sell', 'buy', 'trade', 'donate', 'spell', 'tame', 'play', 'passive',
+  'build', 'hire', 'craft', 'sell', 'buy', 'trade', 'donate', 'spell', 'tame', 'play', 'passive', 'occ', 'quest',
 ]);
 export const WHEN_PREFIX = ['use:', 'instead:', 'other:', 'win_race:'];
 
 export const OP_KEYS = new Set([
   'gain', 'pay', 'convert', 'fame', 'power', 'guard', 'counter', 'loot', 'trophy', 'str', 'no_injury',
   'extra_worker', 'place_again', 'ignore_full', 'future', 'draw', 'hire', 'hire_free', 'tame', 'train', 'build', 'heal',
-  'steal_gain', 'craft', 'occ', 'exchange', 'first', 'donate',
+  'steal_gain', 'craft', 'occ', 'exchange', 'first', 'donate', 'fame_per', 'gain_per', 'others_gain',
 ]);
 /** 戦闘中だけ意味のある op */
 export const FIGHT_OPS = new Set(['power', 'guard', 'counter', 'loot', 'trophy', 'str', 'no_injury', 'tame']);
@@ -27,7 +27,7 @@ export const MOD_KEYS = new Set([
   'market_qty', 'market_both', 'trade_count', 'accum_bonus', 'cost_discount', 'upkeep', 'donate_rate', 'base_guard', 'pet_power',
   'hand_limit', 'power', 'heal_discount', 'sell_bonus', 'bed_cap',
 ]);
-export const COND_KEYS = new Set(['season', 'min', 'max', 'race', 'coop', 'k_min', 'boss', 'weak', 'has', 'res_min', 't_min', 't_max']);
+export const COND_KEYS = new Set(['season', 'min', 'max', 'race', 'coop', 'k_min', 'k_max', 'boss', 'weak', 'has', 'res_min', 't_min', 't_max']);
 export const STAT_KEYS = new Set<StatKey>([
   'comps', 'occs', 'walls', 'beds', 'facilities', 'gear', 'pets', 'kills', 'races', 'trophies', 'hand', 'ancient', 'quests', 'skills',
   'injured', 'boss', 'coop', 'weak', 'spells', 'donations', 'trades', 'year', 'round',
@@ -73,7 +73,14 @@ export function validateOp(op: Op, where = 'do') {
   const k = opKey(op, where);
   const v = (op as Record<string, unknown>)[k];
   switch (k) {
-    case 'gain': case 'pay': case 'steal_gain': checkCost(v, `${where}.${k}`); break;
+    case 'fame_per': case 'gain_per': {
+      const f = v as { stat: string; per: number; gain?: Cost; max?: number };
+      if (!f || !STAT_KEYS.has(f.stat as StatKey)) throw new DslError(`${where}: ${k}.stat "${f?.stat}"`);
+      if (typeof f.per !== 'number' || f.per <= 0) throw new DslError(`${where}: ${k}.per`);
+      if (k === 'gain_per') checkCost(f.gain, `${where}.gain_per.gain`);
+      break;
+    }
+    case 'gain': case 'pay': case 'steal_gain': case 'others_gain': checkCost(v, `${where}.${k}`); break;
     case 'convert': { const c = v as Op['convert']; if (!c) throw new DslError(`${where}: convert`); checkCost(c.from, `${where}.convert.from`); checkCost(c.to, `${where}.convert.to`); break; }
     case 'future': { const f = v as Op['future']; if (!f || !Array.isArray(f.rounds)) throw new DslError(`${where}: future.rounds`); checkCost(f.gain, `${where}.future.gain`); break; }
     case 'draw': { const d = v as Op['draw']; if (!d || !DRAW_FROM.has(d.from)) throw new DslError(`${where}: draw.from "${d?.from}"`); break; }
@@ -140,6 +147,7 @@ export function checkCond(c: Cond | undefined, env: CondEnv): boolean {
       case 'race': { if (!env.fight) return false; const r = c.race!; if (Array.isArray(r) ? !r.includes(env.fight.race) : r !== env.fight.race) return false; break; }
       case 'coop': if (!env.fight || env.fight.coop !== c.coop) return false; break;
       case 'k_min': if (!env.fight || env.fight.k < c.k_min!) return false; break;
+      case 'k_max': if (!env.fight || env.fight.k > c.k_max!) return false; break;
       case 'boss': if (!env.fight || env.fight.boss !== c.boss) return false; break;
       case 'weak': if (!env.fight || env.fight.weak !== c.weak) return false; break;
       case 'has': if (!env.has(c.has!)) return false; break;
