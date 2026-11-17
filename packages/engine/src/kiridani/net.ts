@@ -22,7 +22,27 @@ export type Action =
   | { t: 'weather'; w: string | null }                          // 天候の鈴
   | { t: 'fight'; sel: FightPick }                              // 戦闘のトレイ
   | { t: 'market'; sid: string; kind: 'buy' | 'sell'; r: Res; q: number }
-  | { t: 'trade'; b: number; give: Cost; get: Cost };           // AI との取引（置き場所の選択は続く）
+  | { t: 'trade'; b: number; give: Cost; get: Cost }            // AI との取引（置き場所の選択は続く）
+  | { t: 'offer'; b: number; give: Cost; get: Cost }            // 人への取引の申し込み（相手の返事を待つ）
+  | { t: 'withdraw' }                                           // 申し込みの取り下げ（id は申し込みの番号）
+  | { t: 'reply'; accept: boolean }                             // 申し込まれた人の返事（id は申し込みの番号）
+  | { t: 'expire' };                                            // 時間切れ（審判の記録の読み直し用。席は -1）
+
+/** 人どうしの取引の申し込み（申し込んだ人と、申し込まれた人にだけ送る） */
+export interface OfferView {
+  id: string;
+  from: number;
+  to: number;
+  /** 申し込んだ人が渡すもの・受け取るもの */
+  give: Cost;
+  get: Cost;
+  /** 返事の締め切りまでのミリ秒（送った時点） */
+  ms: number;
+  /** 見ている席の今の持ち物（申し込まれた人が、受けたあとの持ち物を見るため） */
+  res: Record<Res, number>;
+}
+/** 取引の結果のお知らせ（当事者だけ） */
+export interface OfferNote { id: string; text: string; ok: boolean }
 
 /** 盤面の写し（JSON） */
 export type Snapshot = Record<string, unknown>;
@@ -45,6 +65,8 @@ export interface Prompt {
   /** 取引できる相手と、このラウンドの残り回数 */
   partners: number[];
   left: number;
+  /** 返事待ちの自分の申し込み（あるあいだは置き場所を選べない） */
+  offer?: OfferView;
 }
 
 export type ActResult = { ok: true } | { ok: false; error: string };
@@ -151,6 +173,10 @@ export function leaksFor(ev: GameEvent, seat: number): boolean {
 export interface RefereeOptions {
   n: number;
   seed: number;
+  /** 人どうしの取引の返事を待つ長さ（ミリ秒。既定 60 秒、0 なら時間切れなし） */
+  offerTimeoutMs?: number;
+  /** 時計（テスト用） */
+  now?: () => number;
   /** 人間の席 */
   humans: number[];
   levels?: Level[];
@@ -174,8 +200,19 @@ export class KiridaniReferee {
   /** 順番が来る前に届いた答え */
   private early = new Map<number, string>();
   private listeners = new Set<() => void>();
+  /** 受け付けた答えの記録（同じ種で順に渡すと同じところまで進む：ホストの読み込み直し） */
+  readonly history: [number, string, Action][] = [];
+  /** 返事待ちの人どうしの取引 */
+  offer: { id: string; from: number; to: number; give: Cost; get: Cost; deadline: number } | null = null;
+  private offerSeq = 0;
+  private offerTimer: ReturnType<typeof setTimeout> | null = null;
+  private notes = new Map<number, OfferNote>();
+  private readonly offerMs: number;
+  private readonly now: () => number;
 
   constructor(o: RefereeOptions) {
+    this.offerMs = o.offerTimeoutMs ?? 60_000;
+    this.now = o.now ?? (() => Date.now());
     this.n = o.n;
     this.humans = [...o.humans];
     this.s = new KiridaniSession({ n: o.n, seed: o.seed, humans: o.humans, levels: o.levels, names: o.names });
@@ -245,7 +282,7 @@ export class KiridaniReferee {
     switch (w.k) {
       case 'draft': Object.assign(out, { cards: w.cards, kind: w.kind, ingame: w.ingame }); break;
       case 'char': out.options = w.options; break;
-      case 'choose': out.opts = w.opts; out.partners = s.tradePartners(); out.left = s.tradeLeft(); break;
+      case 'choose': out.opts = w.opts; out.partners = s.tradePartners(); out.left = s.tradeLeft(); if (this.offer?.from === seat) out.offer = this.offerFor(seat)!; break;
       case 'tame': out.m = w.m; break;
       case 'storm': out.nr = w.nr; break;
       default: break;
@@ -253,9 +290,32 @@ export class KiridaniReferee {
     return out;
   }
 
-  /** seat の席の答え。id は答えた問いの番号 */
+  /** 受け付けた答えを記録から順に渡す（読み込み直し） */
+  replay(history: [number, string, Action][]) {
+    for (const [seat, id, a] of history) this.act(seat, id, a);
+  }
+
+  /** seat の席の答え。id は答えた問いの番号（取り下げ・返事・時間切れは申し込みの番号） */
   act(seat: number, id: string, a: Action): ActResult {
     if (!a || typeof a !== 'object') return { ok: false, error: '形式が正しくありません' };
+    const r = this.act1(seat, id, a);
+    if (r.ok) this.history.push([seat, id, a]);
+    return r;
+  }
+
+  private act1(seat: number, id: string, a: Action): ActResult {
+    const of = this.offer;
+    if (a.t === 'reply' || a.t === 'withdraw' || a.t === 'expire') {
+      if (!of || of.id !== id) return { ok: false, error: 'この申し込みはもう終わっています' };
+      if (a.t === 'reply' && seat !== of.to) return { ok: false, error: 'あなたへの申し込みではありません' };
+      if (a.t === 'withdraw' && seat !== of.from) return { ok: false, error: 'あなたの申し込みではありません' };
+      if (a.t === 'expire' && seat !== -1) return { ok: false, error: '形式が正しくありません' };
+      this.closeOffer(a.t === 'reply' ? (a.accept === true ? 'accept' : 'decline') : a.t === 'withdraw' ? 'withdraw' : 'timeout');
+      this.changed();
+      return { ok: true };
+    }
+    if (of && seat === of.from) return { ok: false, error: `${this.names[of.to]}の返事を待っています` };
+    if (a.t === 'offer') return this.makeOffer(seat, id, a);
     const pr = this.prompt(seat);
     if (!pr) return { ok: false, error: 'いまはあなたの番ではありません' };
     if (pr.id !== id) return { ok: false, error: '画面が古くなっています' };
@@ -277,6 +337,75 @@ export class KiridaniReferee {
     this.changed();
     return { ok: true };
   }
+
+  // ---------------------------------------------------------- 人どうしの取引
+  private get names() { return this.s.g.names; }
+
+  private makeOffer(seat: number, id: string, a: Extract<Action, { t: 'offer' }>): ActResult {
+    const pr = this.prompt(seat);
+    if (!pr || pr.k !== 'choose') return { ok: false, error: 'あなたの番に申し込めます' };
+    if (pr.id !== id) return { ok: false, error: '画面が古くなっています' };
+    if (!isCost(a.give) || !isCost(a.get) || !Number.isInteger(a.b)) return { ok: false, error: '形式が正しくありません' };
+    if (!this.s.isHuman(a.b)) return { ok: false, error: '相手が人ではありません' };
+    const j = this.s.judgeTrade(a.b, a.give, a.get);
+    if (!j.ok) return { ok: false, error: j.error ?? '取引できません' };
+    const clean = (c: Cost) => Object.fromEntries(Object.entries(c).filter(([, n]) => n)) as Cost;
+    this.offer = { id: `t${++this.offerSeq}`, from: seat, to: a.b, give: clean(a.give), get: clean(a.get), deadline: this.now() + this.offerMs };
+    this.decision++;
+    if (this.offerMs > 0 && typeof setTimeout !== 'undefined') {
+      const oid = this.offer.id;
+      this.offerTimer = setTimeout(() => this.expire(oid), this.offerMs);
+    }
+    this.changed();
+    return { ok: true };
+  }
+
+  /** 締め切りを過ぎた申し込みを断ったことにする（タイマーから。テストでは直接呼ぶ） */
+  expire(id?: string): boolean {
+    const of = this.offer;
+    if (!of || (id && of.id !== id)) return false;
+    if (!id && this.now() < of.deadline) return false;
+    return this.act(-1, of.id, { t: 'expire' }).ok;
+  }
+
+  private closeOffer(how: 'accept' | 'decline' | 'withdraw' | 'timeout') {
+    const of = this.offer!;
+    this.offer = null;
+    if (this.offerTimer) { clearTimeout(this.offerTimer); this.offerTimer = null; }
+    const nf = this.names[of.from], nt = this.names[of.to];
+    const note = (seat: number, text: string, ok = false) => this.notes.set(seat, { id: of.id, text, ok });
+    if (how === 'accept') {
+      try {
+        this.take(this.s.tradeHuman(of.to, of.give, of.get));
+        note(of.from, `${nt}が取引を受けました`, true);
+        note(of.to, `${nf}との取引が成立しました`, true);
+        return;
+      } catch (e) {
+        // 受けたときにもう一度確かめて、成り立たなくなっていたら不成立
+        const why = e instanceof Error ? e.message : String(e);
+        note(of.from, `取引は成立しませんでした（${why}）`);
+        note(of.to, `取引は成立しませんでした（${why}）`);
+      }
+    } else if (how === 'decline') {
+      note(of.from, `${nt}が取引を断りました`);
+    } else if (how === 'withdraw') {
+      note(of.to, `${nf}が取引の申し込みを取り下げました`);
+    } else {
+      note(of.from, `${nt}から返事がなく、取引は成立しませんでした`);
+      note(of.to, '時間切れで、取引の申し込みは流れました');
+    }
+    this.decision++;
+  }
+
+  /** seat の席に関わる申し込み（申し込んだ人・申し込まれた人だけ） */
+  offerFor(seat: number): OfferView | null {
+    const of = this.offer;
+    if (!of || (seat !== of.from && seat !== of.to)) return null;
+    return { id: of.id, from: of.from, to: of.to, give: of.give, get: of.get, ms: Math.max(0, of.deadline - this.now()), res: { ...this.s.g.players[seat].res } };
+  }
+
+  /** seat の席への最後のお知らせ（取引の結果） */
+  noteFor(seat: number): OfferNote | null { return this.notes.get(seat) ?? null; }
 
   /** 取引の見込み（seat の番のときだけ） */
   judge(seat: number, b: number, give: Cost, get: Cost): TradeJudge {
@@ -368,6 +497,7 @@ export class ShadowSession implements SeatSession {
     for (const r of Object.keys(give)) if (r in get) return fail('同じ資源を渡して受け取ることはできない');
     for (const [r, n] of Object.entries(give)) if (p.res[r as Res] < (n as number)) return fail('渡すものが足りない');
     for (const [r, n] of Object.entries(get)) if (o.res[r as Res] < (n as number)) return fail('相手の持ち物が足りない');
+    if (!snapIsAI(this.prompt.snap, b)) return { ok: true, accept: true, gain: 0, human: true };
     const key = JSON.stringify([b, give, get]);
     const got = this.judged.get(key);
     if (got) return got;

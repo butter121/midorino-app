@@ -9,4 +9,4 @@ export {
 } from './engine';
 export { AI, DEFAULT_W, ARCHETYPES, evaluate, perm_power, type Level, type W } from './ai';
 export { KiridaniSession, previewFight, describeOption, costJP, MODE_JP, MODE_TEXT, fightChips, previewPick, marketQuote, BOOST_JP, TRADE_MAX, type SessionOptions, type FightPreview, type FightChip, type PickPreview, type TradeJudge, type SeatSession } from './session';
-export { KiridaniReferee, ShadowSession, applyAction, encodeGame, decodeGame, redactEvent, leaksFor, simpleAnswer, snapIsAI, type Action, type Prompt, type Snapshot, type ActResult, type RefereeOptions } from './net';
+export { KiridaniReferee, ShadowSession, applyAction, encodeGame, decodeGame, redactEvent, leaksFor, simpleAnswer, snapIsAI, type Action, type Prompt, type Snapshot, type ActResult, type RefereeOptions, type OfferView, type OfferNote } from './net';

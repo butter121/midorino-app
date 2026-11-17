@@ -2,6 +2,7 @@
 //   ホスト：「友だちと遊ぶ」→ 部屋をつくる → 参加申請を承認 → 3人（空き1席は AI）で開始
 //   参加者：招待リンクを開く → 名前 → 承認待ち → 待合室 → 試合
 //   両方の画面でドラフト・キャラ・置き場所・トレイ・シートを答えて進め、途中で参加者を読み込み直し（同じ席に戻るか）、
+//   人どうしの取引（ホストが申し込み → 1回目は参加者が断る・2回目は受ける）を試し、
 //   最後にホストが部屋を閉じて、参加者に知らせが出るかを見る。
 // 使い方：node tools/kiridani/online-smoke.mjs [--rounds 12] [--shots DIR] [--headed]
 //   （アプリを VITE_PEER_* つきで一時フォルダに作り直し、内蔵のサーバーで配る）
@@ -152,6 +153,68 @@ try {
     }
     return null;
   }
+  // 人どうしの取引：ホストがアオイに申し込み、1回目は断られ、2回目は受けてもらう
+  const inner = (page) => page.evaluate(() => {
+    const se = document.scrollingElement;
+    const bad = [];
+    if (se.scrollHeight > innerHeight || se.scrollWidth > innerWidth) bad.push(`page ${se.scrollWidth}x${se.scrollHeight}`);
+    for (const el of document.querySelectorAll('.kd-tray, .kd-tray *')) {
+      const cs = getComputedStyle(el);
+      const dy = el.scrollHeight - el.clientHeight, dx = el.scrollWidth - el.clientWidth;
+      if (/(auto|scroll)/.test(cs.overflowY + cs.overflowX) && (dy > 2 || dx > 2)) bad.push(`${el.className} +${dy}↓ +${dx}→`);
+    }
+    return bad;
+  });
+  const MINE = '.kd-tray-sec:has(h4:has-text("あなたの持ち物")) .kd-tchip:not([aria-disabled="true"])';
+  const THEIRS = '.kd-tray-sec:has(h4:has-text("アオイの持ち物")) .kd-tchip:not([aria-disabled="true"])';
+  const cancelTray = () => host.click('.kd-tray-act .kd-btn:not(.is-primary)');
+  async function propose(give = 1) {
+    const btn = await host.$('.kd-tradebtn:not([disabled])');
+    if (!btn) { log('trade: no button'); return false; }
+    await btn.click();
+    await host.waitForSelector('.kd-tray .kd-partners');
+    const who = await host.$('.kd-partners .kd-tchip:has-text("アオイ")');
+    if (!who) { await cancelTray(); return false; }
+    await who.click();
+    await sleep(100);
+    if (!(await host.$(MINE)) || !(await host.$(THEIRS))) { log('trade: nothing to exchange'); await cancelTray(); return false; }
+    for (let i = 0; i < give; i++) { const m = await host.$(MINE); if (m) await m.click(); await sleep(60); }
+    await host.click(THEIRS);
+    await sleep(100);
+    const go = await host.$('.kd-tray-act .kd-btn.is-primary:has-text("申し込む"):not([disabled])');
+    if (!go) { await cancelTray(); return false; }
+    await go.click();
+    await host.waitForSelector('.kd-tray[aria-label="取引の申し込み"]', { timeout: 10000 });
+    await guest.waitForSelector('.kd-tray[aria-label="取引の申し込みが届いた"]', { timeout: 20000 });
+    await sleep(500);
+    return true;
+  }
+  let traded = false;
+  async function tradeScenario() {
+    if (!(await propose(1))) return false;
+    log('offer 1 sent');
+    await shot(host, '61-offer-wait-host.png');
+    await shot(guest, '61-offer-guest.png');
+    for (const [pg, nm] of [[host, '返事待ち'], [guest, '申し込み']]) { const b = await inner(pg); check(!b.length, `${nm}のシートが1画面に収まる（390×844）${b.join(' ')}`); }
+    for (const pg of [host, guest]) await pg.setViewportSize({ width: 844, height: 390 });
+    await sleep(400);
+    for (const [pg, nm] of [[host, '返事待ち'], [guest, '申し込み']]) { const b = await inner(pg); check(!b.length, `${nm}のシートが1画面に収まる（844×390）${b.join(' ')}`); }
+    await shot(guest, '61-offer-guest-landscape.png');
+    for (const pg of [host, guest]) await pg.setViewportSize({ width: 390, height: 844 });
+    await sleep(300);
+    await guest.click('.kd-tray[aria-label="取引の申し込みが届いた"] .kd-btn:has-text("断る")');
+    await host.waitForSelector('.kd-netnote:has-text("アオイが取引を断りました")', { timeout: 10000 });
+    check(!(await host.$('.kd-tray[aria-label="取引の申し込み"]')) && !!(await host.$('.kd-root.is-myturn')), '断られると、申し込んだ人の番が続く');
+    await sleep(300);
+    if (!(await propose(2))) { check(false, '2回目の申し込みができない'); return true; }
+    log('offer 2 sent');
+    await guest.click('.kd-tray[aria-label="取引の申し込みが届いた"] .kd-btn:has-text("受ける")');
+    await host.waitForSelector('.kd-netnote:has-text("アオイが取引を受けました")', { timeout: 10000 });
+    await guest.waitForSelector('.kd-netnote:has-text("ホストとの取引が成立しました")', { timeout: 10000 });
+    check(true, '受けると、両方にお知らせが出る');
+    traded = true;
+    return true;
+  }
   const roundOf = (page) => page.evaluate(() => Number(document.querySelector('.kd-hud-meta b')?.textContent ?? 0));
   let reloaded = false, guestShot = false;
   const counts = {};
@@ -166,6 +229,13 @@ try {
       await shot(guest, '60-ingame-guest.png');
       check(await fits(guest), '参加者の試合画面が1画面に収まる（390×844）');
       guestShot = true;
+    }
+    if (!traded && reloaded && guestShot && await host.$('.kd-root.is-myturn')) {
+      await host.waitForSelector('.kd-hud-ctl .kd-iconbtn[disabled]', { timeout: 15000 }).catch(() => {});
+      await sleep(400);
+    }
+    if (!traded && reloaded && guestShot && await host.$('.kd-root.is-myturn') && !(await host.$('.kd-ovwrap'))) {
+      try { await tradeScenario(); } catch (e) { check(false, `取引の通し：${String(e).split('\n')[0]}`); traded = true; }
     }
     for (const page of [host, guest]) {
       const r = await step(page).catch((e) => { if (!/detached|not attached|Target closed|intercepts pointer/.test(String(e))) errors.push(`step: ${String(e).split('\n')[0]}`); return null; });
@@ -189,6 +259,7 @@ try {
     await sleep(40);
   }
   if (!guestShot) check(false, '参加者の番の盤面にたどり着けなかった');
+  if (!traded) check(false, '人どうしの取引を試せなかった');
   if (ROUNDS >= 12) {
     await guest.waitForSelector('.kd-final', { timeout: 60000 });
     for (const p of [host, guest]) await p.waitForSelector('.kd-hud-ctl .kd-iconbtn[disabled]', { timeout: 60000 });

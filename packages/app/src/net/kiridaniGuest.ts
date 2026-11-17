@@ -1,6 +1,6 @@
 // 霧谷の冒険者団：参加者。ホストにつなぎ、自分の席の出来事と問いを受け取り、答えをホストに送る。
 // 切れたら自動でつなぎ直す（読み込み直しても、保存した合言葉で同じ席に戻る）。ホストが部屋を閉じたら知らせる。
-import type { Action, ActResult, Cost, GameEvent, Prompt, TradeJudge } from '@midorino/engine/src/kiridani';
+import type { Action, ActResult, Cost, GameEvent, OfferNote, OfferView, Prompt, TradeJudge } from '@midorino/engine/src/kiridani';
 import { KD_MAX_MSG, type KdLobby, type KdToGuest, type KdToHost } from './kiridaniProtocol';
 import type { Conn, Net } from './transport';
 
@@ -19,6 +19,10 @@ export class KdGuestClient {
   prompt: Prompt | null = null;
   wait: number[] = [];
   done = false;
+  /** 人どうしの取引の申し込み（自分が申し込んだ・申し込まれた） */
+  offer: OfferView | null = null;
+  /** 取引の結果のお知らせ */
+  note: OfferNote | null = null;
   private token: string | null = null;
   private conn: Conn | null = null;
   private reqId = 0;
@@ -100,6 +104,10 @@ export class KdGuestClient {
           if (!p || !this.prompt || p.id !== this.prompt.id) this.prompt = p;
           this.wait = msg.wait ?? [];
           this.done = !!msg.done;
+          const of = msg.offer ?? null;
+          if (!of || !this.offer || of.id !== this.offer.id) this.offer = of;
+          const nt = msg.note ?? null;
+          if (!nt || !this.note || nt.id !== this.note.id || nt.text !== this.note.text) this.note = nt;
         }
         break;
       }
