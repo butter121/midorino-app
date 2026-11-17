@@ -191,15 +191,21 @@ export function KiridaniTable({ t, ask, onAnswer, extra, sheet, actions }: Table
     </>
   );
 
-  // 上の状況バーの高さ（縦画面でタブをその下に貼りつけるため）
+  // 上の状況バーと下の欄の高さ（重ねる画面・お知らせをその間に収めるため）
   const hudRef = useRef<HTMLElement>(null);
+  const barRef = useRef<HTMLElement>(null);
+  const hasBar = !!me && v.phase !== 'final' && v.phase !== 'draft' && v.phase !== 'character' && v.phase !== 'setup';
   useLayoutEffect(() => {
-    const el = hudRef.current; const root = rootRef.current;
-    if (!el || !root || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => root.style.setProperty('--kd-hud-h', `${el.offsetHeight}px`));
-    ro.observe(el);
+    const root = rootRef.current;
+    if (!root || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      root.style.setProperty('--kd-hud-h', `${hudRef.current?.offsetHeight ?? 0}px`);
+      root.style.setProperty('--kd-bar-h', `${barRef.current?.offsetHeight ?? 0}px`);
+    });
+    if (hudRef.current) ro.observe(hudRef.current);
+    if (barRef.current) ro.observe(barRef.current);
     return () => ro.disconnect();
-  }, []);
+  }, [hasBar]);
 
   const myTurn = !!placeAsk && !queuedChoice;
   const turnFlag: { text: string; me?: boolean; seat?: Seat } | null =
@@ -214,12 +220,12 @@ export function KiridaniTable({ t, ask, onAnswer, extra, sheet, actions }: Table
 
   return (
     <insp.Provider value={insp.open}>
-    <div className={`kd-root${t.reduced ? ' is-reduced' : ''} is-${v.season}${myTurn ? ' is-myturn' : ''}`} ref={rootRef} onClick={insp.onClick} onKeyDown={insp.onKeyDown}>
+    <div className={`kd-root kd-play is-ph-${v.phase}${t.reduced ? ' is-reduced' : ''} is-${v.season}${myTurn ? ' is-myturn' : ''}${v.players.length >= 5 ? ' is-many' : ''}`} ref={rootRef} onClick={insp.onClick} onKeyDown={insp.onKeyDown}>
       <header className="kd-hud" ref={hudRef}>
         <div className="kd-hud-title">
           <strong className="kd-hud-season">{v.round ? SEASON_JP[v.season] : '準備'}</strong>
           <span className="kd-hud-meta">
-            <small>{v.round ? <>{year}年目・ラウンド <b>{v.round}</b>/12</> : '霧谷の冒険者団'}</small>
+            <small>{v.round ? <>{year}年目・<span className="kd-hud-rl">ラウンド</span><span className="kd-hud-rs">R</span><b>{v.round}</b>/12</> : '霧谷の冒険者団'}</small>
             {v.round > 0 && (
               <span className="kd-rounds" aria-hidden>
                 {Array.from({ length: 12 }, (_, i) => <i key={i} className={`is-s${i % 4}${i + 1 < v.round ? ' is-done' : i + 1 === v.round ? ' is-now' : ''}`} />)}
@@ -227,19 +233,25 @@ export function KiridaniTable({ t, ask, onAnswer, extra, sheet, actions }: Table
             )}
           </span>
         </div>
-        {v.round > 0 && <span className="kd-tidechip" title="魔力の潮"><KIcon name={v.tide} size={16} />{EL_JP[v.tide]}の潮</span>}
-        {v.round > 0 && <div className="kd-hud-w"><WeatherChip id={v.weather} label="今日" /><WeatherChip id={v.forecast[0]} label="次" small /></div>}
+        {v.round > 0 && <span className="kd-tidechip" title="魔力の潮" aria-label={`魔力の潮：${EL_JP[v.tide]}`}><KIcon name={v.tide} size={16} /><span>{EL_JP[v.tide]}の潮</span></span>}
+        {v.round > 0 && <div className="kd-hud-w"><span data-inspect={v.weather ? `weather:${v.weather}` : undefined}><WeatherChip id={v.weather} label="今日" /></span><span data-inspect={v.forecast[0] ? `weather:${v.forecast[0]}` : undefined}><WeatherChip id={v.forecast[0]} label="次" small /></span></div>}
         {turnFlag && (
           <div className={`kd-turnflag${turnFlag.me ? ' is-me' : ''}`} role="status" style={turnFlag.seat !== undefined ? { ['--seat' as string]: SEAT_COLORS[turnFlag.seat] } : undefined}>
             {turnFlag.seat !== undefined && <Token seat={turnFlag.seat} size={18} />}{turnFlag.text}
           </div>
         )}
         <div className="kd-hud-ctl">
-          <div className="kd-speed" role="radiogroup" aria-label="演出の速さ">
-            {SPEEDS.map((s) => <button key={s} type="button" role="radio" aria-checked={t.speed === s} className={t.speed === s ? 'is-on' : ''} onClick={() => t.setSpeed(s)}>{SPEED_JP[s]}</button>)}
-          </div>
-          <button type="button" className="kd-iconbtn" onClick={() => t.setMuted(!t.muted)} aria-label={t.muted ? '音を出す' : '音を消す'}>{t.muted ? '🔇' : '🔊'}</button>
           <button type="button" className="kd-iconbtn" onClick={t.skip} disabled={!t.busy} aria-label="この演出を飛ばす">⏩</button>
+          <details className="kd-cat-menu kd-hudmenu">
+            <summary aria-label={`演出の速さ（${SPEED_JP[t.speed]}）と音`}><span className="kd-hudmenu-s">{SPEED_JP[t.speed]}</span>{t.muted ? '🔇' : '🔊'}</summary>
+            <div>
+              <small>演出の速さ</small>
+              <div className="kd-speed" role="radiogroup" aria-label="演出の速さ">
+                {SPEEDS.map((s) => <button key={s} type="button" role="radio" aria-checked={t.speed === s} className={t.speed === s ? 'is-on' : ''} onClick={() => t.setSpeed(s)}>{SPEED_JP[s]}</button>)}
+              </div>
+              <button type="button" className="kd-btn" onClick={() => t.setMuted(!t.muted)}>{t.muted ? '🔇 音を出す' : '🔊 音を消す'}</button>
+            </div>
+          </details>
           {extra}
         </div>
       </header>
@@ -259,24 +271,24 @@ export function KiridaniTable({ t, ask, onAnswer, extra, sheet, actions }: Table
             {v.log.length > 0 && (
               <section className="kd-log" aria-label="これまでの出来事">
                 <h3>できごと</h3>
-                <ol>{v.log.slice(0, 14).map((l, i) => <li key={`${v.log.length - i}`}>{l}</li>)}</ol>
+                <ol>{v.log.slice(0, 12).map((l, i) => <li key={`${v.log.length - i}`}>{l}</li>)}</ol>
               </section>
             )}
           </aside>
         )}
         <main className="kd-main">{main}</main>
-        {me && v.phase !== 'final' && (
-          <footer className="kd-mybar">
+        {hasBar && me && (
+          <footer className="kd-mybar" ref={barRef}>
             <div className="kd-mybar-r">{RES.map((r) => <ResCount key={r} r={r} n={me.res[r]} size={22} anchor={`res:${r}`} />)}<UpkeepChip view={v} /></div>
             <div className="kd-mybar-a">
               {placeAsk ? (
                 queuedChoice ? <span className="kd-queued" role="status">{t.busy ? `予約：${placeName(queuedChoice)}（演出のあとに実行）` : `${placeName(queuedChoice)}へ`}</span>
                   : <>
-                    <span className="kd-ask"><b>あなたの番</b><small>{t.busy ? '演出中でも先に選べます' : sel ? `${placeName(sel)}に置きますか？` : '光っている場所に仲間を置く'}</small></span>
+                    <span className="kd-ask"><b>あなたの番</b><small>{t.busy ? '演出中でも選べます' : sel ? `${placeName(sel)}に置く？` : '光る場所を選ぶ'}</small></span>
                     {actions}
                     <button type="button" className="kd-btn is-primary" disabled={!sel} onClick={() => sel && answer(sel)}>{sel ? `${placeName(sel)}に置く` : '場所を選ぶ'}</button>
                   </>
-              ) : <span className="kd-mybar-me">{me.character && <b>{CHAR[me.character].name}</b>}<span data-kd="hand">手札 {me.hand.length}</span><span>仲間 {me.companions.filter((c) => !c.at && !c.injured).length}/{me.companions.length}</span></span>}
+              ) : <span className="kd-mybar-me">{turnFlag && !turnFlag.me ? <b className="kd-mybar-turn" style={turnFlag.seat !== undefined ? { ['--seat' as string]: SEAT_COLORS[turnFlag.seat] } : undefined}>{turnFlag.seat !== undefined && <Token seat={turnFlag.seat} size={16} />}{turnFlag.text}</b> : me.character && <b>{CHAR[me.character].name}</b>}<span data-kd="hand">手札 {me.hand.length}</span><span>仲間 {me.companions.filter((c) => !c.at && !c.injured).length}/{me.companions.length}</span></span>}
             </div>
           </footer>
         )}
