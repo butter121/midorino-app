@@ -324,7 +324,7 @@ try {
     await guest.waitForSelector('.kd-pchip.is-me', { timeout: 20000 });
     await host.waitForFunction(() => !document.querySelector('.kd-netnote-away'), null, { timeout: 20000 });
     const after = await guest.textContent('.kd-pchip.is-me');
-    const name = (x) => x.replace(/[0-9]/g, '');
+    const name = (x) => x.replace(/[0-9先]/g, '');
     check(name(after) === name(before), `タイトルから同じ席に戻り、ホストの「退室中」が消える（${name(after)}）`);
   }
   const roundOf = (page) => page.evaluate(() => Number(document.querySelector('.kd-hud-meta b')?.textContent ?? 0));
