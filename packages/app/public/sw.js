@@ -1,6 +1,6 @@
 // インストールできるようにするための最小のサービスワーカー。
 // いつもネットから最新を取り、つながらないときだけ前回の画面を使う（古い版が残らないように）。
-const CACHE = 'kiridani-v1';
+const CACHE = 'kiridani-v2';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(
   caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())

@@ -22,6 +22,13 @@ html, body { margin: 0; background: #15131c; }
   .kda-modes { grid-area: start; } .kd-root .kd-btn.kda-start { margin-top: 0; }
   .kd-root.kda-title:not(:has(.kda-group)) { grid-template-areas: 'heroes start' 'name start' 'sub start'; }
   .kda-heroes svg { width: 60px; height: 60px; }
+  /* 新ルールの「ひとりで遊ぶ」は設定が3つ（年数・人数・強さ）：右列に縦に並べる */
+  .kd-root.kda-title:has(.kda-group:nth-of-type(3)) { grid-template-areas: 'heroes n' 'name lv' 'hint g3' 'hint start'; gap: 8px 32px; }
+  .kda-title:has(.kda-group:nth-of-type(3)) .kda-hint { grid-area: hint; align-self: start; }
+  .kda-group:nth-of-type(3) { grid-area: g3; }
+  .kda-title:has(.kda-group:nth-of-type(3)) .kda-group legend { margin-bottom: 2px; }
+  .kda-title:has(.kda-group:nth-of-type(3)) .kda-modes { grid-template-columns: 1fr auto; align-items: center; }
+  .kda-title:has(.kda-group:nth-of-type(3)) .kd-btn.kda-start { min-width: 0; }
 }
 
 /* 入口：遊び方を選ぶボタン */

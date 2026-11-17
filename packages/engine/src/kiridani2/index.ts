@@ -12,3 +12,10 @@ export {
 export { AI, LEVELS, LOOPS, loopDone, evaluate, cardValue, DEFAULT_W, type Level, type W } from './ai';
 export { Kiridani2Session, marketQuote, type SessionOptions, type TradeJudge } from './session';
 export { CARD_SET } from './cards';
+export {
+  Kiridani2Referee, ShadowSession as Shadow2Session, applyAction as applyAction2, encodeGame as encodeGame2, decodeGame as decodeGame2,
+  redactEvent as redactEvent2, leaksFor as leaksFor2, simpleAnswer as simpleAnswer2, snapIsAI as snapIsAI2, toLevel2,
+  type Action as Action2, type Prompt as Prompt2, type Snapshot as Snapshot2, type ActResult as ActResult2, type RefereeOptions as Referee2Options,
+  type OfferView as OfferView2, type OfferNote as OfferNote2, type SeatSession2, type SyncEvent, type NetEvent, syncEvent,
+} from './net';
+export { previewFight, choiceLabel, optionLabel, type FightPreview } from './preview';
