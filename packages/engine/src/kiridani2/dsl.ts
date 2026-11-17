@@ -1,0 +1,203 @@
+// 霧谷の冒険者団 v2 — 効果 DSL（§8）の読み取り：形の確認（知らない op は例外）、条件の判定、mod の合計。
+// 実行（do の手順）はエンジン（engine.ts の runOps）が行う。
+import type { CardDef, Cond, Cost, Effect, Mod, Op, Race, Res, Season, StatKey } from './types';
+import { RACES, RES } from './types';
+
+export class DslError extends Error {
+  constructor(msg: string) { super(msg); this.name = 'DslError'; }
+}
+
+export const WHEN_FIXED = new Set([
+  'use', 'fight', 'win', 'lose', 'round_start', 'round_end', 'winter', 'game_end', 'setup',
+  'build', 'hire', 'craft', 'sell', 'buy', 'trade', 'donate', 'spell', 'tame', 'play', 'passive',
+]);
+export const WHEN_PREFIX = ['use:', 'instead:', 'other:', 'win_race:'];
+
+export const OP_KEYS = new Set([
+  'gain', 'pay', 'convert', 'fame', 'power', 'guard', 'counter', 'loot', 'trophy', 'str', 'no_injury',
+  'extra_worker', 'place_again', 'ignore_full', 'future', 'draw', 'hire', 'hire_free', 'tame', 'train', 'build', 'heal',
+  'steal_gain', 'craft', 'occ', 'exchange', 'first', 'donate',
+]);
+/** 戦闘中だけ意味のある op */
+export const FIGHT_OPS = new Set(['power', 'guard', 'counter', 'loot', 'trophy', 'str', 'no_injury', 'tame']);
+/** 選択肢を広げる op（最初の1つは置く場所の選択肢に広げ、2つ目からは実行のときに聞く） */
+export const EXPAND_OPS = new Set(['craft', 'occ', 'build', 'exchange', 'train']);
+
+export const MOD_KEYS = new Set([
+  'market_qty', 'market_both', 'trade_count', 'accum_bonus', 'cost_discount', 'upkeep', 'donate_rate', 'base_guard', 'pet_power',
+  'hand_limit', 'power', 'heal_discount', 'sell_bonus', 'bed_cap',
+]);
+export const COND_KEYS = new Set(['season', 'min', 'max', 'race', 'coop', 'k_min', 'boss', 'weak', 'has', 'res_min', 't_min', 't_max']);
+export const STAT_KEYS = new Set<StatKey>([
+  'comps', 'occs', 'walls', 'beds', 'facilities', 'gear', 'pets', 'kills', 'races', 'trophies', 'hand', 'ancient', 'quests', 'skills',
+  'injured', 'boss', 'coop', 'weak', 'spells', 'donations', 'trades', 'year', 'round',
+]);
+const DRAW_FROM = new Set(['occ', 'item', 'weapon', 'tool', 'spell', 'ancient']);
+
+function checkCost(c: unknown, where: string) {
+  if (!c || typeof c !== 'object') throw new DslError(`${where}: cost must be an object`);
+  for (const [k, v] of Object.entries(c)) {
+    if (!RES.includes(k as Res)) throw new DslError(`${where}: unknown resource "${k}"`);
+    if (typeof v !== 'number') throw new DslError(`${where}: amount of ${k} must be a number`);
+  }
+}
+
+export function validateWhen(w: string, where = 'when') {
+  if (WHEN_FIXED.has(w)) return;
+  const pre = WHEN_PREFIX.find((p) => w.startsWith(p));
+  if (!pre || w.length === pre.length) throw new DslError(`${where}: unknown when "${w}"`);
+  if (pre === 'win_race:' && !RACES.includes(w.slice(pre.length) as Race)) throw new DslError(`${where}: unknown race in "${w}"`);
+}
+
+export function validateCond(c: Cond, where = 'if') {
+  for (const k of Object.keys(c)) if (!COND_KEYS.has(k)) throw new DslError(`${where}: unknown condition "${k}"`);
+  for (const k of ['min', 'max'] as const) {
+    const m = c[k];
+    if (m) for (const s of Object.keys(m)) if (!STAT_KEYS.has(s as StatKey)) throw new DslError(`${where}.${k}: unknown stat "${s}"`);
+  }
+  if (c.res_min) checkCost(c.res_min, `${where}.res_min`);
+}
+
+/** do の1要素のキー（build＋discount だけは2つ持てる） */
+export function opKey(op: Op, where = 'do'): string {
+  const keys = Object.keys(op);
+  const main = keys.filter((k) => k !== 'discount');
+  if (main.length !== 1) throw new DslError(`${where}: an op must have exactly one key (got ${keys.join(',') || 'none'})`);
+  const k = main[0];
+  if (!OP_KEYS.has(k)) throw new DslError(`${where}: unknown op "${k}"`);
+  if (keys.includes('discount') && k !== 'build') throw new DslError(`${where}: discount is only for build`);
+  return k;
+}
+
+export function validateOp(op: Op, where = 'do') {
+  const k = opKey(op, where);
+  const v = (op as Record<string, unknown>)[k];
+  switch (k) {
+    case 'gain': case 'pay': case 'steal_gain': checkCost(v, `${where}.${k}`); break;
+    case 'convert': { const c = v as Op['convert']; if (!c) throw new DslError(`${where}: convert`); checkCost(c.from, `${where}.convert.from`); checkCost(c.to, `${where}.convert.to`); break; }
+    case 'future': { const f = v as Op['future']; if (!f || !Array.isArray(f.rounds)) throw new DslError(`${where}: future.rounds`); checkCost(f.gain, `${where}.future.gain`); break; }
+    case 'draw': { const d = v as Op['draw']; if (!d || !DRAW_FROM.has(d.from)) throw new DslError(`${where}: draw.from "${d?.from}"`); break; }
+    case 'train': if (!['atk', 'def', 'any'].includes(v as string)) throw new DslError(`${where}: train "${v}"`); break;
+    case 'build': if (!['wall', 'bed', 'facility', 'any'].includes(v as string)) throw new DslError(`${where}: build "${v}"`); if (op.discount) checkCost(op.discount, `${where}.discount`); break;
+    case 'craft': if (!['weapon', 'armor', 'any'].includes(v as string)) throw new DslError(`${where}: craft "${v}"`); break;
+    case 'donate': { const d = v as Op['donate']; if (!d) throw new DslError(`${where}: donate`); checkCost(d.pay, `${where}.donate.pay`); break; }
+    default: break;
+  }
+}
+
+export function validateMod(m: Mod, where = 'mod') {
+  for (const k of Object.keys(m)) if (!MOD_KEYS.has(k)) throw new DslError(`${where}: unknown mod "${k}"`);
+  if (m.cost_discount) checkCost(m.cost_discount.res, `${where}.cost_discount.res`);
+  if (m.donate_rate) checkCost(m.donate_rate, `${where}.donate_rate`);
+}
+
+export function validateEffect(e: Effect, where = 'effect') {
+  validateWhen(e.when, `${where}.when`);
+  if (e.if) validateCond(e.if, `${where}.if`);
+  if (e.when === 'passive') {
+    if (!e.mod) throw new DslError(`${where}: passive needs mod`);
+    validateMod(e.mod, `${where}.mod`);
+  } else {
+    if (!Array.isArray(e.do)) throw new DslError(`${where}: do must be an array`);
+    e.do.forEach((op, i) => validateOp(op, `${where}.do[${i}]`));
+  }
+  if (e.limit != null && !['round', 'year', 'game'].includes(e.limit)) throw new DslError(`${where}: unknown limit "${e.limit}"`);
+}
+
+/** カード1枚の形を確かめる（知らない when / op / mod / 条件は例外） */
+export function validateCard(c: CardDef) {
+  const where = c.id ?? '?';
+  if (!c.id || !c.kind || !c.name) throw new DslError(`${where}: id/kind/name required`);
+  if (!Array.isArray(c.effects)) throw new DslError(`${where}: effects must be an array`);
+  c.effects.forEach((e, i) => validateEffect(e, `${where}.effects[${i}]`));
+  if (c.mods) validateMod(c.mods, `${where}.mods`);
+  if (c.cost) checkCost(c.cost, `${where}.cost`);
+}
+
+/** カードの効果（mods の短縮形も passive として並べる） */
+export function cardEffects(c: CardDef): Effect[] {
+  return c.mods ? [...c.effects, { when: 'passive', mod: c.mods }] : c.effects;
+}
+
+// ------------------------------------------------------------ 条件
+export interface FightEnv { race: Race; coop: boolean; k: number; boss: boolean; weak: boolean }
+export interface CondEnv {
+  stat(k: StatKey): number;
+  season: Season;
+  t: number;
+  res: Record<Res, number>;
+  has(id: string): boolean;
+  fight?: FightEnv;
+}
+
+export function checkCond(c: Cond | undefined, env: CondEnv): boolean {
+  if (!c) return true;
+  for (const k of Object.keys(c)) {
+    switch (k) {
+      case 'season': { const s = c.season!; if (Array.isArray(s) ? !s.includes(env.season) : s !== env.season) return false; break; }
+      case 'min': for (const [s, n] of Object.entries(c.min!)) { if (!STAT_KEYS.has(s as StatKey)) throw new DslError(`unknown stat "${s}"`); if (env.stat(s as StatKey) < (n as number)) return false; } break;
+      case 'max': for (const [s, n] of Object.entries(c.max!)) { if (!STAT_KEYS.has(s as StatKey)) throw new DslError(`unknown stat "${s}"`); if (env.stat(s as StatKey) > (n as number)) return false; } break;
+      case 'race': { if (!env.fight) return false; const r = c.race!; if (Array.isArray(r) ? !r.includes(env.fight.race) : r !== env.fight.race) return false; break; }
+      case 'coop': if (!env.fight || env.fight.coop !== c.coop) return false; break;
+      case 'k_min': if (!env.fight || env.fight.k < c.k_min!) return false; break;
+      case 'boss': if (!env.fight || env.fight.boss !== c.boss) return false; break;
+      case 'weak': if (!env.fight || env.fight.weak !== c.weak) return false; break;
+      case 'has': if (!env.has(c.has!)) return false; break;
+      case 'res_min': for (const [r, n] of Object.entries(c.res_min!)) if (env.res[r as Res] < (n as number)) return false; break;
+      case 't_min': if (env.t < c.t_min! - 1e-9) return false; break;
+      case 't_max': if (env.t > c.t_max! + 1e-9) return false; break;
+      default: throw new DslError(`unknown condition "${k}"`);
+    }
+  }
+  return true;
+}
+
+// ------------------------------------------------------------ mod の合計
+export interface ModSum {
+  market_qty: number; market_both: boolean; trade_count: number; accum_bonus: Record<string, number>;
+  cost_discount: { kind: string; res: Cost }[]; upkeep: number; donate_rate: Cost | null; base_guard: number; pet_power: number;
+  hand_limit: number; power: number; heal_discount: number; sell_bonus: number; bed_cap: number;
+}
+export function emptyMods(): ModSum {
+  return {
+    market_qty: 0, market_both: false, trade_count: 0, accum_bonus: {}, cost_discount: [], upkeep: 0, donate_rate: null, base_guard: 0,
+    pet_power: 0, hand_limit: 0, power: 0, heal_discount: 0, sell_bonus: 0, bed_cap: 0,
+  };
+}
+export function addMod(s: ModSum, m: Mod) {
+  for (const k of Object.keys(m)) {
+    switch (k) {
+      case 'market_qty': s.market_qty += m.market_qty!; break;
+      case 'market_both': s.market_both = s.market_both || !!m.market_both; break;
+      case 'trade_count': s.trade_count += m.trade_count!; break;
+      case 'accum_bonus': for (const [sp, n] of Object.entries(m.accum_bonus!)) s.accum_bonus[sp] = (s.accum_bonus[sp] ?? 0) + (n as number); break;
+      case 'cost_discount': s.cost_discount.push(m.cost_discount!); break;
+      case 'upkeep': s.upkeep += m.upkeep!; break;
+      case 'donate_rate': s.donate_rate = { ...(s.donate_rate ?? {}), ...m.donate_rate! }; break;
+      case 'base_guard': s.base_guard += m.base_guard!; break;
+      case 'pet_power': s.pet_power += m.pet_power!; break;
+      case 'hand_limit': s.hand_limit += m.hand_limit!; break;
+      case 'power': s.power += m.power!; break;
+      case 'heal_discount': s.heal_discount += m.heal_discount!; break;
+      case 'sell_bonus': s.sell_bonus += m.sell_bonus!; break;
+      case 'bed_cap': s.bed_cap += m.bed_cap!; break;
+      default: throw new DslError(`unknown mod "${k}"`);
+    }
+  }
+}
+
+// ------------------------------------------------------------ 費用の計算
+export function addCost(a: Cost, b: Cost, mult = 1): Cost {
+  const o: Cost = { ...a };
+  for (const [r, n] of Object.entries(b)) o[r as Res] = (o[r as Res] ?? 0) + (n as number) * mult;
+  return o;
+}
+export function subCost(a: Cost, b: Cost): Cost {
+  const o: Cost = {};
+  for (const [r, n] of Object.entries(a)) { const v = Math.max(0, (n as number) - (b[r as Res] ?? 0)); if (v) o[r as Res] = v; }
+  return o;
+}
+export function cleanCost(c: Cost): Cost {
+  return Object.fromEntries(Object.entries(c).filter(([, n]) => n)) as Cost;
+}
+export const costUnits = (c: Cost) => Object.values(c).reduce((a, n) => a + (n as number), 0);
