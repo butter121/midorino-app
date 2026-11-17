@@ -1,6 +1,6 @@
 // 霧谷 v2 — タップで詳しく見るシート（v1 の InspectSheet と同じ見た目。中身は v2 のカード・魔物・マス・プレイヤー）
 import { useEffect, type ReactNode } from 'react';
-import { DATA, type Monster } from '@midorino/engine/src/kiridani2';
+import { DATA, type Monster, FLAVOR } from '@midorino/engine/src/kiridani2';
 import { KIcon, NestScene, TerrainArt } from '../kiridani/art-registry';
 import { CostRow, ResCount, Token } from '../kiridani/ui/parts';
 import { CardChip2, CardFace2, ENGINE_JP, KIND2_JP, LeaderArt, MonArt } from './parts2';
@@ -76,6 +76,7 @@ function body(target: string, v: View2): { kind: string; title: string; node: Re
         kind: s?.stage ? `段階${s.stage}の場所` : '行動マス', title: placeName(id), node: <>
           {!s?.stage && <div className="kd-insp-art"><TerrainArt id={id} size={96} /></div>}
           {st && <p className="kd-insp-p kd-insp-big">{st.text}</p>}
+          {st && FLAVOR[id] && <p className="kd2-flavor">{FLAVOR[id]}</p>}
           {def?.accum && <Row k="毎ラウンドたまる"><CostRow cost={def.accum} size={18} signed /></Row>}
           {s && Object.keys(s.stock).length > 0 && <Row k="いまたまっている"><CostRow cost={s.stock} size={18} /></Row>}
           {def && <Row k="できること">{def.options.map((ops, i) => <span key={i} className="kd-insp-chip">{ops.length ? ops.map((o) => Object.keys(o)[0]).map((x) => OPS_JP[x] ?? x).join('＋') : 'たまった資源を取る'}</span>)}</Row>}

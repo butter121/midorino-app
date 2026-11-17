@@ -19,3 +19,4 @@ export {
   type OfferView as OfferView2, type OfferNote as OfferNote2, type SeatSession2, type SyncEvent, type NetEvent, syncEvent,
 } from './net';
 export { previewFight, choiceLabel, optionLabel, type FightPreview } from './preview';
+export { FLAVOR } from './cards/flavor';

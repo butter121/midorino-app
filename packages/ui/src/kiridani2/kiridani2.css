@@ -76,3 +76,6 @@
 @media (orientation: portrait), (max-width: 639px) {
   .kd2 .kd-tidechip { display: none; }
 }
+
+/* フレーバー文 */
+.kd2-flavor { margin: 6px 0 0; font-size: 12px; font-style: italic; line-height: 1.5; opacity: .72; }

@@ -3,7 +3,7 @@ import { BossArt, CardBackArt, HeroArt, ItemArt, JobArt, KIcon, MonsterArt } fro
 import { HERO_IDS, ITEM_IDS, ITEM_KIND, JOB_IDS, MONSTER_IDS, BOSS_IDS } from '../kiridani/art';
 import { InfoDot } from '../kiridani/ui/inspect';
 import { CostRow } from '../kiridani/ui/parts';
-import { DATA, type Monster } from '@midorino/engine/src/kiridani2';
+import { DATA, FLAVOR, type Monster } from '@midorino/engine/src/kiridani2';
 import { ANC2, CARD2, QUEST2 } from './view';
 
 export const KIND2_JP: Record<string, string> = { leader: 'リーダー', occ: '職能', weapon: '武具', armor: '防具', tool: '道具', spell: '秘術', gear: '共通の装備', stage: '段階', ancient: '古代の品', quest: '依頼' };
@@ -56,6 +56,7 @@ export function CardFace2({ id, size = 'm', selected, onClick, disabled, anchor 
         {size !== 's' && <>
           {(c?.cost || c?.fame || stats.length > 0) && <div className="kd-card-cost">{c?.cost && <CostRow cost={c.cost} size={14} />}{c?.fame ? <span className="kd-fame-s">名声{c.fame}</span> : null}{stats.map((s) => <span key={s} className="kd-fame-s">{s}</span>)}</div>}
           <p className="kd-card-text">{text}</p>
+          {size === 'l' && FLAVOR[id] && <p className="kd2-flavor">{FLAVOR[id]}</p>}
           {q && <div className="kd-card-chars">{q.secret ? `秘密依頼・名声${q.fame ?? DATA.SECRET_FAME}` : `共通の依頼・先着 ${DATA.QUEST_FAME.join('・')}`}</div>}
         </>}
       </div>
