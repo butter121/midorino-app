@@ -26,7 +26,8 @@ export type Action =
   | { t: 'offer'; b: number; give: Cost; get: Cost }            // 人への取引の申し込み（相手の返事を待つ）
   | { t: 'withdraw' }                                           // 申し込みの取り下げ（id は申し込みの番号）
   | { t: 'reply'; accept: boolean }                             // 申し込まれた人の返事（id は申し込みの番号）
-  | { t: 'expire' };                                            // 時間切れ（審判の記録の読み直し用。席は -1）
+  | { t: 'expire' }                                              // 時間切れ（審判の記録の読み直し用。席は -1）
+  | { t: 'away'; v: boolean };                                  // 退室・復帰（ホストが送る。席は -1、id は席の番号）
 
 /** 人どうしの取引の申し込み（申し込んだ人と、申し込まれた人にだけ送る） */
 export interface OfferView {
@@ -266,7 +267,7 @@ export class KiridaniReferee {
   /** seat の席への問い（なければ null） */
   prompt(seat: number): Prompt | null {
     const s = this.s, g = s.g, w = s.waiting;
-    if (!w || !this.humans.includes(seat)) return null;
+    if (!w || !this.humans.includes(seat) || this.s.isAuto(seat)) return null;
     const base = { seat, snap: encodeGame(g, seat), partners: [] as number[], left: 0 };
     const o = this.open;
     const simul = o && (w.k === 'char' || (w.k === 'draft' && !w.ingame));
@@ -305,6 +306,11 @@ export class KiridaniReferee {
 
   private act1(seat: number, id: string, a: Action): ActResult {
     const of = this.offer;
+    if (a.t === 'away') {
+      const who = Number(id);
+      if (seat !== -1 || !this.humans.includes(who)) return { ok: false, error: '形式が正しくありません' };
+      return this.setAway1(who, a.v === true);
+    }
     if (a.t === 'reply' || a.t === 'withdraw' || a.t === 'expire') {
       if (!of || of.id !== id) return { ok: false, error: 'この申し込みはもう終わっています' };
       if (a.t === 'reply' && seat !== of.to) return { ok: false, error: 'あなたへの申し込みではありません' };
@@ -331,6 +337,37 @@ export class KiridaniReferee {
       const evs = applyAction(this.s, a);
       this.take(evs);
       this.flush();
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+    this.changed();
+    return { ok: true };
+  }
+
+  // ---------------------------------------------------------- 退室・復帰
+  /** 退室している人の席（そのあいだは弱い AI が代わりに動かす） */
+  get away(): number[] { return this.humans.filter((x) => this.s.isAuto(x)); }
+  isAway(seat: number) { return this.s.isAuto(seat); }
+
+  /** seat の人が退室した（true）／戻った（false）。記録に残るので読み込み直しても同じになる */
+  setAway(seat: number, v: boolean): boolean {
+    if (!this.humans.includes(seat) || this.s.isAuto(seat) === v || this.s.done) return false;
+    return this.act(-1, String(seat), { t: 'away', v }).ok;
+  }
+
+  private setAway1(seat: number, v: boolean): ActResult {
+    if (this.s.isAuto(seat) === v) return { ok: false, error: 'もうそうなっています' };
+    if (v) {
+      // 返事待ちの取引は流す（申し込んだ人なら取り下げ、申し込まれた人なら断る）
+      const of = this.offer;
+      if (of && (of.from === seat || of.to === seat)) this.closeOffer(of.from === seat ? 'withdraw' : 'decline');
+      this.early.delete(seat);
+    }
+    try {
+      // いまこの席に聞いているときだけ、AI の答えで先へ進む（ほかの席の問いの番号は変えない）
+      const asked = v && this.s.waiting?.p.pid === seat;
+      const evs = this.s.setAuto(seat, v, 'novice');
+      if (asked) { this.take(evs); this.flush(); }
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }

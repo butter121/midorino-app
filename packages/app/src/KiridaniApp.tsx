@@ -23,6 +23,17 @@ const HEROES = ['toma', 'mina', 'goro', 'nana'];
 function load<T>(k: string, d: T): T { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : d; } catch { return d; } }
 function save(k: string, v: unknown) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 保存できなくても遊べる */ } }
 const hasSavedRoom = () => { try { return !!localStorage.getItem(KD_HOST_KEY); } catch { return false; } };
+/** 途中の試合（ホストなら保存した部屋が始まっている、参加者なら最後に入った試合の部屋） */
+const LAST_ROOM = 'kd.lastRoom';
+function unfinished(): Mode | null {
+  try {
+    const h = localStorage.getItem(KD_HOST_KEY);
+    if (h && (JSON.parse(h) as { game?: unknown }).game) return { k: 'host', resume: true };
+  } catch { /* 無視 */ }
+  const room = load<string>(LAST_ROOM, '');
+  return room ? { k: 'guest', room } : null;
+}
+const forgetRoom = () => { try { localStorage.removeItem(LAST_ROOM); } catch { /* 無視 */ } };
 /** 演出の速さ（?speed=minimal などはテスト用） */
 const SPEED = (() => { try { const v = new URLSearchParams(location.search).get('speed'); return v === 'minimal' || v === 'fast' || v === 'normal' ? v : undefined; } catch { return undefined; } })();
 const clearHash = () => { try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 無視 */ } };
@@ -45,6 +56,7 @@ export default function KiridaniApp() {
   if (mode.k === 'friends') return <Friends onBack={toTitle} onHost={(resume) => setMode({ k: 'host', resume })} />;
   if (mode.k === 'host') return <HostScreen resume={mode.resume} onLeave={toTitle} />;
   if (mode.k === 'guest') return <GuestScreen roomId={mode.room} onLeave={toTitle} />;
+  const back = unfinished();
 
   return (
     <div className="kd-root kda-title">
@@ -56,6 +68,7 @@ export default function KiridaniApp() {
       <div className="kda-modes">
         <button type="button" className="kd-btn kda-start" onClick={() => setMode({ k: 'solo' })}>ひとりで遊ぶ（AI）</button>
         <button type="button" className="kd-btn kda-start is-alt" onClick={() => setMode({ k: 'friends' })}>友だちと遊ぶ</button>
+        {back && <button type="button" className="kd-btn kda-start is-resume" onClick={() => setMode(back)}>途中の試合にもどる</button>}
       </div>
     </div>
   );
@@ -227,11 +240,12 @@ function HostScreen({ resume, onLeave }: { resume: boolean; onLeave: () => void 
   const g = room.game;
   const offer = hostOffer; const note = hostNote;
   const waitFor = ref.waitingSeats();
-  const away = room.members.filter((m) => m.status === 'joined' && !m.online && waitFor.includes(g.seats.indexOf(m.id)));
-  const banner = away.length ? <><b>{away.map((m) => m.name).join('・')}</b>の接続が切れています（戻るのを待っています）</> : undefined;
+  const dropping = room.dropping;
+  const banner = dropping.length ? <><b>{dropping.join('・')}</b>の接続が切れました（戻らなければ、少ししてAIが代わりに動かします）</> : undefined;
+  const awayNames = ref.away.map((x) => g.names[x]);
   return (
     <>
-    <KiridaniOnlineGame seat={seat} events={events} prompt={prompt} waitFor={waitFor} names={g.names} onAct={onAct} onJudge={onJudge} banner={banner} speed={SPEED}
+    <KiridaniOnlineGame seat={seat} events={events} prompt={prompt} waitFor={waitFor} names={g.names} onAct={onAct} onJudge={onJudge} banner={banner} away={awayNames} speed={SPEED}
       offer={offer} note={note}
       extra={<Menu chat={chat} items={[['部屋を閉じてタイトルへ', leave]]} />} />
     {chat.node}
@@ -246,7 +260,13 @@ function GuestScreen({ roomId, onLeave }: { roomId: string; onLeave: () => void 
   const [joining, setJoining] = useState(client.known);
   useEffect(() => { if (joining) client.connect(); }, [client, joining]);
   const leave = () => { client.close(); onLeave(); };
+  const quit = () => { forgetRoom(); leave(); };
   const prompt = useStablePrompt(client.prompt);
+  // 途中の試合を覚えておく（終わった・閉じた・断られたら忘れる）
+  useEffect(() => {
+    if (client.status === 'denied' || client.status === 'closed' || client.done) forgetRoom();
+    else if (client.started) save(LAST_ROOM, roomId);
+  }, [client.status, client.done, client.started, roomId]); // eslint-disable-line react-hooks/exhaustive-deps
   const onAct = useCallback((id: string, a: Action) => client.act(id, a), [client]);
   const onJudge = useCallback((b: number, give: Cost, get: Cost) => client.judge(b, give, get), [client]);
   // 色の席：始まったら自分の席、待合室では参加者の並び順（始まったあとの席と同じ）
@@ -254,15 +274,21 @@ function GuestScreen({ roomId, onLeave }: { roomId: string; onLeave: () => void 
   const mySeat = client.started ? client.seat : humans.findIndex((m) => m.id === client.memberId);
   const chat = useChat(client.chat, mySeat, useCallback((t: string, st: boolean) => client.say(t, st), [client]));
 
-  if (client.status === 'denied') return <RoomMessage title="参加できませんでした" text={client.reason} onBack={leave} />;
-  if (client.status === 'closed') return <RoomMessage title="部屋が閉じました" text={client.started ? `${client.reason}。試合はここで終わりです。` : client.reason} onBack={leave} />;
+  if (client.status === 'denied') return <RoomMessage title="参加できませんでした" text={client.reason} onBack={quit} />;
+  if (client.status === 'closed') return <RoomMessage title="部屋が閉じました" text={client.started ? `${client.reason}。試合はここで終わりです。` : client.reason} onBack={quit} />;
   if (client.started) {
-    const banner = client.status === 'offline' ? (client.reason || 'ホストとの接続が切れました。つなぎ直しています…') : undefined;
+    const lb = client.lobby;
+    // 席の番号は、参加者の並び（ホスト → 参加した順）と同じ
+    const away = lb?.away ?? [];
+    const awayNames = away.filter((x) => x !== client.seat).map((x) => client.names[x]);
+    const notAway = client.status === 'offline' ? [] : humans.map((m, i) => (m.status === 'joined' && !m.online && i !== client.seat && !away.includes(i) ? client.names[i] ?? m.name : '')).filter(Boolean);
+    const banner = client.status === 'offline' ? (client.reason || 'ホストとの接続が切れました。つなぎ直しています…')
+      : notAway.length ? <><b>{notAway.join('・')}</b>の接続が切れました（戻らなければ、少ししてAIが代わりに動かします）</> : undefined;
     return (
       <>
-      <KiridaniOnlineGame seat={client.seat} events={client.events} prompt={prompt} waitFor={client.wait} names={client.names} onAct={onAct} onJudge={onJudge} banner={banner} speed={SPEED}
+      <KiridaniOnlineGame seat={client.seat} events={client.events} prompt={prompt} waitFor={client.wait} names={client.names} onAct={onAct} onJudge={onJudge} banner={banner} away={awayNames} speed={SPEED}
         offer={client.offer} note={client.note}
-        extra={<Menu chat={chat} items={[['部屋を出てタイトルへ', leave]]} />} />
+        extra={<Menu chat={chat} items={client.done ? [['タイトルへ', quit]] : [['いったん退室する（AIが代わりに動かします）', leave]]} />} />
       {chat.node}
       </>
     );

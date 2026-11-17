@@ -43,9 +43,11 @@ export class KiridaniSession implements SeatSession {
   done = false;
   scores: number[] = [];
   private started = false;
+  private readonly seed: number;
 
   constructor(o: SessionOptions) {
     const seed = o.seed ?? 1;
+    this.seed = seed;
     this.humans = o.humans ? [...o.humans] : (o.human ?? 0) >= 0 ? [o.human ?? 0] : [];
     this.human = this.humans[0] ?? -1;
     const levels = o.levels ?? Array(o.n).fill('mid');
@@ -175,6 +177,21 @@ export class KiridaniSession implements SeatSession {
     this.waiting = { ...w, opts: this.g.legal(w.p) };
     return this.g.E!.splice(0);
   }
+
+  /** 人間の席を AI に任せる／人に戻す（オンラインで退室しているあいだ）。
+   * 任せた席にいま聞いている途中なら、その AI がすぐ答えて次の選択まで進める。乱数は AI が自分の種で持つので、
+   * 同じ順に同じことをすれば同じ試合になる（ホストの読み込み直し） */
+  setAuto(seat: number, on: boolean, level: Level = 'novice'): GameEvent[] {
+    const p = this.g.players[seat];
+    if (!p || !this.humans.includes(seat) || on === !!p.ai) return [];
+    if (!on) { p.ai = null; return []; }
+    const ai = new AI(level, { seed: (this.seed * 100 + seat) * 7 + 3 });
+    p.ai = ai;
+    if (this.done || !this.waiting || this.waiting.p.pid !== seat) return [];
+    return this.run(ai.respond(this.waiting));
+  }
+  /** AI に任せている席か */
+  isAuto(seat: number): boolean { return this.humans.includes(seat) && !!this.g.players[seat]?.ai; }
 
   /** 人間の席も AI と同じ考えで答えて最後まで（テスト・お任せ用） */
   autoplay(level: Level = 'mid'): GameEvent[] {

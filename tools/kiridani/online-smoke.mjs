@@ -297,6 +297,36 @@ try {
     traded = true;
     return true;
   }
+  // 途中退室：参加者が⚙から退室 → 少しして AI が代わりに動かす（ホストはひとりで進められる）→ タイトルの「途中の試合にもどる」で同じ席へ
+  let awayDone = false;
+  async function awayScenario() {
+    awayDone = true;
+    const before = await guest.textContent('.kd-pchip.is-me');
+    await guest.click('.kd-hud-ctl .kd-cat-menu:not(.kd-hudmenu) summary');
+    await guest.click('button:has-text("いったん退室する")');
+    await guest.waitForSelector('button:has-text("途中の試合にもどる")', { timeout: 10000 });
+    await shot(guest, '63-title-resume-guest.png');
+    await host.waitForSelector('.kd-netnote:has-text("接続が切れました")', { timeout: 10000 });
+    check(true, '退室するとホストに「接続が切れました」が出る');
+    await host.waitForSelector('.kd-netnote-away:has-text("アオイ")', { timeout: 20000 });
+    check(true, '猶予のあと、ホストに「退室中（AIが代わりに動かします）」が出る');
+    const r0 = await roundOf(host);
+    const t1 = Date.now();
+    let moved = 0;
+    while (Date.now() - t1 < 60_000 && (await roundOf(host)) < r0 + 1) {
+      const r = await step(host).catch(() => null);
+      if (r) moved++;
+      await sleep(40);
+    }
+    check((await roundOf(host)) > r0, `退室中もAIが代わりに動いて試合が進む（ラウンド ${r0}→${await roundOf(host)}）`);
+    await shot(host, '63-away-host.png');
+    await guest.click('button:has-text("途中の試合にもどる")');
+    await guest.waitForSelector('.kd-pchip.is-me', { timeout: 20000 });
+    await host.waitForFunction(() => !document.querySelector('.kd-netnote-away'), null, { timeout: 20000 });
+    const after = await guest.textContent('.kd-pchip.is-me');
+    const name = (x) => x.replace(/[0-9]/g, '');
+    check(name(after) === name(before), `タイトルから同じ席に戻り、ホストの「退室中」が消える（${name(after)}）`);
+  }
   const roundOf = (page) => page.evaluate(() => Number(document.querySelector('.kd-hud-meta b')?.textContent ?? 0));
   let reloaded = false, guestShot = false;
   const counts = {};
@@ -322,6 +352,9 @@ try {
     if (!traded && reloaded && guestShot && await host.$('.kd-root.is-myturn') && !(await host.$('.kd-ovwrap'))) {
       try { await tradeScenario(); } catch (e) { check(false, `取引の通し：${String(e).split('\n')[0]}`); traded = true; }
     }
+    if (!awayDone && traded && chatted && (await roundOf(host)) >= 4) {
+      try { await awayScenario(); } catch (e) { check(false, `途中退室の通し：${String(e).split('\n')[0]}`); }
+    }
     for (const page of [host, guest]) {
       const r = await step(page).catch((e) => { if (!/detached|not attached|Target closed|intercepts pointer/.test(String(e))) errors.push(`step: ${String(e).split('\n')[0]}`); return null; });
       if (r) counts[r] = (counts[r] ?? 0) + 1;
@@ -346,6 +379,7 @@ try {
   if (!guestShot) check(false, '参加者の番の盤面にたどり着けなかった');
   if (!traded) check(false, '人どうしの取引を試せなかった');
   if (!chatted) check(false, 'チャットを試せなかった');
+  if (!awayDone) check(false, '途中退室を試せなかった');
   if (ROUNDS >= 12) {
     await guest.waitForSelector('.kd-final', { timeout: 60000 });
     for (const p of [host, guest]) await p.waitForSelector('.kd-hud-ctl .kd-iconbtn[disabled]', { timeout: 60000 });

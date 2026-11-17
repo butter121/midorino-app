@@ -3,7 +3,7 @@
 // 試合の記録（種と答えの順番）を保存しておき、ホストが画面を読み込み直しても同じ試合に戻れる。
 import { KiridaniReferee, type Action, type ActResult, type Cost, type Prompt, type TradeJudge } from '@midorino/engine/src/kiridani';
 import { randomHex, type LobbyMember } from './protocol';
-import { EV_CHUNK, KD_MAX_MSG, type KdLevel, type KdLobby, type KdToGuest, type KdToHost } from './kiridaniProtocol';
+import { EV_CHUNK, KD_AWAY_GRACE_MS, KD_MAX_MSG, type KdLevel, type KdLobby, type KdToGuest, type KdToHost } from './kiridaniProtocol';
 import type { Conn, Net } from './transport';
 import { CHAT_KEEP, CHAT_STAMPS, ChatLimiter, sanitizeChat, type ChatMsg } from './chat';
 
@@ -36,8 +36,12 @@ export class KdHostRoom {
   private clock: () => number;
   /** 人どうしの取引の返事を待つ長さ（テスト用。既定は審判の 60 秒） */
   private offerMs?: number;
+  /** 接続が切れてから AI に代わるまで（テスト用。既定 KD_AWAY_GRACE_MS） */
+  private graceMs: number;
+  private graceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  constructor(private net: Net, hostName: string, opts: { saved?: Saved; store?: Store; seed?: number; offerTimeoutMs?: number; now?: () => number } = {}) {
+  constructor(private net: Net, hostName: string, opts: { saved?: Saved; store?: Store; seed?: number; offerTimeoutMs?: number; awayGraceMs?: number; now?: () => number } = {}) {
+    this.graceMs = opts.awayGraceMs ?? KD_AWAY_GRACE_MS;
     this.clock = opts.now ?? (() => Date.now());
     this.offerMs = opts.offerTimeoutMs;
     this.store = opts.store === undefined ? defaultStore() : opts.store;
@@ -87,6 +91,8 @@ export class KdHostRoom {
 
   /** 部屋を閉じる（参加者に知らせてから） */
   close(reason = 'ホストが部屋を閉じました') {
+    for (const t of this.graceTimers.values()) clearTimeout(t);
+    this.graceTimers.clear();
     for (const m of this.members) if (m.conn) this.send(m.conn, { t: 'closed', reason });
     const srv = this.server;
     this.server = null;
@@ -96,7 +102,7 @@ export class KdHostRoom {
   }
 
   lobby(): KdLobby {
-    return { roomId: this.roomId, started: !!this.game, seats: this.seats, level: this.level, members: this.members.map(({ id, name, status, online }) => ({ id, name, status, online })) };
+    return { roomId: this.roomId, started: !!this.game, seats: this.seats, level: this.level, members: this.members.map(({ id, name, status, online }) => ({ id, name, status, online })), ...(this.referee ? { away: this.referee.away } : {}) };
   }
 
   private accept(conn: Conn) {
@@ -124,7 +130,7 @@ export class KdHostRoom {
       }
     });
     conn.onClose(() => {
-      if (member && member.conn === conn) { member.conn = null; member.online = false; this.broadcast(); this.changed(); }
+      if (member && member.conn === conn) { member.conn = null; member.online = false; this.watchAway(member); this.broadcast(); this.changed(); }
     });
   }
 
@@ -135,6 +141,7 @@ export class KdHostRoom {
       if (m && m.token === msg.token && m.status !== 'host') {
         if (m.conn && m.conn !== conn) m.conn.close();
         m.conn = conn; m.online = true; m.sent = 0;
+        this.comeBack(m);
         this.send(conn, { t: 'welcome', memberId: m.id, token: m.token, status: m.status });
         this.send(conn, { t: 'chat', msgs: this.chat, reset: true });
         this.broadcast();
@@ -152,6 +159,27 @@ export class KdHostRoom {
     this.changed();
     return m;
   }
+
+  // ---- 途中退室 ----
+  /** 試合中に接続が切れた人：猶予のあいだに戻らなければ、その席を弱い AI に任せる */
+  private watchAway(m: Member) {
+    const ref = this.referee, seat = this.seatOf(m.id);
+    if (!ref || ref.done || seat < 0 || m.status !== 'joined' || m.online || ref.isAway(seat) || this.graceTimers.has(m.id)) return;
+    const t = setTimeout(() => {
+      this.graceTimers.delete(m.id);
+      if (!m.online && this.referee === ref && ref.setAway(seat, true)) { this.broadcast(); this.changed(); }
+    }, this.graceMs);
+    this.graceTimers.set(m.id, t);
+  }
+  /** 戻ってきた人：AI に任せていたら席を返す */
+  private comeBack(m: Member) {
+    const t = this.graceTimers.get(m.id);
+    if (t) { clearTimeout(t); this.graceTimers.delete(m.id); }
+    const ref = this.referee, seat = this.seatOf(m.id);
+    if (ref && seat >= 0 && ref.isAway(seat)) ref.setAway(seat, false);
+  }
+  /** 接続が切れていて、まだ AI に代わっていない人 */
+  get dropping(): string[] { return this.members.filter((m) => this.graceTimers.has(m.id)).map((m) => m.name); }
 
   // ---- チャット ----
   /** 色に使う席（参加者の並び順＝始まったあとの席） */
@@ -233,6 +261,8 @@ export class KdHostRoom {
     ref.replay(actions);
     this.referee = ref;
     ref.subscribe(() => { this.pushAll(); this.changed(); });
+    // 始めた時・読み込み直した時に来ていない人も、猶予のあとは AI に任せる
+    for (const m of this.members) this.watchAway(m);
   }
 
   // ---- 試合中 ----
