@@ -2,11 +2,11 @@
 // start() / answer() は「次に人間が選ぶ場面」か試合の終わりまで進め、その間に起きた出来事（GameEvent）を返す。
 // 画面は出来事を useTable().push() に渡し、waiting（いま人間に聞いていること）を見て選択肢を出す。
 import * as D from './data';
-import type { Cost, Res } from './data';
+import type { Cost, Element, Res } from './data';
 const { MON } = D;
 import { AI, type Level } from './ai';
-import { Game, canPay, type Gen, type Opt, type Option, type Player, type Req } from './engine';
-import type { GameEvent } from './types';
+import { BASIC, Game, canPay, type FightPick, type Gen, type Opt, type Option, type Player, type Req } from './engine';
+import type { GameEvent, PowerPart } from './types';
 
 export interface SessionOptions {
   n: number;
@@ -60,6 +60,78 @@ export class KiridaniSession {
     if (w.k === 'char' && !w.options.includes(a as string)) throw new Error('bad character');
     if (w.k === 'choose' && !w.opts.includes(a as Option)) throw new Error('bad option');
     return this.run(a);
+  }
+
+  // ---------------------------------------------------------- 人間の席だけの選び方（AI の道筋は通らない）
+  /** 戦闘：巣・主の巣に何人で、何を使って挑むか（待ち伏せも）。エンジンが置けるか・払えるかを確かめる */
+  fight(sel: FightPick): GameEvent[] {
+    const w = this.waiting;
+    if (!w || w.k !== 'choose') throw new Error('not your turn');
+    const chk = this.g.check_pick(w.p, sel);
+    if (!chk.ok) throw new Error(chk.error);
+    this.g.pick = { pid: w.p.pid, boosts: [...sel.boosts], wait: !!sel.wait };
+    return this.run([sel.sid, [sel.k, 'pick', chk.how]] as Option);
+  }
+
+  /** 市場：1種類を好きな数だけ売る／買う */
+  market(sid: string, kind: 'buy' | 'sell', r: Res, q: number): GameEvent[] {
+    const w = this.waiting;
+    if (!w || w.k !== 'choose') throw new Error('not your turn');
+    const err = this.g.check_market(w.p, sid, kind, r, q);
+    if (err) throw new Error(err);
+    return this.run([sid, [kind, r, q]] as Option);
+  }
+
+  /** このラウンドにした取引の数（人間の席） */
+  private tradesDone: Record<number, number> = {};
+  /** このラウンドにあと何回取引を持ちかけられるか（AI と同じ：1回、アヤ・行商の荷車で+1ずつ） */
+  tradeLeft(): number {
+    const p = this.player;
+    if (!p || !this.waiting || this.waiting.k !== 'choose') return 0;
+    const tries = 1 + (p.char === 'aya' ? 1 : 0) + (p.tools.includes('i15') ? 1 : 0);
+    return Math.max(0, tries - (this.tradesDone[this.g.round] ?? 0));
+  }
+
+  /** 取引の相手（取引する AI の席） */
+  tradePartners(): number[] {
+    return this.g.players.filter((o) => o.pid !== this.human && o.ai instanceof AI && o.ai.trade_on).map((o) => o.pid);
+  }
+
+  /** 取引の提案が成り立つか、相手の AI が受けるか（AI の取引の評価をそのまま使い、乱数は使わない） */
+  judgeTrade(b: number, give: Cost, get: Cost): TradeJudge {
+    const p = this.player;
+    const g = this.g;
+    const clean = (c: Cost) => Object.fromEntries(Object.entries(c).filter(([, n]) => n)) as Cost;
+    give = clean(give); get = clean(get);
+    const units = (c: Cost) => Object.values(c).reduce((a, n) => a + (n as number), 0);
+    const fail = (error: string): TradeJudge => ({ ok: false, accept: false, gain: 0, error });
+    if (!p || !this.waiting || this.waiting.k !== 'choose') return fail('あなたの番に持ちかけられる');
+    if (this.tradeLeft() <= 0) return fail('このラウンドの取引は終わり');
+    const o = g.players[b];
+    if (!o || o === p || !(o.ai instanceof AI)) return fail('相手がいない');
+    if (!o.ai.trade_on) return fail('この相手は取引しない');
+    if (!units(give) || !units(get)) return fail('渡すものと受け取るものを選ぶ');
+    if (units(give) > TRADE_MAX || units(get) > TRADE_MAX) return fail(`片側${TRADE_MAX}個まで`);
+    for (const r of Object.keys(give)) if (r in get) return fail('同じ資源を渡して受け取ることはできない');
+    for (const [r, n] of Object.entries(give)) if (!BASIC.includes(r as Res) || p.res[r as Res] < (n as number)) return fail('渡すものが足りない');
+    for (const [r, n] of Object.entries(get)) if (!BASIC.includes(r as Res) || o.res[r as Res] < (n as number)) return fail('相手の持ち物が足りない');
+    // 相手から見ると get を渡して give を受け取る
+    const j = o.ai.judge_offer(g, o, get, give);
+    return { ok: true, accept: j.accept, gain: j.gain };
+  }
+
+  /** 取引する（相手が受けたときだけ。置き場所の選択は続く） */
+  trade(b: number, give: Cost, get: Cost): GameEvent[] {
+    const j = this.judgeTrade(b, give, get);
+    if (!j.ok) throw new Error(j.error);
+    if (!j.accept) throw new Error('相手が断った');
+    const w = this.waiting as Extract<Req, { k: 'choose' }>;
+    const clean = (c: Cost) => Object.fromEntries(Object.entries(c).filter(([, n]) => n)) as Cost;
+    this.g.trade(w.p, this.g.players[b], clean(give), clean(get));
+    this.tradesDone[this.g.round] = (this.tradesDone[this.g.round] ?? 0) + 1;
+    // 持ち物が変わったので選べる行動を数え直す
+    this.waiting = { ...w, opts: this.g.legal(w.p) };
+    return this.g.E!.splice(0);
   }
 
   /** 人間の席も AI と同じ考えで答えて最後まで（テスト・お任せ用） */
@@ -156,4 +228,159 @@ export function describeOption(g: Game, p: Player, [sid, opt]: Option): { title:
     return { title: t, detail: join ? `${g.names[nd!.wait!.pid] ?? ''}が待っている。${MODE_TEXT[mode]}` : MODE_TEXT[mode] };
   }
   return { title: a?.name ?? sid };
+}
+
+// ------------------------------------------------------------ 取引・戦闘の選択（人間の席）
+/** 人間からの取引の上限（片側の個数）。AI どうしは 1:1・2:1・1:2 */
+export const TRADE_MAX = 3;
+export interface TradeJudge { ok: boolean; accept: boolean; gain: number; error?: string }
+
+export interface FightChip {
+  /** 画面の中で一意（同じ名前が2つあるときは #1 など） */
+  key: string;
+  /** エンジンでの名前（boost_list の名前） */
+  name: string;
+  label: string;
+  power: number;
+  cost: Cost;
+  el?: Element;
+  /** 使うと捨てる秘術カード */
+  card?: string;
+  /** 外せない（影分身の呪符で満員の巣に入るとき） */
+  locked?: boolean;
+  /** 弱点・潮・天候に合う属性なら、その分の見込み */
+  bonus?: string;
+  /** 矢・ポーション・士気の説明 */
+  src?: string;
+}
+
+export const BOOST_JP: Record<string, string> = { arrow: '矢', potion: 'ポーション', morale: '士気' };
+const BOOST_SRC: Record<string, string> = { arrow: '木材で放つ', potion: '薬草で作る', morale: '食料でふるい立つ' };
+
+/** 戦闘で使えるもの（タップでオン・オフする札） */
+export function fightChips(g: Game, p: Player, sid: string): FightChip[] {
+  const boss = sid === 'lair';
+  const m = boss ? g.bosses[g.round] : MON[g.nest(sid).mon!];
+  const how = g.legal(p).find((o) => o[0] === sid && Array.isArray(o[1]))?.[1] as (string | number)[] | undefined;
+  const seen: Record<string, number> = {};
+  const tide = g.tide();
+  const we = D.WEATHER_EL[g.cur_weather()];
+  return g.boost_list(p, m, boss).map(([nm, pw, cost, el, card]) => {
+    seen[nm] = (seen[nm] ?? 0) + 1;
+    const bon: string[] = [];
+    if (el && m.weak === el) bon.push(`弱点+${D.WEAKNESS_BONUS}`);
+    if (el && tide === el) bon.push(`潮+${D.TIDE_BONUS}`);
+    if (el && we && we[0] === el) bon.push(`天候+${we[1]}`);
+    return {
+      key: `${nm}#${seen[nm]}`, name: nm,
+      label: BOOST_JP[nm] ?? D.CARDS[nm]?.name ?? nm,
+      power: pw, cost: Object.fromEntries(Object.entries(cost).filter(([, n]) => n)) as Cost,
+      ...(el ? { el } : {}), ...(card ? { card } : {}),
+      ...(nm === 'i23' && how?.[2] === 'i23' ? { locked: true } : {}),
+      ...(bon.length ? { bonus: bon.join('・') } : {}),
+      ...(BOOST_SRC[nm] ? { src: BOOST_SRC[nm] } : {}),
+    } as FightChip;
+  });
+}
+
+export interface PickPreview {
+  ok: boolean;
+  error?: string;
+  monster: string;
+  boss: boolean;
+  /** 自分の戦力（内訳 parts の合計） */
+  power: number;
+  parts: PowerPart[];
+  /** 待ち伏せしている相手の戦力（共闘のとき） */
+  partner: number;
+  /** 主の巣に先に置いた人たちの戦力 */
+  others: number;
+  /** 魔物の強さ（傷・罠・天候を引いたあと） */
+  strength: number;
+  /** 運命でいくつ以上が出れば勝てるか */
+  need: number;
+  pwin: number;
+  /** 運命の山（残り） */
+  fate: number[];
+  cost: Cost;
+  counter: number;
+  defense: number;
+  /** 反撃で負傷する見込みの人数 */
+  injuries: number;
+  /** 何人で置けるか */
+  ks: number[];
+  /** 待ち伏せを選べるか */
+  waitOk: boolean;
+  /** 待ち伏せている人（共闘に加わる） */
+  joining?: number;
+}
+
+/** 選んだ使うもので挑んだときの見込み（盤面の複製で計算するので本物は変わらない） */
+export function previewPick(g: Game, p: Player, sel: FightPick): PickPreview {
+  const sid = sel.sid;
+  const boss = sid === 'lair';
+  const legal = g.legal(p).filter((o) => o[0] === sid && Array.isArray(o[1])).map((o) => o[1] as (string | number)[]);
+  const ks = [...new Set(legal.map((o) => o[0] as number))].sort();
+  const waitOk = legal.some((o) => o[0] === sel.k && o[1] === 'wait');
+  const chk = g.check_pick(p, sel);
+  const nd0 = boss ? null : g.nest(sid);
+  const g2 = g.clone_for(p.pid, nd0?.wait ? [nd0.wait.pid] : []);
+  const p2 = g2.players[p.pid];
+  const idxs = g2.take_worker(p2, sel.k, true);
+  // 払えない選択でも見込みは出す（使うものなしで）
+  g2.pick = { pid: p.pid, boosts: chk.ok ? [...sel.boosts] : [], wait: !!sel.wait };
+  let plan, partner = 0, others = 0, strength: number, monster: string, partnerDef = 0;
+  let joining: number | undefined;
+  const coop = !!nd0?.wait;
+  if (boss) {
+    const m = g2.bosses[g2.round];
+    monster = m.id;
+    plan = g2.make_plan(p2, m, idxs, 'pick', null, 0, false, true);
+    others = g2.lair.reduce((a, e) => a + e.plan.power, 0);
+    strength = m.str;
+  } else {
+    const nd = g2.nest(sid);
+    const m = MON[nd.mon!];
+    monster = m.id;
+    if (nd.wait) {
+      const q = g2.players[nd.wait.pid];
+      joining = q.pid;
+      partner = nd.wait.plan.power + (q.weapons.includes('i10') ? 2 : 0) + (p2.char === 'aya' ? D.AYA_COOP : 0);
+      plan = g2.make_plan(p2, m, idxs, 'pick', nd, partner, true);
+      if (q.char === 'aya') plan.power += D.AYA_COOP;
+      if (q.occs.includes('o06')) partnerDef = 1;
+    } else plan = g2.make_plan(p2, m, idxs, 'pick', nd);
+    strength = g2.eff_str(p2, m, nd);
+  }
+  const m = boss ? g2.bosses[g2.round] : MON[monster];
+  g2.planParts(p2, m, plan, coop, boss);
+  const parts = plan.parts ?? [];
+  const sum = parts.reduce((a, x) => a + x.value, 0);
+  if (sum !== plan.power) parts.push({ kind: 'char', label: 'アヤ：共闘', value: plan.power - sum, seat: p.pid });
+  const need = strength - others - plan.power - partner;
+  const dist = g2.fate_dist(p2);
+  let pwin = 0;
+  for (const [v, pr] of dist) if (v >= need) pwin += pr;
+  const counter = g2.counter(p2, m, plan);
+  const defense = g2.defense(p2, plan.k) + partnerDef;
+  const over = counter - defense;
+  let inj = over <= 0 ? 0 : over >= 3 ? 2 : 1;
+  if (p2.occs.includes('o11') || p2.weapons.includes('i26')) inj = Math.max(inj, 1);
+  inj = Math.min(inj, plan.idxs.length);
+  if (inj && p2.occs.includes('o04') && !p2.once.has('o04')) inj -= 1;
+  return {
+    ok: chk.ok, ...(chk.ok ? {} : { error: chk.error }),
+    monster, boss, power: plan.power, parts, partner, others, strength, need, pwin,
+    fate: p.fate.length ? [...p.fate] : [...D.FATE_DECK],
+    cost: Object.fromEntries(Object.entries(plan.cost).filter(([, n]) => n)) as Cost,
+    counter, defense, injuries: inj, ks, waitOk, ...(joining !== undefined ? { joining } : {}),
+  };
+}
+
+/** 市場の値段（この人から見た売値・買値と、1回で動かせる数） */
+export function marketQuote(g: Game, p: Player): { sell: Partial<Record<Res, number>>; buy: Partial<Record<Res, number>>; qty: number } {
+  const sell: Partial<Record<Res, number>> = {}, buy: Partial<Record<Res, number>> = {};
+  for (const r of ['mana', 'mat'] as Res[]) sell[r] = g.sell_price(p, r);
+  for (const r of ['mana', 'mat', 'wood', 'iron', 'herb', 'food'] as Res[]) buy[r] = g.buy_price(p, r);
+  return { sell, buy, qty: D.MARKET_QTY + (p.tools.includes('i15') ? 2 : 0) };
 }

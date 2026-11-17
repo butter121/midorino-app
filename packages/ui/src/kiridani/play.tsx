@@ -2,12 +2,13 @@
 // エンジンの「人間に聞くこと」を、既存の画面（ドラフト・キャラ選択・盤面で置き場所）と選択のシート（ChoiceSheet）に振り分ける。
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AI, KiridaniSession, describeOption, previewFight, type Level, type Option, type Req } from '@midorino/engine/src/kiridani';
-import { CARDS, MON, SEASON_JP, WEATHER, WEATHER_JP, seasonOf, type ItemDef } from './data';
+import { CARDS, MARKETS, MON, SEASON_JP, WEATHER, WEATHER_JP, seasonOf, type Cost, type ItemDef, type Res } from './data';
 import type { Speed } from './anim/timing';
 import type { GameEvent } from './types';
 import { useTable } from './ui/useTable';
 import { KiridaniTable, type Ask } from './ui/table';
 import { ChoiceSheet, type ChoiceSpec } from './ui/choice';
+import { FightTray, MarketTray, TradeButton, TradeTray, type FightSel } from './ui/tray';
 
 export const ENGINE_NAMES = ['あなた', 'ハヤテ', 'コトネ', 'ジン', 'ルリ', 'タケル'];
 
@@ -109,6 +110,8 @@ export function KiridaniEngineGame({ n: n0, seed: seed0, level = 'mid', speed, a
   const [sheet, setSheet] = useState<ChoiceSpec | null>(null);
   /** 置き場所を選んだあとの細かい選択 */
   const [sub, setSub] = useState<{ sid: string; opts: Option[] } | null>(null);
+  /** トレイで選ぶシート（戦闘・市場・取引） */
+  const [tray, setTray] = useState<{ kind: 'fight' | 'market'; sid: string } | { kind: 'trade' } | null>(null);
   const [auto, setAutoState] = useState(auto0);
   const autoRef = useRef(auto0);
   const [, force] = useState(0);
@@ -116,7 +119,7 @@ export function KiridaniEngineGame({ n: n0, seed: seed0, level = 'mid', speed, a
   const feed = useCallback((evs: GameEvent[]) => {
     const s = sRef.current!;
     t.push(evs);
-    setSub(null);
+    setSub(null); setTray(null);
     if (s.done) { setAsk(null); setSheet(null); force((x) => x + 1); return; }
     if (autoRef.current) {
       const w = s.waiting!;
@@ -131,15 +134,33 @@ export function KiridaniEngineGame({ n: n0, seed: seed0, level = 'mid', speed, a
 
   const send = useCallback((a: unknown) => {
     const s = sRef.current!;
-    setAsk(null); setSheet(null); setSub(null);
+    setAsk(null); setSheet(null); setSub(null); setTray(null);
     t.submit(() => { if (sRef.current === s) feed(s.answer(a)); });
   }, [feed, t]);
+
+  /** 人間の席だけの答え方（戦闘のトレイ・市場のトレイ） */
+  const sendWith = useCallback((run: (s: KiridaniSession) => GameEvent[]) => {
+    const s = sRef.current!;
+    setAsk(null); setSheet(null); setSub(null); setTray(null);
+    t.submit(() => { if (sRef.current === s) feed(run(s)); });
+  }, [feed, t]);
+  const sendFight = (sel: FightSel) => sendWith((s) => s.fight(sel));
+  const sendMarket = (sid: string, kind: 'buy' | 'sell', r: Res, q: number) => sendWith((s) => s.market(sid, kind, r, q));
+  /** 取引は置き場所の選択を続けたまま（出来事だけ流し、選べる場所を数え直す） */
+  const doTrade = (b: number, give: Cost, get: Cost) => {
+    const s = sRef.current;
+    if (!s) return;
+    const evs = s.trade(b, give, get);
+    t.push(evs);
+    setTray(null);
+    setAsk(uiFor(s).ask);
+  };
 
   const restart = useCallback((n = n0, seed = seed0, scene = '') => {
     const s = new KiridaniSession({ n, seed, human: me, levels: Array(n).fill(level), names: ENGINE_NAMES.slice(0, n) });
     sRef.current = s;
     t.reset(me);
-    setAsk(null); setSheet(null); setSub(null);
+    setAsk(null); setSheet(null); setSub(null); setTray(null);
     if (!scene) { feed(s.start()); return; }
     // その場面まで自分の席もお任せで進め、手前までは演出なしで当てる
     const before: GameEvent[] = [];
@@ -158,7 +179,7 @@ export function KiridaniEngineGame({ n: n0, seed: seed0, level = 'mid', speed, a
   const setAuto = (a: boolean) => {
     setAutoState(a); autoRef.current = a;
     const s = sRef.current;
-    if (a && s?.waiting) { const w = s.waiting; setAsk(null); setSheet(null); setSub(null); t.submit(() => feed(s.answer(helper.current.respond(w)))); }
+    if (a && s?.waiting) { const w = s.waiting; setAsk(null); setSheet(null); setSub(null); setTray(null); t.submit(() => feed(s.answer(helper.current.respond(w)))); }
   };
 
   // 既存の画面からの答え（ドラフトのカード・キャラ・置き場所）
@@ -167,6 +188,8 @@ export function KiridaniEngineGame({ n: n0, seed: seed0, level = 'mid', speed, a
     if (!s || !w) return;
     if (w.k === 'choose') {
       const opts = w.opts.filter((o) => o[0] === c);
+      if (c.startsWith('nest') || c === 'lair') { setTray({ kind: 'fight', sid: c }); return; }
+      if (MARKETS.has(c)) { setTray({ kind: 'market', sid: c }); return; }
       if (opts.length === 1) send(opts[0]);
       else setSub({ sid: c, opts });
       return;
@@ -176,12 +199,18 @@ export function KiridaniEngineGame({ n: n0, seed: seed0, level = 'mid', speed, a
 
   const s = sRef.current;
   let sheetNode: ReactNode = null;
-  if (sub && s) {
+  const backToBoard = () => { setTray(null); setAsk(ask ? { ...ask } : null); };
+  if (tray && s?.waiting?.k === 'choose') {
+    if (tray.kind === 'fight') sheetNode = <FightTray key={tray.sid} s={s} sid={tray.sid} onFight={sendFight} onCancel={backToBoard} />;
+    else if (tray.kind === 'market') sheetNode = <MarketTray key={tray.sid} s={s} sid={tray.sid} onDeal={(k, r, q) => sendMarket(tray.sid, k, r, q)} onCancel={backToBoard} />;
+    else sheetNode = <TradeTray s={s} onTrade={doTrade} onCancel={() => setTray(null)} />;
+  } else if (sub && s) {
     sheetNode = <ChoiceSheet spec={optionSheet(s, sub.sid, sub.opts)} onPick={(id) => send(sub.opts[Number(id)])} onCancel={() => { setSub(null); setAsk(ask ? { ...ask } : null); }} />;
   } else if (sheet && s?.waiting) {
     const w = s.waiting;
     sheetNode = <ChoiceSheet spec={sheet} onPick={(id) => send(sheetAnswer(w, id))} />;
   }
 
-  return <KiridaniTable t={t} ask={ask} onAnswer={onAnswer} sheet={sheetNode} extra={extra?.({ restart: (n, seed) => restart(n, seed), auto, setAuto, session: s })} />;
+  const actions = ask?.kind === 'place' && !auto ? <TradeButton s={s} onOpen={() => setTray({ kind: 'trade' })} /> : null;
+  return <KiridaniTable t={t} ask={ask} onAnswer={onAnswer} sheet={sheetNode} actions={actions} extra={extra?.({ restart: (n, seed) => restart(n, seed), auto, setAuto, session: s })} />;
 }

@@ -7,6 +7,7 @@ import { SPEED_JP, SPEEDS } from '../anim/timing';
 import { monsterDef, placeName } from '../reduce';
 import type { GameView, Seat } from '../types';
 import { FxLayer, type FxApi } from './fx';
+import { InspectSheet, UpkeepChip, useInspect } from './inspect';
 import { HeroBadge, Num, ResCount, SEAT_COLORS, Token, WeatherChip } from './parts';
 import { BaseView, Board, CharacterPick, CombatPanel, DraftScreen, Everyone, FinalScoring, QuestsView, WinterPanel } from './screens';
 import type { Playing, TablePlayer } from './useTable';
@@ -26,6 +27,8 @@ export interface TableProps {
   extra?: ReactNode;
   /** 画面に無い選択のシート（ChoiceSheet など）を上に重ねる */
   sheet?: ReactNode;
+  /** 下の欄に足すボタン（取引など） */
+  actions?: ReactNode;
 }
 
 const nameOf = (v: GameView, s: Seat) => (s === v.me ? 'あなた' : v.players[s]?.name ?? '');
@@ -138,7 +141,7 @@ function Overlay({ cur, v }: { cur: Playing | null; v: GameView }) {
   return null;
 }
 
-export function KiridaniTable({ t, ask, onAnswer, extra, sheet }: TableProps) {
+export function KiridaniTable({ t, ask, onAnswer, extra, sheet, actions }: TableProps) {
   const { view: v, cur } = t;
   const rootRef = useRef<HTMLDivElement>(null);
   const fxRef = useRef<FxApi>(null);
@@ -146,6 +149,7 @@ export function KiridaniTable({ t, ask, onAnswer, extra, sheet }: TableProps) {
   const [peek, setPeek] = useState<Seat | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [queuedChoice, setQueuedChoice] = useState<string | null>(null);
+  const insp = useInspect();
 
   useLayoutEffect(() => { if (cur && fxRef.current) runFx(fxRef.current, cur, v); }, [cur?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setSel(null); setQueuedChoice(null); if (ask?.kind === 'place') { setTab('board'); setPeek(null); } }, [ask]);
@@ -187,14 +191,49 @@ export function KiridaniTable({ t, ask, onAnswer, extra, sheet }: TableProps) {
     </>
   );
 
+  // 上の状況バーの高さ（縦画面でタブをその下に貼りつけるため）
+  const hudRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const el = hudRef.current; const root = rootRef.current;
+    if (!el || !root || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => root.style.setProperty('--kd-hud-h', `${el.offsetHeight}px`));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const myTurn = !!placeAsk && !queuedChoice;
+  const turnFlag: { text: string; me?: boolean; seat?: Seat } | null =
+    v.combat ? { text: '戦闘中' }
+      : v.winter ? { text: '冬越し' }
+        : myTurn ? { text: 'あなたの番', me: true }
+          : v.phase === 'draft' ? { text: '手札づくり' }
+            : v.phase === 'character' ? { text: '団長選び' }
+              : v.turn !== undefined && v.players[v.turn] ? { text: `${nameOf(v, v.turn)}の番`, seat: v.turn, me: v.turn === v.me }
+                : null;
+  const year = Math.ceil(v.round / 4);
+
   return (
-    <div className={`kd-root${t.reduced ? ' is-reduced' : ''} is-${v.season}`} ref={rootRef}>
-      <header className="kd-hud">
+    <insp.Provider value={insp.open}>
+    <div className={`kd-root${t.reduced ? ' is-reduced' : ''} is-${v.season}${myTurn ? ' is-myturn' : ''}`} ref={rootRef} onClick={insp.onClick} onKeyDown={insp.onKeyDown}>
+      <header className="kd-hud" ref={hudRef}>
         <div className="kd-hud-title">
-          <small>{v.round ? `${Math.ceil(v.round / 4)}年目・ラウンド${v.round}/12` : '霧谷の冒険者団'}</small>
-          <strong>{v.round ? SEASON_JP[v.season] : '準備'}{v.round > 0 && <span className="kd-tidechip" title="魔力の潮"><KIcon name={v.tide} size={16} />{EL_JP[v.tide]}の潮</span>}</strong>
+          <strong className="kd-hud-season">{v.round ? SEASON_JP[v.season] : '準備'}</strong>
+          <span className="kd-hud-meta">
+            <small>{v.round ? <>{year}年目・ラウンド <b>{v.round}</b>/12</> : '霧谷の冒険者団'}</small>
+            {v.round > 0 && (
+              <span className="kd-rounds" aria-hidden>
+                {Array.from({ length: 12 }, (_, i) => <i key={i} className={`is-s${i % 4}${i + 1 < v.round ? ' is-done' : i + 1 === v.round ? ' is-now' : ''}`} />)}
+              </span>
+            )}
+          </span>
         </div>
+        {v.round > 0 && <span className="kd-tidechip" title="魔力の潮"><KIcon name={v.tide} size={16} />{EL_JP[v.tide]}の潮</span>}
         {v.round > 0 && <div className="kd-hud-w"><WeatherChip id={v.weather} label="今日" /><WeatherChip id={v.forecast[0]} label="次" small /></div>}
+        {turnFlag && (
+          <div className={`kd-turnflag${turnFlag.me ? ' is-me' : ''}`} role="status" style={turnFlag.seat !== undefined ? { ['--seat' as string]: SEAT_COLORS[turnFlag.seat] } : undefined}>
+            {turnFlag.seat !== undefined && <Token seat={turnFlag.seat} size={18} />}{turnFlag.text}
+          </div>
+        )}
         <div className="kd-hud-ctl">
           <div className="kd-speed" role="radiogroup" aria-label="演出の速さ">
             {SPEEDS.map((s) => <button key={s} type="button" role="radio" aria-checked={t.speed === s} className={t.speed === s ? 'is-on' : ''} onClick={() => t.setSpeed(s)}>{SPEED_JP[s]}</button>)}
@@ -204,39 +243,52 @@ export function KiridaniTable({ t, ask, onAnswer, extra, sheet }: TableProps) {
           {extra}
         </div>
       </header>
-      {v.players.length > 0 && (
-        <div className="kd-strip" role="list" aria-label="プレイヤー">
-          {v.players.map((p) => (
-            <div key={p.seat} role="listitem" data-kd={`seat:${p.seat}`} className={`kd-pchip${v.turn === p.seat ? ' is-turn' : ''}${p.seat === v.me ? ' is-me' : ''}`} style={{ ['--seat' as string]: SEAT_COLORS[p.seat] }}>
-              <HeroBadge id={p.character} size={30} />
-              <span className="kd-pchip-b"><span className="kd-pchip-n"><Token seat={p.seat} size={14} />{p.seat === v.me ? 'あなた' : p.name}{v.first === p.seat && v.round > 0 && <span className="kd-firstmark" title="先手">先</span>}</span>
-                <span className="kd-pchip-s"><b data-kd={`fame:${p.seat}`}><KIcon name="fame" size={12} /><Num value={p.fame} /></b><span>{p.companions.map((c) => <i key={c.id} className={c.injured ? 'is-inj' : c.at ? 'is-out' : ''} />)}</span></span>
-              </span>
+      <div className={`kd-shell${v.players.length ? '' : ' is-solo'}`}>
+        {v.players.length > 0 && (
+          <aside className="kd-rail">
+            <div className="kd-strip" role="list" aria-label="プレイヤー">
+              {v.players.map((p) => (
+                <div key={p.seat} role="listitem" data-kd={`seat:${p.seat}`} data-inspect={`seat:${p.seat}`} tabIndex={0} aria-label={`${p.seat === v.me ? 'あなた' : p.name}：タップで詳しく`} className={`kd-pchip${v.turn === p.seat ? ' is-turn' : ''}${p.seat === v.me ? ' is-me' : ''}`} style={{ ['--seat' as string]: SEAT_COLORS[p.seat] }}>
+                  <HeroBadge id={p.character} size={30} seat={p.seat} />
+                  <span className="kd-pchip-b"><span className="kd-pchip-n"><Token seat={p.seat} size={14} />{p.seat === v.me ? 'あなた' : p.name}{v.first === p.seat && v.round > 0 && <span className="kd-firstmark" title="先手">先</span>}</span>
+                    <span className="kd-pchip-s"><b data-kd={`fame:${p.seat}`}><KIcon name="fame" size={12} /><Num value={p.fame} /></b><span>{p.companions.map((c) => <i key={c.id} className={c.injured ? 'is-inj' : c.at ? 'is-out' : ''} />)}</span></span>
+                  </span>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
-      <main className="kd-main">{main}</main>
+            {v.log.length > 0 && (
+              <section className="kd-log" aria-label="これまでの出来事">
+                <h3>できごと</h3>
+                <ol>{v.log.slice(0, 14).map((l, i) => <li key={`${v.log.length - i}`}>{l}</li>)}</ol>
+              </section>
+            )}
+          </aside>
+        )}
+        <main className="kd-main">{main}</main>
+        {me && v.phase !== 'final' && (
+          <footer className="kd-mybar">
+            <div className="kd-mybar-r">{RES.map((r) => <ResCount key={r} r={r} n={me.res[r]} size={22} anchor={`res:${r}`} />)}<UpkeepChip view={v} /></div>
+            <div className="kd-mybar-a">
+              {placeAsk ? (
+                queuedChoice ? <span className="kd-queued" role="status">{t.busy ? `予約：${placeName(queuedChoice)}（演出のあとに実行）` : `${placeName(queuedChoice)}へ`}</span>
+                  : <>
+                    <span className="kd-ask"><b>あなたの番</b><small>{t.busy ? '演出中でも先に選べます' : sel ? `${placeName(sel)}に置きますか？` : '光っている場所に仲間を置く'}</small></span>
+                    {actions}
+                    <button type="button" className="kd-btn is-primary" disabled={!sel} onClick={() => sel && answer(sel)}>{sel ? `${placeName(sel)}に置く` : '場所を選ぶ'}</button>
+                  </>
+              ) : <span className="kd-mybar-me">{me.character && <b>{CHAR[me.character].name}</b>}<span data-kd="hand">手札 {me.hand.length}</span><span>仲間 {me.companions.filter((c) => !c.at && !c.injured).length}/{me.companions.length}</span></span>}
+            </div>
+          </footer>
+        )}
+      </div>
       {v.combat && <div className="kd-ovwrap">{<CombatPanel view={v} cur={cur} />}</div>}
       {v.winter && !v.combat && <div className="kd-ovwrap">{<WinterPanel view={v} cur={cur} />}</div>}
       {sheet}
       <Overlay cur={cur} v={v} />
-      {me && v.phase !== 'final' && (
-        <footer className="kd-mybar">
-          <div className="kd-mybar-r">{RES.map((r) => <ResCount key={r} r={r} n={me.res[r]} size={20} anchor={`res:${r}`} />)}</div>
-          <div className="kd-mybar-a">
-            {placeAsk ? (
-              queuedChoice ? <span className="kd-queued" role="status">{t.busy ? `予約：${placeName(queuedChoice)}（演出のあとに実行）` : `${placeName(queuedChoice)}へ`}</span>
-                : <>
-                  <span className="kd-ask">{t.busy ? 'あなたの番（先に選べます）' : 'あなたの番：置く場所を選ぶ'}</span>
-                  <button type="button" className="kd-btn is-primary" disabled={!sel} onClick={() => sel && answer(sel)}>{sel ? `${placeName(sel)}に置く` : '場所を選ぶ'}</button>
-                </>
-            ) : <span className="kd-mybar-me">{me.character ? CHAR[me.character].name : ''} <span data-kd="hand">手札{me.hand.length}</span> 仲間{me.companions.filter((c) => !c.at && !c.injured).length}/{me.companions.length}</span>}
-          </div>
-        </footer>
-      )}
       <div className="kd-sr" aria-live="polite">{v.log[0]}</div>
       <FxLayer ref={fxRef} root={() => rootRef.current} reduced={t.reduced} />
+      {insp.target && <InspectSheet target={insp.target} view={v} depth={insp.depth} onBack={insp.back} onClose={insp.close} />}
     </div>
+    </insp.Provider>
   );
 }

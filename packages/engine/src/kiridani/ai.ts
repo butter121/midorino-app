@@ -391,6 +391,13 @@ export class AI implements Brain {
     return this.trade_gain(g, p, give, get) + this.rng.gauss(0, (this.noise || 0) * 0.3) > thr;
   }
 
+  /** 人間からの取引の提案に乗るか（乱数を使わない判定。AI どうしの accept と同じ評価としきい値） */
+  judge_offer(g: Game, p: Player, give: Cost, get: Cost): { accept: boolean; gain: number } {
+    const gain = this.trade_gain(g, p, give, get);
+    const thr = this.level === 'expert' ? 0.3 : 0.0;
+    return { accept: this.trade_on && gain > thr, gain };
+  }
+
   tradePhase(g: Game, p: Player) {
     if (!this.trade_on || p.used.size || p.extra < 0) return;
     const key = `traded:${g.round}`;

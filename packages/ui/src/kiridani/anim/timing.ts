@@ -5,8 +5,8 @@ export type Speed = 'normal' | 'fast' | 'minimal';
 export const SPEEDS: Speed[] = ['normal', 'fast', 'minimal'];
 export const SPEED_JP: Record<Speed, string> = { normal: '標準', fast: '速い', minimal: '最小' };
 
-/** 標準の長さ（ミリ秒）。0 はアニメなしで即時に状態だけ進める */
-export const BASE_MS: Record<EventType, number> = {
+/** 以前の標準の長さ（ミリ秒）。0 はアニメなしで即時に状態だけ進める */
+const BASE_V1: Record<EventType, number> = {
   game_start: 600,
   grant: 500, fate_shuffle: 0,
   draft_offer: 700, draft_pick: 400, char_offer: 700, char_pick: 700,
@@ -22,12 +22,22 @@ export const BASE_MS: Record<EventType, number> = {
   familiar: 600, trap: 500, trade: 700, discard: 400, recall: 400, weather_set: 700, wait: 500,
 };
 
+/** 標準をゆっくりめにする倍率（「速い」がちょうど以前の標準になる） */
+export const PACE = 1.5;
+/** 集計は元から長いので伸ばしすぎない */
+const PACE_CAP: Partial<Record<EventType, number>> = { score: 9000 };
+
+/** 標準の長さ（ミリ秒）。0 はアニメなしで即時に状態だけ進める */
+export const BASE_MS = Object.fromEntries(
+  (Object.entries(BASE_V1) as [EventType, number][]).map(([t, ms]) => [t, Math.min(PACE_CAP[t] ?? Infinity, Math.round(ms * PACE))]),
+) as Record<EventType, number>;
+
 /** 最小の速さでも残す短い動き（「何が起きたか分かる」ための下限） */
 export const MIN_MS = 200;
 const MIN_SPECIAL: Partial<Record<EventType, number>> = { score: 2500, boss_appear: 700, round_start: 350, clash: 300, turn: 0 };
 export const minMs = (t: EventType) => MIN_SPECIAL[t] ?? (BASE_MS[t] === 0 ? 0 : MIN_MS);
 
-const SPEED_MUL: Record<Speed, number> = { normal: 1, fast: 0.55, minimal: 0 };
+const SPEED_MUL: Record<Speed, number> = { normal: 1, fast: 1 / PACE, minimal: 0 };
 /** 他の人の手番の演出は少し速めに流す */
 export const OTHERS_MUL = 0.7;
 
@@ -51,8 +61,8 @@ export function eventMs(ev: GameEvent, speed: Speed, me: Seat, inMyCombat = fals
   return Math.max(lo, Math.round(ms));
 }
 
-/** 1ラウンドの演出の上限（6人でも約1分） */
-export const ROUND_BUDGET_MS = 60_000;
+/** 1ラウンドの演出の上限（6人でも約1分半） */
+export const ROUND_BUDGET_MS = 90_000;
 
 /**
  * 予算に収まるよう縮める倍率。spent=このラウンドで既に使った時間, pending=残りの出来事の（縮める前の）長さと下限。
