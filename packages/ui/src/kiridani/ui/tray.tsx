@@ -4,7 +4,7 @@
 //   ・TradeTray：AI と資源を交換する（渡すトレイ・受け取るトレイ。相手が受けるかはその AI の考えで決まる）
 // ルールの計算はエンジン（session.ts の previewPick・judgeTrade など）。ここは並べて見せるだけ。
 import { useMemo, useState } from 'react';
-import { fightChips, marketQuote, previewPick, TRADE_MAX, type FightChip, type KiridaniSession } from '@midorino/engine/src/kiridani';
+import { fightChips, marketQuote, previewPick, TRADE_MAX, type FightChip, type SeatSession } from '@midorino/engine/src/kiridani';
 import { BossArt, HeroArt, KIcon, MonsterArt } from '../art-registry';
 import { ACT, CHAR, EL_JP, NEST_JP, RES, RES_JP, type Cost, type Res } from '../data';
 import { monsterDef } from '../reduce';
@@ -30,7 +30,7 @@ function Sheet({ label, children, tone }: { label: string; children: React.React
 // ---------------------------------------------------------------- 戦闘
 export interface FightSel { sid: string; k: number; boosts: string[]; wait?: boolean }
 
-export function FightTray({ s, sid, onFight, onCancel }: { s: KiridaniSession; sid: string; onFight: (sel: FightSel) => void; onCancel: () => void }) {
+export function FightTray({ s, sid, onFight, onCancel }: { s: SeatSession; sid: string; onFight: (sel: FightSel) => void; onCancel: () => void }) {
   const g = s.g; const p = s.player!;
   const chips = useMemo(() => fightChips(g, p, sid), [g, p, sid]);
   const ks0 = useMemo(() => previewPick(g, p, { sid, k: 1, boosts: [] }).ks, [g, p, sid]);
@@ -181,7 +181,7 @@ function ChipIcon({ c, size }: { c: FightChip; size: number }) {
 }
 
 // ---------------------------------------------------------------- 市場
-export function MarketTray({ s, sid, onDeal, onCancel }: { s: KiridaniSession; sid: string; onDeal: (kind: 'buy' | 'sell', r: Res, q: number) => void; onCancel: () => void }) {
+export function MarketTray({ s, sid, onDeal, onCancel }: { s: SeatSession; sid: string; onDeal: (kind: 'buy' | 'sell', r: Res, q: number) => void; onCancel: () => void }) {
   const g = s.g; const p = s.player!;
   const q = marketQuote(g, p);
   const [deal, setDeal] = useState<{ kind: 'buy' | 'sell'; r: Res; n: number } | null>(null);
@@ -282,7 +282,7 @@ function ExchangeBox({ give, get, onTakeGive, onTakeGet, giveLabel, getLabel, ve
 }
 
 // ---------------------------------------------------------------- AI との取引
-export function TradeTray({ s, onTrade, onCancel }: { s: KiridaniSession; onTrade: (b: number, give: Cost, get: Cost) => void; onCancel: () => void }) {
+export function TradeTray({ s, onTrade, onCancel }: { s: SeatSession; onTrade: (b: number, give: Cost, get: Cost) => void; onCancel: () => void }) {
   const g = s.g; const p = s.player!;
   const partners = s.tradePartners();
   const [b, setB] = useState<number>(partners[0] ?? -1);
@@ -322,7 +322,7 @@ export function TradeTray({ s, onTrade, onCancel }: { s: KiridaniSession; onTrad
       </div>
       <ExchangeBox give={give} get={get} onTakeGive={(r) => setGive(addTo(give, r, -1))} onTakeGet={(r) => setGet(addTo(get, r, -1))}
         giveLabel="渡す" getLabel="受け取る"
-        verdict={j ? (j.ok ? <span className={`kd-mood ${j.accept ? 'is-yes' : 'is-no'}`}>{o ? `${g.names[b]}：` : ''}<b>{mood}</b><i style={{ width: `${Math.max(4, Math.min(100, 50 + j.gain * 25))}%` }} /></span> : <b className="kd-bad">{j.error}</b>) : <small>あなたの持ち物と、相手の持ち物をタップ</small>} />
+        verdict={j ? (j.pending ? <small role="status">{j.error}</small> : j.ok ? <span className={`kd-mood ${j.accept ? 'is-yes' : 'is-no'}`}>{o ? `${g.names[b]}：` : ''}<b>{mood}</b><i style={{ width: `${Math.max(4, Math.min(100, 50 + j.gain * 25))}%` }} /></span> : <b className="kd-bad">{j.error}</b>) : <small>あなたの持ち物と、相手の持ち物をタップ</small>} />
       <div className="kd-tray-sec">
         <h4>あなたの持ち物<small>タップで「渡す」へ</small></h4>
         <div className="kd-chips is-res">
@@ -356,7 +356,7 @@ export function TradeTray({ s, onTrade, onCancel }: { s: KiridaniSession; onTrad
 }
 
 /** 下の欄に出す「取引」ボタン */
-export function TradeButton({ s, onOpen }: { s: KiridaniSession | null; onOpen: () => void }) {
+export function TradeButton({ s, onOpen }: { s: SeatSession | null; onOpen: () => void }) {
   if (!s || s.waiting?.k !== 'choose' || !s.tradePartners().length) return null;
   const left = s.tradeLeft();
   return <button type="button" className="kd-btn kd-tradebtn" disabled={left <= 0} onClick={onOpen} aria-label={`取引（あと${left}回）`}>⇄ 取引<small>{left}</small></button>;

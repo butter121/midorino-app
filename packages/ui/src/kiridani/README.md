@@ -10,12 +10,18 @@
   Python 版の写し（tools/kiridani/py）を取り直し、data.ts と一致テストの記録を作り直す。
 - 一致テスト：`tools/kiridani/trace.py` が Python 版を同じ乱数で 20 試合流して手順・状態・得点を記録し、
   `packages/engine/test/kiridani-golden.test.ts` が TypeScript 版で同じになるのを確かめる。
-- `session.ts`：`KiridaniSession`（人間1席＋AI）。`start()`／`answer(x)` が次に人間が選ぶ場面まで進めて出来事を返す。
+- `session.ts`：`KiridaniSession`（人間の席＋AI。ひとり遊びは人間1席）。`start()`／`answer(x)` が次に人間が選ぶ場面まで進めて出来事を返す。
 - 画面側は `play.tsx` の `KiridaniEngineGame`：ドラフト・キャラ・置き場所は既存の画面、
   それ以外（何人で・どの方針で戦うか、共闘に加わるか、遺跡のカード、使い魔・天候の鈴などのはい/いいえ）は `ui/choice.tsx` のシート。
   巣・主の巣と市場は `ui/tray.tsx` の「トレイ」：使うもの（仲間の数・矢・ポーション・士気・秘術・武具の力・待ち伏せ）や売り買いする資源をタップでオン・オフし、
   戦力と強さ・勝つ見込み・反撃・費用がその場で変わる。エンジンは `session.fight()`／`session.market()` で受け取り、置けるか・払えるかを確かめる（AI の道筋は使わない）。
   あなたの番には「⇄ 取引」で AI と資源を交換できる（`session.judgeTrade()` が相手の AI の取引の評価で受ける／断るを決める。乱数は使わない）。
+  オンライン対戦（友だちと遊ぶ）はミドリノと同じ仕組み：ホストの端末が審判（`net.ts` の `KiridaniReferee`、人間の席が複数の `KiridaniSession`）で、
+  参加者には席ごとに隠した出来事（他の席の手札・ドラフトの手は伏せる）と「いま選ぶこと」（`Prompt`：選択肢と、その席から見た盤面の写し）だけを送る。
+  参加者の画面（`online.tsx` の `KiridaniOnlineGame`）は写しから組み立てた `ShadowSession` で同じトレイ・シートを出し、答え（`Action`）だけを返す。
+  ドラフトとキャラ選びは全員同時（先に届いた答えは審判が預かる）。AI との取引の受ける／断るはホストに問い合わせる。人どうしの取引はまだない。
+  通信は `packages/app/src/net/kiridaniHost.ts`・`kiridaniGuest.ts`（PeerJS は `peerNet.ts`、テストは同じ JS の中の `memoryNet`）。
+  通しテスト：`node tools/kiridani/online-smoke.mjs`（手元の PeerJS サーバーとブラウザ2つで、招待→承認→最後まで→再読み込み→ホスト退出）。
   カード・キャラ・魔物・巣・行動スペース・天候・冬の食料は、タップで `ui/inspect.tsx` の詳しいシートが開く（要素に `data-inspect="card:i19"` などの印を付けるだけ）。
 
 ## しくみ

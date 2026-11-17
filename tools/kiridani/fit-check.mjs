@@ -1,6 +1,7 @@
 // 霧谷の冒険者団：「1画面に収まるか」の確認。各画面×各画面サイズで
 //   ・ページ全体がスクロールしない（document.scrollingElement の scrollHeight/scrollWidth が画面以下）
 //   ・overflow:auto/scroll の要素の中身がはみ出していない（中でスクロールしない）
+//   （オンライン対戦の入口・待合室・参加の画面も：friends / lobby / join）
 //   ・画面の骨組みの箱（盤面・拠点など）が overflow:hidden で中身を切っていない
 // を調べて表にする。使い方：
 //   npm run build -w @midorino/app && npm run catalog:build -w @midorino/ui
@@ -66,6 +67,12 @@ const cat = (q) => `${CAT}kiridani.html?n=${N}&seed=7&speed=minimal&${q}`;
 /** 画面ごとの行き方（見つからなければ null を返す＝その場面は作れなかった） */
 const SCENES = {
   title: async (p) => { await p.goto(APP); await p.waitForSelector('.kda-start'); await sleep(400); return true; },
+  friends: async (p) => { await p.goto(APP); await p.click('text=友だちと遊ぶ'); await p.waitForSelector('#kd-host-name'); await sleep(300); return true; },
+  lobby: async (p) => {
+    await SCENES.friends(p); await p.fill('#kd-host-name', 'ホスト'); await p.click('button:has-text("部屋をつくる")');
+    await p.waitForSelector('.kd-room-qr svg'); await sleep(400); return true;
+  },
+  join: async (p) => { await p.goto(`${APP}#join=${'ab'.repeat(16)}`); await p.waitForSelector('#kd-nick'); await sleep(300); return true; },
   draft: async (p) => { await p.goto(cat('at=draft')); await p.waitForSelector('.kd-offer .kd-card'); await idle(p); return true; },
   char: async (p) => { await p.goto(cat('at=char')); await p.waitForSelector('.kd-charcard'); await idle(p); return true; },
   board: async (p) => { await p.goto(cat('at=r9')); await myTurn(p); return true; },
@@ -138,7 +145,7 @@ async function measure(page) {
       if (dy > 2 || dx > 2) bad.push(`${el.tagName.toLowerCase()}.${[...el.classList].join('.')}${dy > 2 ? ` +${dy}px↓` : ''}${dx > 2 ? ` +${dx}px→` : ''}`);
     }
     // overflow:hidden で切れていないか（レイアウトの箱だけ。文の「…」省略はわざとなので見ない）
-    const BOX = '.kd-shell, .kd-main, .kd-rail, .kd-mybar, .kd-tabbody, .kd-screen, .kd-board, .kd-nests, .kd-spaces, .kd-base, .kd-base-grid, .kd-quests, .kd-everyone, .kd-offer, .kd-chars, .kd-final, .kd-hud';
+    const BOX = '.kd-room, .kd-room-mem, .kd-shell, .kd-main, .kd-rail, .kd-mybar, .kd-tabbody, .kd-screen, .kd-board, .kd-nests, .kd-spaces, .kd-base, .kd-base-grid, .kd-quests, .kd-everyone, .kd-offer, .kd-chars, .kd-final, .kd-hud';
     for (const el of document.querySelectorAll(BOX)) {
       const dy = el.scrollHeight - el.clientHeight; const dx = el.scrollWidth - el.clientWidth;
       if (dy > 2 || dx > 2) bad.push(`clip ${el.tagName.toLowerCase()}.${[...el.classList].join('.')}${dy > 2 ? ` +${dy}px↓` : ''}${dx > 2 ? ` +${dx}px→` : ''}`);
