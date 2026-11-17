@@ -28,10 +28,12 @@ export interface RoomLobbyProps {
   onShare?: () => void;
   onLeave?: () => void;
   copied?: boolean;
+  /** 見出しの右に置くもの（チャットのボタンなど） */
+  extra?: ReactNode;
 }
 
 /** 待合室：招待（QR・リンク）、参加申請の承認、席の数と AI の強さ、開始 */
-export function RoomLobby({ inviteUrl, qr, members, isHost, seats, level, status, onSeats, onLevel, onApprove, onDecline, onRemove, onStart, onCopy, onShare, onLeave, copied }: RoomLobbyProps) {
+export function RoomLobby({ inviteUrl, qr, members, isHost, seats, level, status, onSeats, onLevel, onApprove, onDecline, onRemove, onStart, onCopy, onShare, onLeave, copied, extra }: RoomLobbyProps) {
   const humans = members.filter((m) => m.status === 'host' || m.status === 'joined');
   const waiting = members.filter((m) => m.status === 'waiting');
   const ai = Math.max(0, seats - humans.length);
@@ -45,6 +47,7 @@ export function RoomLobby({ inviteUrl, qr, members, isHost, seats, level, status
         <button type="button" className="kd-iconbtn" onClick={onLeave} aria-label="部屋を出る">←</button>
         <h1>{isHost ? 'あなたの部屋' : '部屋で待っています'}</h1>
         {status && <small role="status">{status}</small>}
+        {extra}
       </header>
       {isHost && (
         <section className="kd-room-inv" aria-label="招待">

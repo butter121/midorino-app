@@ -1,7 +1,7 @@
 // 霧谷の冒険者団：「1画面に収まるか」の確認。各画面×各画面サイズで
 //   ・ページ全体がスクロールしない（document.scrollingElement の scrollHeight/scrollWidth が画面以下）
 //   ・overflow:auto/scroll の要素の中身がはみ出していない（中でスクロールしない）
-//   （オンライン対戦の入口・待合室・参加の画面も：friends / lobby / join）
+//   （オンライン対戦の入口・待合室・参加の画面・チャットも：friends / lobby / join / chat / chat-game。チャットの発言の一覧だけは中で動かしてよい）
 //   ・画面の骨組みの箱（盤面・拠点など）が overflow:hidden で中身を切っていない
 // を調べて表にする。使い方：
 //   npm run build -w @midorino/app && npm run catalog:build -w @midorino/ui
@@ -62,6 +62,14 @@ async function place(page, sel) {
 }
 
 let CAT, APP;
+/** 発言とスタンプをいくつか送る（10秒に5通までなので5通） */
+async function chatSay(p) {
+  for (const t of ['こんにちは', 'よろしくお願いします。今日は霧谷で魔物を倒しましょう！長めの発言も折り返して見えるか確かめます']) {
+    await p.fill('.kd-chat-in input', t); await p.click('.kd-chat-in .kd-btn'); await sleep(150);
+  }
+  for (const b of ['ナイス！', 'ありがとう', 'ごめん']) { await p.click(`.kd-chat-stamps button:has-text("${b}")`); await sleep(150); }
+  await sleep(500);
+}
 const cat = (q) => `${CAT}kiridani.html?n=${N}&seed=7&speed=minimal&${q}`;
 
 /** 画面ごとの行き方（見つからなければ null を返す＝その場面は作れなかった） */
@@ -71,6 +79,16 @@ const SCENES = {
   lobby: async (p) => {
     await SCENES.friends(p); await p.fill('#kd-host-name', 'ホスト'); await p.click('button:has-text("部屋をつくる")');
     await p.waitForSelector('.kd-room-qr svg'); await sleep(400); return true;
+  },
+  // チャット（ホストひとりでも自分の発言は届く）：待合室と、AI だけを足して始めた試合の ⚙ から
+  chat: async (p) => {
+    await SCENES.lobby(p); await p.click('.kd-room-h .kd-chatbtn'); await p.waitForSelector('.kd-chat');
+    await chatSay(p); return true;
+  },
+  'chat-game': async (p) => {
+    await SCENES.lobby(p); await p.click('.kd-room-start'); await p.waitForSelector('.kd-offer .kd-card', { timeout: 20000 });
+    await p.click('.kd-hud-ctl .kd-cat-menu:not(.kd-hudmenu) summary'); await p.click('.kd-chatbtn'); await p.waitForSelector('.kd-chat');
+    await chatSay(p); return true;
   },
   join: async (p) => { await p.goto(`${APP}#join=${'ab'.repeat(16)}`); await p.waitForSelector('#kd-nick'); await sleep(300); return true; },
   draft: async (p) => { await p.goto(cat('at=draft')); await p.waitForSelector('.kd-offer .kd-card'); await idle(p); return true; },
@@ -141,6 +159,8 @@ async function measure(page) {
       const cs = getComputedStyle(el);
       if (!/(auto|scroll)/.test(cs.overflowY + cs.overflowX)) continue;
       if (el.clientHeight === 0 && el.clientWidth === 0) continue;
+      // チャットの発言の一覧だけは中で動かしてよい（古い発言が上へ流れる）
+      if (el.classList.contains('kd-chatlist')) continue;
       const dy = el.scrollHeight - el.clientHeight; const dx = el.scrollWidth - el.clientWidth;
       if (dy > 2 || dx > 2) bad.push(`${el.tagName.toLowerCase()}.${[...el.classList].join('.')}${dy > 2 ? ` +${dy}px↓` : ''}${dx > 2 ? ` +${dx}px→` : ''}`);
     }
@@ -149,6 +169,13 @@ async function measure(page) {
     for (const el of document.querySelectorAll(BOX)) {
       const dy = el.scrollHeight - el.clientHeight; const dx = el.scrollWidth - el.clientWidth;
       if (dy > 2 || dx > 2) bad.push(`clip ${el.tagName.toLowerCase()}.${[...el.classList].join('.')}${dy > 2 ? ` +${dy}px↓` : ''}${dx > 2 ? ` +${dx}px→` : ''}`);
+    }
+    // チャットの欄は画面の中に収まり、入力欄が見えていること
+    const chat = document.querySelector('.kd-chat');
+    if (chat) {
+      const r = chat.getBoundingClientRect(); const inp = document.querySelector('.kd-chat-in input')?.getBoundingClientRect();
+      if (r.top < -1 || r.bottom > innerHeight + 1) bad.push(`chat ${Math.round(r.top)}..${Math.round(r.bottom)}`);
+      if (!inp || inp.bottom > innerHeight) bad.push('chat input hidden');
     }
     return { page, bad, pageOk: page.h <= page.vh && page.w <= page.vw };
   });
