@@ -177,7 +177,31 @@
   .kd-insp-b > .kd-insp-p, .kd-insp-b > .kd-insp-note, .kd-insp-b > .kd-insp-mon, .kd-insp-b > .kd-insp-food { grid-column: 2 / -1 !important; }
   .kd-insp-art > svg { width: clamp(56px, 30dvh, 150px); height: clamp(56px, 30dvh, 150px); }
   .kd-insp-b > .kd-insp-art, .kd-insp-b > .kd-insp-card { grid-column: 1; grid-row: 1 / span 12; }
-  .kd-insp-row { grid-template-columns: 6.5em 1fr; }
+  .kd-insp-row { grid-template-columns: 5.5em 1fr; padding: 2px 0; font-size: 12px; }
+  .kd-insp-b:not(:has(> .kd-insp-art, > .kd-insp-card)) { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .kd-insp-b:not(:has(> .kd-insp-art, > .kd-insp-card)) > :is(.kd-insp-p, .kd-insp-note, .kd-insp-mon, .kd-insp-food) { grid-column: 1 / -1 !important; }
+  .kd-insp { padding: 6px 10px; gap: 4px; }
+  .kd-insp-t strong { font-size: 16px; }
+  .kd-insp-t small { font-size: 11px; }
+  .kd-insp-x, .kd-insp-back { width: 36px; height: 36px; font-size: 20px; }
+  .kd-insp-big { font-size: 13px; padding: 4px 8px; }
+  .kd-insp-b { grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1fr); }
+  .kd-insp-art > svg { width: clamp(56px, 28dvh, 120px); height: clamp(56px, 28dvh, 120px); }
+  .kd-insp-row > div { gap: 3px 4px; }
+  .kd-insp-link { min-height: 26px; padding: 0 7px; }
+  .kd-insp-food i { width: 14px; height: 14px; }
+  .kd-tray-sec .kd-tchip { flex-direction: row; flex-wrap: wrap; justify-content: center; align-items: center; column-gap: 4px; row-gap: 0; }
+  .kd-tray-sec .kd-chips { gap: 4px; }
+  .kd-tray-sec .kd-chips.is-res .kd-tchip { padding: 2px 1px; column-gap: 2px; }
+  .kd-tray-sec .kd-chips.is-res .kd-tchip-ic svg { max-width: 16px; max-height: 16px; }
+  .kd-partners { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); }
+  .kd-tray { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); }
+  .kd-tchip.is-who { padding-right: 24px; gap: 4px; }
+  .kd-tchip.is-who .kd-tchip-l small { display: none; }
+  .kd-tchip.is-who .kd-tchip-l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kd-tray-ht small { display: none; }
+  .kd-tray-ht strong { font-size: 15px; }
+  .kd-tray-foe img, .kd-tray-foe svg { max-width: 40px; max-height: 40px; }
 }
 @media (max-height: 700px) {
   .kd-tray-note { display: none; }

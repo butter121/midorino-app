@@ -208,20 +208,20 @@ export function BaseView({ p, view, cur }: { p: PlayerView; view: GameView; cur:
           </div>
         </section>
         {!mine && (
-          <section className="kd-bsec" aria-label="持ち物">
+          <section className="kd-bsec kd-bsec-res" aria-label="持ち物">
             <h3>持ち物</h3>
             <div className="kd-resgrid">{RES.map((r) => <ResCount key={r} r={r} n={p.res[r]} size={18} />)}</div>
           </section>
         )}
-        <section className="kd-bsec" aria-label="出したカード">
+        <section className="kd-bsec kd-bsec-played" aria-label="出したカード">
           <h3>出したカード<small>職能{p.occupations.length}・武具{p.weapons.length}</small></h3>
           <div className="kd-chiprow">{played.map((id) => <CardChip key={id} id={id} highlight={id === lastPlay} />)}{!played.length && <small className="kd-none">まだない</small>}</div>
         </section>
-        <section className="kd-bsec" aria-label="手札">
+        <section className="kd-bsec kd-bsec-hand" aria-label="手札">
           <h3>手札 {p.hand.length}枚{p.spellsUsed.length > 0 && <small>使った秘術{p.spellsUsed.length}</small>}</h3>
           <div className="kd-chiprow">{p.hand.map((id, i) => <CardChip key={id + i} id={mine ? id : '?'} />)}{!p.hand.length && <small className="kd-none">なし</small>}</div>
         </section>
-        <section className="kd-bsec" aria-label="討伐の証と運命の山">
+        <section className="kd-bsec kd-bsec-tro" aria-label="討伐の証と運命の山">
           <h3>証 {p.trophies.length}体・運命の山</h3>
           <div className="kd-chiprow">
             {p.trophies.map((m, i) => <span key={i} className="kd-trophy" data-inspect={`mon:${m}`} role="button" tabIndex={0} aria-label={monsterDef(m)?.name}>{monsterDef(m) && (MONSTER_IS_BOSS(m) ? <BossArt id={m} size={24} /> : <MonsterArt id={m} size={24} />)}</span>)}
@@ -394,7 +394,6 @@ export function FinalScoring({ view, rows, cur }: { view: GameView; rows: ScoreR
   }), [rows, p, steps]);
   const order = [...partial].sort((a, b) => b.sum - a.sum || a.r.seat - b.r.seat);
   const done = p >= 1;
-  const ROW = 50;
   return (
     <div className={`kd-screen kd-final is-${mode}`}>
       <header className="kd-screen-h">
@@ -404,12 +403,12 @@ export function FinalScoring({ view, rows, cur }: { view: GameView; rows: ScoreR
           <button type="button" role="tab" aria-selected={mode === 'table'} className={mode === 'table' ? 'is-on' : ''} onClick={() => setMode('table')}>内訳</button>
         </div>
       </header>
-      <div className="kd-final-board" style={{ height: rows.length * ROW }}>
+      <div className="kd-final-board" style={{ height: `calc(var(--kd-frow) * ${rows.length})` }}>
         {partial.map(({ r, sum }) => {
           const rank = order.findIndex((x) => x.r.seat === r.seat);
           const pl = view.players[r.seat];
           return (
-            <div key={r.seat} className={`kd-frow${done && r.rank === 1 ? ' is-win' : ''}`} style={{ transform: `translateY(${rank * ROW}px)` }}>
+            <div key={r.seat} className={`kd-frow${done && r.rank === 1 ? ' is-win' : ''}`} style={{ transform: `translateY(calc(var(--kd-frow) * ${rank}))` }}>
               <span className="kd-frank">{done ? r.rank : rank + 1}</span>
               <HeroBadge id={pl?.character} size={40} />
               <span className="kd-fname"><Token seat={r.seat} size={16} />{nameOf(view, r.seat)}</span>
