@@ -91,6 +91,17 @@ export function CardFace({ id, size = 'm', selected, onClick, highlight, disable
     : <div className={cls} data-kd={anchor} data-inspect={ins} role="button" tabIndex={0} aria-label={`${c.name}：タップで詳しく`}>{body}</div>;
 }
 
+/** 小さなカード札（絵と名前だけ。タップで全文） */
+export function CardChip({ id, highlight, anchor }: { id: string; highlight?: boolean; anchor?: string }) {
+  const c = CARDS[id];
+  if (!c) return <span className="kd-cchip is-back" data-kd={anchor}><CardBackArt id="item" size={20} /></span>;
+  return (
+    <span className={`kd-cchip is-${c.kind}${highlight ? ' is-hl' : ''}`} data-kd={anchor} data-inspect={`card:${id}`} role="button" tabIndex={0} aria-label={`${c.name}：タップで詳しく`}>
+      <CardArt id={id} size={22} /><span>{c.name}</span>
+    </span>
+  );
+}
+
 /** 魔物カード（強さ・反撃・弱点・種族・戦利品・証・襲撃） */
 export function MonsterCard({ id, wounds = 0, compact, shadow, anchor }: { id: string; wounds?: number; compact?: boolean; shadow?: boolean; anchor?: string }) {
   const m = monsterDef(id);
