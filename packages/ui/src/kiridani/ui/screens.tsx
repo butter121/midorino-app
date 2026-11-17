@@ -8,6 +8,7 @@ import { monsterDef, placeName } from '../reduce';
 import { CHAR_TEXT, SPACE_TEXT, TAG_JP } from '../text';
 import type { GameView, PlayerView, ScoreRow, Seat } from '../types';
 import { CardFace, CostRow, FateDeck, HeroBadge, MonsterCard, Num, ResCount, SEAT_COLORS, SEAT_MARKS, Section, Token } from './parts';
+import { InfoDot } from './inspect';
 import type { Playing } from './useTable';
 
 const nameOf = (v: GameView, s: Seat) => (s === v.me ? 'あなた' : v.players[s]?.name ?? '');
@@ -99,8 +100,9 @@ export function Board({ view, selectable, selected, onSelect, cur }: { view: Gam
             const can = selectable?.has(n.id);
             const spawn = cur?.ev.t === 'monster_spawn' && cur.ev.nest === n.id;
             return (
-              <button type="button" key={n.id} data-kd={`space:${n.id}`} className={`kd-nest${can ? ' is-can' : ''}${selected === n.id ? ' is-selected' : ''}${spawn ? ' is-spawn' : ''}`}
-                style={msVar(cur)} onClick={pick(n.id)} disabled={!can} aria-label={`${NEST_JP[n.id]}${n.monster ? `：${monsterDef(n.monster)?.name}` : '：空'}`}>
+              <button type="button" key={n.id} data-kd={`space:${n.id}`} data-inspect={`nest:${n.id}`} className={`kd-nest${can ? ' is-can' : ''}${selected === n.id ? ' is-selected' : ''}${spawn ? ' is-spawn' : ''}`}
+                style={msVar(cur)} onClick={pick(n.id)} aria-disabled={!can} aria-label={`${NEST_JP[n.id]}${n.monster ? `：${monsterDef(n.monster)?.name}` : '：空'}`}>
+                {can && <InfoDot target={`nest:${n.id}`} />}
                 <div className="kd-nest-bg"><NestScene id={n.id} width={200} /></div>
                 <div className="kd-nest-h">{NEST_JP[n.id]}<span className="kd-cap">{Array.from({ length: NEST_CAP }, (_, i) => n.occupants[i] !== undefined ? <Token key={i} seat={n.occupants[i]} size={18} /> : <i key={i} className="kd-slot" />)}</span></div>
                 {n.monster ? <MonsterCard id={n.monster} wounds={n.wounds} compact /> : <div className="kd-nest-empty">静か</div>}
@@ -119,8 +121,9 @@ export function Board({ view, selectable, selected, onSelect, cur }: { view: Gam
             const full = !a.unlimited && s.occupants.length > 0;
             const add = lastRefill?.[id];
             return (
-              <button type="button" key={id} data-kd={`space:${id}`} className={`kd-space${can ? ' is-can' : ''}${selected === id ? ' is-selected' : ''}${!s.open ? ' is-locked' : ''}${full ? ' is-full' : ''}${add ? ' is-refill' : ''}`}
-                style={msVar(cur)} onClick={pick(id)} disabled={!can}>
+              <button type="button" key={id} data-kd={`space:${id}`} data-inspect={`space:${id}`} className={`kd-space${can ? ' is-can' : ''}${selected === id ? ' is-selected' : ''}${!s.open ? ' is-locked' : ''}${full ? ' is-full' : ''}${add ? ' is-refill' : ''}`}
+                style={msVar(cur)} onClick={pick(id)} aria-disabled={!can}>
+                {can && <InfoDot target={`space:${id}`} />}
                 <span className="kd-space-art"><TerrainArt id={id} size={44} /></span>
                 <span className="kd-space-b">
                   <strong>{a.name}</strong>
@@ -147,7 +150,8 @@ function Lair({ view, can, selected, onClick }: { view: GameView; can?: boolean;
   const l = view.lair;
   const active = l.round === view.round;
   return (
-    <button type="button" data-kd="space:lair" className={`kd-nest kd-lair${can ? ' is-can' : ''}${selected ? ' is-selected' : ''}${l.defeated ? ' is-defeated' : ''}`} onClick={onClick} disabled={!can}>
+    <button type="button" data-kd="space:lair" data-inspect="nest:lair" className={`kd-nest kd-lair${can ? ' is-can' : ''}${selected ? ' is-selected' : ''}${l.defeated ? ' is-defeated' : ''}`} onClick={onClick} aria-disabled={!can}>
+      {can && <InfoDot target="nest:lair" />}
       <div className="kd-nest-bg"><NestScene id="lair" width={200} /></div>
       <div className="kd-nest-h">主の巣<span className="kd-cap">{l.occupants.map((o, i) => <Token key={i} seat={o} size={18} />)}</span></div>
       {l.boss ? <MonsterCard id={l.boss} wounds={l.wounds} compact /> : <div className="kd-nest-empty">—</div>}
@@ -170,7 +174,7 @@ export function BaseView({ p, view, cur }: { p: PlayerView; view: GameView; cur:
   return (
     <div className="kd-base" style={msVar(cur)}>
       <div className="kd-base-h">
-        <HeroBadge id={p.character} size={56} />
+        <HeroBadge id={p.character} size={56} seat={p.seat} />
         <div><small>{p.character ? CHAR[p.character].role : '—'}</small><strong>{p.character ? CHAR[p.character].name : '未定'}<span className="kd-who">（{nameOf(view, p.seat)}）</span></strong>
           <span className="kd-fame" data-kd={`fame:${p.seat}`}>名声 <b><Num value={p.fame} /></b></span></div>
       </div>
@@ -211,7 +215,7 @@ export function BaseView({ p, view, cur }: { p: PlayerView; view: GameView; cur:
       </Section>
       {p.spellsUsed.length > 0 && <Section title="使った秘術"><div className="kd-hand">{p.spellsUsed.map((id, i) => <CardFace key={id + i} id={id} size="s" />)}</div></Section>}
       <Section title={`討伐の証 ${p.trophies.length}体`}>
-        <div className="kd-trophies">{p.trophies.map((m, i) => <span key={i} className="kd-trophy">{monsterDef(m) && (MONSTER_IS_BOSS(m) ? <BossArt id={m} size={36} /> : <MonsterArt id={m} size={36} />)}<small>{monsterDef(m)?.name}</small></span>)}{!p.trophies.length && <small className="kd-none">まだありません</small>}</div>
+        <div className="kd-trophies">{p.trophies.map((m, i) => <span key={i} className="kd-trophy" data-inspect={`mon:${m}`}>{monsterDef(m) && (MONSTER_IS_BOSS(m) ? <BossArt id={m} size={36} /> : <MonsterArt id={m} size={36} />)}<small>{monsterDef(m)?.name}</small></span>)}{!p.trophies.length && <small className="kd-none">まだありません</small>}</div>
       </Section>
       <Section title="運命の山"><FateDeck p={p} size="m" /></Section>
     </div>
@@ -277,7 +281,7 @@ export function CombatPanel({ view, cur }: { view: GameView; cur: Playing | null
         <span className="kd-combat-who">{c.seats.map((s) => <span key={s}><Token seat={s} size={18} />{nameOf(view, s)}</span>)}</span>
       </div>
       <div className="kd-arena">
-        <div className={`kd-foe${c.result === 'win' ? ' is-down' : ''}${c.result === 'lose' ? ' is-stand' : ''}${t === 'hit' ? ' is-hit' : ''}`} data-kd="combat:monster">
+        <div className={`kd-foe${c.result === 'win' ? ' is-down' : ''}${c.result === 'lose' ? ' is-stand' : ''}${t === 'hit' ? ' is-hit' : ''}`} data-kd="combat:monster" data-inspect={`mon:${c.monster}:${c.wounds}`}>
           {c.boss ? <BossArt id={c.monster} size={132} /> : <MonsterArt id={c.monster} size={132} />}
           {winEl && c.result === 'win' && <span className="kd-strike"><EffectArt id={winEl} size={120} /></span>}
           {c.result === 'win' && t === 'clash' && !winEl && <span className="kd-strike"><EffectArt id="slash" size={120} /></span>}
@@ -335,7 +339,7 @@ export function WinterPanel({ view, cur }: { view: GameView; cur: Playing | null
           return (
             <div key={p.seat} className={`kd-wrow${now ? ' is-now' : ''}${now && cur?.ev.t === 'raid' && cur.ev.damage > 0 ? ' is-hit' : ''}`} data-kd={`winter:${p.seat}`}>
               <span className="kd-wrow-n"><Token seat={p.seat} size={20} />{nameOf(view, p.seat)}</span>
-              <span className="kd-wrow-u">
+              <span className="kd-wrow-u" data-inspect={`upkeep:${p.seat}`}>
                 {u ? <>
                   <span className="kd-food">{Array.from({ length: u.need }, (_, i) => <i key={i} className={i < u.paid ? 'is-paid' : 'is-miss'} style={{ animationDelay: `${i * 60}ms` }} />)}</span>
                   {u.discontent > 0 ? <b className="kd-bad">不満{u.discontent}（-{u.discontent * 3}）</b> : <small>食料{u.paid}</small>}

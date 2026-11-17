@@ -25,6 +25,8 @@ export interface Plan {
   parts?: PowerPart[];
 }
 export interface Nest { mon: string | null; dmg: number; trap: number; slots: number; wait: { pid: number; plan: Plan } | null; trapper: number | null }
+/** 人間の席の戦闘の選択：どの巣に何人で、何を使うか（boost_list の名前）、待ち伏せするか */
+export interface FightPick { sid: string; k: number; boosts: string[]; wait?: boolean }
 export interface LairEntry { pid: number; plan: Plan; idxs: number[] }
 
 export const BASIC: Res[] = ['wood', 'iron', 'herb', 'mana', 'food', 'gold', 'mat'];
@@ -247,6 +249,8 @@ export class Game {
   last_need = 0;
   /** 画面向けの出来事（本物の盤面だけ） */
   E: GameEvent[] | null = null;
+  /** 人間の席が戦闘の前に選んだ使うもの（mode 'pick' の戦闘で一度だけ読む。AI は使わない） */
+  pick: { pid: number; boosts: string[]; wait: boolean } | null = null;
   me = -1;
   names: string[] = [];
   /** 画面が見ている名声（出来事で足した分）。score と合わせるのに使う */
@@ -1172,6 +1176,7 @@ export class Game {
   }
 
   make_plan(p: Player, m: MonsterDef, idxs: number[], mode: string, nd: Nest | null = null, partner = 0, coop = false, boss = false): Plan {
+    if (mode === 'pick') return this.pick_plan(p, m, idxs, coop, boss);
     const [base, els] = this.base_power(p, m, idxs, coop, boss);
     const es = this.eff_str(p, m, nd, boss);
     const plan: Plan = { idxs, k: idxs.length, boosts: [], cost: {}, els: new Set(els), arrows: 0, base, power: 0 };
@@ -1227,6 +1232,72 @@ export class Game {
     const sum = parts.reduce((a, x) => a + x.value, 0);
     if (sum !== plan.power) parts.push({ kind: 'char', label: 'その他', value: plan.power - sum, seat: p.pid });
     plan.parts = parts;
+  }
+
+  // ------------------------------------------------------------ 人間の席：使うものを自分で選ぶ（AI の道筋には関わらない）
+  /** 選んだ名前（boost_list の名前。矢・ポーション・士気は同じ名前を回数分）から、使うもの・費用・属性を決める。使えなければ例外 */
+  pick_boosts(p: Player, m: MonsterDef, boss: boolean, names: string[]): { boosts: Boost[]; cost: Cost; els: Set<Element>; arrows: number; gain: number } {
+    const cands = this.boost_list(p, m, boss);
+    const used: Record<string, number> = {};
+    const boosts: Boost[] = [];
+    const els = new Set<Element>();
+    let arrows = 0, gain = 0;
+    for (const nm of names) {
+      let j = -1;
+      for (let i = 0; i < cands.length; i++) if (cands[i][0] === nm && (j < 0 || cands[i][1] > cands[j][1])) j = i;
+      if (j < 0) throw new Error(`使えないもの：${nm}`);
+      const [, pw, c, el, card] = cands.splice(j, 1)[0];
+      for (const [r_, n_] of Object.entries(c)) used[r_] = (used[r_] ?? 0) + (n_ as number);
+      boosts.push([nm, pw, card]);
+      if (el) els.add(el);
+      if (nm === 'arrow') arrows += 1;
+      gain += pw;
+    }
+    if (!canPay(p, used as Cost)) throw new Error('資源が足りない');
+    return { boosts, cost: used as Cost, els, arrows, gain };
+  }
+
+  /** mode 'pick'：this.pick の選択どおりに plan を作る（足りない・使えないなら例外） */
+  pick_plan(p: Player, m: MonsterDef, idxs: number[], coop = false, boss = false): Plan {
+    const sel = this.pick;
+    if (!sel || sel.pid !== p.pid) throw new Error('使うものが選ばれていない');
+    this.pick = null;
+    const [base, els] = this.base_power(p, m, idxs, coop, boss);
+    const b = this.pick_boosts(p, m, boss, sel.boosts);
+    const plan: Plan = { idxs, k: idxs.length, boosts: b.boosts, cost: b.cost, els: new Set([...els, ...b.els]), arrows: b.arrows, base, power: 0 };
+    plan.power = base + b.gain + this.elem_bonus(p, m, plan.els);
+    if (this.E) this.planParts(p, m, plan, coop, boss);
+    return plan;
+  }
+
+  /** 人間の戦闘の選択が置けるか（置けるなら巣の入り方 how） */
+  check_pick(p: Player, sel: FightPick): { ok: true; how: string } | { ok: false; error: string } {
+    const { sid, k } = sel;
+    if (!(sid.startsWith('nest') || sid === 'lair')) return { ok: false, error: '巣ではない' };
+    const opts = this.legal(p).filter((o) => o[0] === sid && Array.isArray(o[1]) && o[1][0] === k);
+    if (!opts.length) return { ok: false, error: `${k}人では置けない` };
+    if (sel.wait && !opts.some((o) => (o[1] as (string | number)[])[1] === 'wait')) return { ok: false, error: '待ち伏せできない' };
+    const how = (opts[0][1] as (string | number)[])[2] as string;
+    if (how === 'i23' && !sel.boosts.includes('i23')) return { ok: false, error: '影分身の呪符が要る' };
+    const m = sid === 'lair' ? this.bosses[this.round] : MON[this.nest(sid).mon!];
+    try { this.pick_boosts(p, m, sid === 'lair', sel.boosts); } catch (e) { return { ok: false, error: (e as Error).message }; }
+    return { ok: true, how };
+  }
+
+  /** 市場の売り買いを好きな数で（1回の行動で1種類だけ。市場の上限まで） */
+  check_market(p: Player, sid: string, kind: 'buy' | 'sell', r: Res, q: number): string | null {
+    if (!MARKETS.has(sid)) return '市場ではない';
+    if (!this.legal(p).some((o) => o[0] === sid)) return 'この市場には置けない';
+    const qty = MARKET_QTY + (p.tools.includes('i15') ? 2 : 0);
+    if (!Number.isInteger(q) || q < 1 || q > qty) return `1〜${qty}個まで`;
+    if (kind === 'sell') {
+      if (r !== 'mana' && r !== 'mat') return '売れるのは魔石と素材だけ';
+      if (p.res[r] < q) return '足りない';
+    } else {
+      if (!['mana', 'mat', 'wood', 'iron', 'herb', 'food'].includes(r)) return '買えない';
+      if (this.buy_price(p, r) * q > p.res.gold) return '金貨が足りない';
+    }
+    return null;
   }
 
   pay_plan_boosts(p: Player, plan: Plan) {
@@ -1334,6 +1405,7 @@ export class Game {
     const nd = this.nest(nid);
     const m = MON[nd.mon!];
     if (how === 'o14') p.yearly.add('o14');
+    const pickWait = mode === 'pick' && !!this.pick?.wait;
     const idxs = this.take_worker(p, k, true);
     this.emitPlace(p, nid, idxs, k);
     nd.slots += 1;
@@ -1365,7 +1437,7 @@ export class Game {
       }
     }
     this.pay_plan_boosts(p, plan);
-    if (mode === 'wait') {
+    if (mode === 'wait' || (mode === 'pick' && pickWait)) {
       nd.wait = { pid: p.pid, plan };
       this.emit({ t: 'wait', seat: p.pid, nest: nid, power: plan.power });
       return;
