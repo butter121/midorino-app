@@ -29,8 +29,8 @@ function spy(net: ReturnType<typeof memoryNet>, log: KdToGuest[]) {
 /** ホスト・参加者の答え（写しだけを見て決める） */
 const answer = (p: Prompt) => simpleAnswer(new ShadowSession(JSON.parse(JSON.stringify(p)) as Prompt));
 
-async function setupRoom(net: ReturnType<typeof memoryNet>, stores = [memStore(), memStore(), memStore()], offerTimeoutMs?: number) {
-  const host = new KdHostRoom(net, 'ホスト', { store: stores[0], offerTimeoutMs });
+async function setupRoom(net: ReturnType<typeof memoryNet>, stores = [memStore(), memStore(), memStore()], offerTimeoutMs?: number, awayGraceMs?: number) {
+  const host = new KdHostRoom(net, 'ホスト', { store: stores[0], offerTimeoutMs, awayGraceMs });
   host.open();
   await until(() => host.status === 'open');
   const a = new KdGuestClient(net, host.roomId, 'アオイ', { store: stores[1], retryMs: 5 });
@@ -259,5 +259,51 @@ describe('霧谷：オンライン対戦（ホスト＋参加者2人＋AI）', (
     expect(host.referee!.history.at(-1)![2]).toEqual({ t: 'expire' });
     await playAll(host, [a, b]);
     expect(host.referee!.done).toBe(true);
+  });
+
+  it('途中退室：戻らない人の席は少しして弱い AI が動かし、試合は最後まで進む。同じ端末で開き直すと席に戻る', async () => {
+    const net = memoryNet();
+    const stores = [memStore(), memStore(), memStore()];
+    const { host, a, b } = await setupRoom(net, stores, 0, 30);
+    host.start(777);
+    await until(() => a.seat >= 0 && b.seat >= 0);
+    const bSeat = b.seat;
+    let b2: KdGuestClient | null = null;
+    let left = false, back = false;
+    const guests: KdGuestClient[] = [a];
+    await playAll(host, guests, {
+      every: 1,
+      onStep: async (i) => {
+        if (i === 3 && !left) {
+          left = true;
+          b.close();
+          // 猶予のあいだはまだ人の席
+          await until(() => host.dropping.includes('ベニ'));
+          expect(host.referee!.isAway(bSeat)).toBe(false);
+          await until(() => host.referee!.isAway(bSeat));
+          expect(host.dropping).toEqual([]);
+          await until(() => a.lobby?.away?.includes(bSeat) ?? false);
+        }
+        if (i === 40 && !back) {
+          back = true;
+          // 同じ端末（保存した合言葉）で開き直す
+          b2 = new KdGuestClient(net, host.roomId, '', { store: stores[2], retryMs: 5 });
+          b2.connect();
+          await until(() => b2!.status === 'joined' && b2!.seat === bSeat);
+          expect(host.referee!.isAway(bSeat)).toBe(false);
+          await until(() => !(a.lobby?.away ?? []).length);
+          guests.push(b2);
+        }
+      },
+    });
+    expect(left && back).toBe(true);
+    expect(host.referee!.done).toBe(true);
+    // 退室・復帰は記録に残り、ホストが読み込み直しても同じ得点
+    const h = host.referee!.history;
+    expect(h.some(([s, id, x]) => s === -1 && id === String(bSeat) && x.t === 'away' && x.v)).toBe(true);
+    expect(h.some(([s, id, x]) => s === -1 && id === String(bSeat) && x.t === 'away' && !x.v)).toBe(true);
+    const again = KdHostRoom.resume(memoryNet(), stores[0])!;
+    expect(again.referee!.scores).toEqual(host.referee!.scores);
+    host.close(); again.close(); a.close(); (b2 as KdGuestClient | null)?.close();
   });
 });

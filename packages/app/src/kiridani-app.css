@@ -30,3 +30,4 @@ html, body { margin: 0; background: #15131c; }
 .kd-root .kd-btn.kda-back { min-width: 0; }
 .kda-hint { color: var(--kd-dim); font-size: 12px; text-align: center; }
 .kd-join form .kd-btn { width: 100%; }
+.kd-root .kd-btn.kda-start.is-resume { background: var(--kd-gold); color: var(--kd-bg, #17141f); border-color: var(--kd-gold-l); }

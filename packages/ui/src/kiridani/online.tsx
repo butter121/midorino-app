@@ -29,6 +29,8 @@ export interface OnlineGameProps {
   note?: OfferNote | null;
   /** 接続の状態など（上に重ねて出す） */
   banner?: ReactNode;
+  /** 退室中で、AI が代わりに動かしている人の名前（ほかのお知らせの下にいつも出す） */
+  away?: string[];
   extra?: ReactNode;
   speed?: Speed;
 }
@@ -40,7 +42,7 @@ function sheetAction(p: Prompt, id: string): Action {
   return { t: 'yes', v: id === 'yes' };
 }
 
-export function KiridaniOnlineGame({ seat, events, prompt, waitFor, names, onAct, onJudge, offer = null, note = null, banner, extra, speed }: OnlineGameProps) {
+export function KiridaniOnlineGame({ seat, events, prompt, waitFor, names, onAct, onJudge, offer = null, note = null, banner, away = [], extra, speed }: OnlineGameProps) {
   const t = useTable(seat, { speed });
   const fed = useRef(0);
   const [ask, setAsk] = useState<Ask | null>(null);
@@ -163,12 +165,13 @@ export function KiridaniOnlineGame({ seat, events, prompt, waitFor, names, onAct
   return (
     <>
       <KiridaniTable t={t} ask={waitingOffer ? null : ask} onAnswer={onAnswer} sheet={<>{sheetNode}{offerNode}</>} actions={actions} extra={extra} />
-      {(banner || waitNote || err || shownNote) && (
+      {(banner || waitNote || err || shownNote || away.length > 0) && (
         <div className="kd-netnote" role="status">
           {banner}
           {!banner && err && <span className="is-bad" onClick={() => setErr('')}>{err}</span>}
           {!banner && !err && shownNote && <span className={shownNote.ok ? 'is-good' : ''}>{shownNote.text}</span>}
           {!banner && !err && !shownNote && waitNote}
+          {away.length > 0 && <span className="kd-netnote-away">🤖 <b>{away.join('・')}</b>は退室中（戻るまでAIが代わりに動かします）</span>}
         </div>
       )}
     </>

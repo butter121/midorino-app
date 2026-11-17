@@ -5,7 +5,7 @@ import type { LobbyMember } from './protocol';
 import type { ChatMsg } from './chat';
 
 export type KdLevel = 'novice' | 'mid' | 'expert';
-export interface KdLobby { roomId: string; members: LobbyMember[]; started: boolean; seats: number; level: KdLevel }
+export interface KdLobby { roomId: string; members: LobbyMember[]; started: boolean; seats: number; level: KdLevel; /** 退室中で、AI が代わりに動かしている席 */ away?: number[] }
 
 /** 参加者 → ホスト */
 export type KdToHost =
@@ -32,6 +32,9 @@ export type KdToGuest =
   | { t: 'closed'; reason: string };
 
 /** 1通に入れる出来事の数（PeerJS の1通を小さく保つ） */
+/** 接続が切れてから AI に代わるまでの猶予（読み込み直しや電波の途切れならこの間に戻る） */
+export const KD_AWAY_GRACE_MS = 10_000;
+
 export const EV_CHUNK = 250;
 /** 受け取る1通の上限（盤面の写しが 20KB ほど） */
 export const KD_MAX_MSG = 256 * 1024;
