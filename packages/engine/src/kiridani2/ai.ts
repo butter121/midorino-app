@@ -24,7 +24,7 @@ export interface W {
 }
 export const DEFAULT_W: W = {
   res: { wood: 0.35, iron: 0.5, herb: 0.4, mana: 0.7, food: 0.45, gold: 0.2, mat: 0.5 },
-  act: 0.5, short: 1.6, inj: 0.9, perm: 0.35, defn: 0.15, wall: 0.5, hand: 0.35, played: 1.0, quest: 0.5, tag: 0.35, loop: 0.6, pet: 0.5, ancient: 0.6,
+  act: 0.5, short: 1.6, inj: 0.9, perm: 0.35, defn: 0.15, wall: 0.5, hand: 0.35, played: 1.0, quest: 0.5, tag: 0.35, loop: 3.0, pet: 0.5, ancient: 0.6,
 };
 /** 強い動きごとの重み（v1 の ARCHETYPES に当たる） */
 export const ENGINE_W: Partial<Record<EngineTag, (w: W) => void>> = {
@@ -33,31 +33,34 @@ export const ENGINE_W: Partial<Record<EngineTag, (w: W) => void>> = {
   trade: (w) => { w.res.gold += 0.1; w.res.mat += 0.1; },
   fort: (w) => { w.wall += 0.5; w.res.wood += 0.1; },
   smith: (w) => { w.res.iron += 0.15; w.perm += 0.08; },
-  family: (w) => { w.act += 0.15; w.res.food += 0.1; },
+  family: (w) => { w.res.food += 0.1; },
   arcane: (w) => { w.res.mana += 0.3; },
   beast: (w) => { w.pet += 0.6; w.res.food += 0.1; },
   quest: (w) => { w.quest += 0.5; w.res.gold += 0.05; },
   ally: (w) => { w.perm += 0.05; },
   ruins: (w) => { w.ancient += 0.5; w.res.mana += 0.1; },
-  boss: (w) => { w.perm += 0.1; w.defn += 0.1; },
+  boss: (w) => { w.defn += 0.05; },
   bridge: (w) => { w.played += 0.2; },
 };
 
 /** 強い動きの「一周」：ラウンドの中でそろえたい手順の組（どれか1つで満たす）。測定（tools/kiridani2/sim.ts）も同じ定義を使う */
+// 一周＝「その動きの入口（材料を得る）」と「出口（材料を名声・力に変える）」の両方を同じラウンドにした。
+// 印は engine.ts が p.acts に入れる：マス（sp:<id>）、得た資源の種類（wood…）、払った資源（pay:<res>）、
+// accum・fight（戦闘に出た）・win・win:<race>・coop・boss・tame・craft・build・hire・train・occ・spell・draw・exchange・sell・buy・trade・donate・board。
 export const LOOPS: Record<EngineTag, string[][]> = {
-  hunt: [['win'], ['exchange', 'craft']],
-  gather: [['accum'], ['build', 'craft', 'exchange', 'donate']],
-  trade: [['exchange', 'trade'], ['accum', 'board', 'win']],
-  fort: [['build'], ['accum']],
-  smith: [['craft'], ['accum', 'exchange', 'win']],
-  family: [['hire', 'train'], ['food']],
-  arcane: [['spell'], ['mana']],
-  beast: [['tame', 'win:beast'], ['food']],
-  quest: [['board'], ['win', 'build', 'craft', 'occ']],
-  ally: [['coop', 'trade'], ['win', 'accum']],
-  ruins: [['draw'], ['exchange', 'craft', 'build', 'occ', 'accum']],
-  boss: [['win'], ['train', 'craft']],
-  bridge: [['build', 'craft', 'occ'], ['win', 'exchange']],
+  hunt: [['fight'], ['sell', 'craft', 'buy', 'train', 'heal', 'herb']],
+  gather: [['accum'], ['build', 'craft', 'donate', 'occ', 'pay:wood', 'pay:herb']],
+  trade: [['sell'], ['buy', 'trade', 'donate']],
+  fort: [['build'], ['wood', 'iron']],
+  smith: [['craft', 'sell'], ['iron', 'wood', 'mat']],
+  family: [['hire', 'train', 'occ', 'heal'], ['food']],
+  arcane: [['mana'], ['spell', 'pay:mana', 'draw']],
+  beast: [['tame', 'win'], ['food']],
+  quest: [['board', 'donate'], ['win', 'build', 'craft', 'occ']],
+  ally: [['coop', 'trade', 'fight'], ['accum', 'sell', 'buy', 'food']],
+  ruins: [['draw', 'sp:ruins', 'sp:altar', 'sp:treasury'], ['sell', 'craft', 'build', 'occ', 'mana']],
+  boss: [['fight', 'train'], ['craft', 'heal', 'herb', 'iron', 'buy']],
+  bridge: [['build', 'craft', 'occ'], ['win', 'sell', 'buy']],
 };
 export function loopDone(tag: EngineTag, acts: string[]): number {
   return LOOPS[tag].filter((grp) => grp.some((a) => acts.includes(a))).length;
@@ -299,13 +302,13 @@ export class AI implements Brain {
   }
   private needW(g: Game, p: Player, r: Res) {
     let w = this.W.res[r];
-    if (r === 'food') { const need = D.UPKEEP * p.comps.length; if (p.res.food < need) w += 0.4; }
+    if (r === 'food') { const need = D.upkeepOf(p.comps.length); if (p.res.food < need) w += 0.4; }
     return w;
   }
   tradePhase(g: Game, p: Player) {
     if (!this.trade_on || p.tradesUsed >= g.tradeLimit(p)) return;
     const toW = 4 - ((g.round - 1) % 4) - 1;
-    const need = D.UPKEEP * p.comps.length - p.res.food;
+    const need = D.upkeepOf(p.comps.length) - p.res.food;
     if (need <= 0 || toW > 1) return;
     const surplus = (['wood', 'iron', 'herb', 'mat', 'mana'] as Res[]).filter((r) => p.res[r] >= 3).sort((a, b) => p.res[b] - p.res[a]);
     if (!surplus.length) return;
@@ -335,7 +338,7 @@ export function evaluate(g: Game, p: Player, W: W, targets: EngineTag[] = []): n
   const wl = wintersFrom(g, g.round);
   if (wl) {
     const mods = g.mods(p);
-    const need = Math.max(0, D.UPKEEP * p.comps.length + mods.upkeep);
+    const need = Math.max(0, D.upkeepOf(p.comps.length) + mods.upkeep);
     let nextW = g.round; while (nextW % 4) nextW++;
     const urg = Math.min(2, Math.max(0.4, 2 / (1 + nextW - g.round)));
     const short = Math.max(0, need - p.res.food);

@@ -37,8 +37,8 @@ export const SPELLS: CardDef[] = [
   {
     id: 's_horn', kind: 'spell', name: '召集の角笛', engine: ['family'], mech: 'action',
     cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ pay: { food: 3 } }, { hire_free: 1 }] }],
-    text: '食料3を払い、寝床なしで仲間を1人増やす。',
+    effects: [{ when: 'play', do: [{ pay: { food: 4 } }, { hire_free: 1 }] }],
+    text: '食料4を払い、寝床なしで仲間を1人増やす。',
   },
   // ---- arcane ----
   {

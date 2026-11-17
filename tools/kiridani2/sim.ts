@@ -13,7 +13,7 @@
 //   そのラウンドにできた割合。その動きのタグを持つカードが2枚以上出たあとのラウンドだけ数える。
 //   参考に「冬に全員を食べさせられた割合」と「広場（余り手）に置いた割合」も出す。
 // - 同じ手順の繰り返し：前のラウンドと置いたマスの組（並びは問わない）がまったく同じだった割合。
-// - 強い動きごとの名声：目指す動き（1つ目）ごとの「名声 − 卓の平均」の平均。
+// - 強い動きごとの名声：同じ腕前の卓では席ごとに目指す動きをくじで決め（bridge 以外の12種）、動きごとの「名声 − 卓の平均」の平均を出す。
 // - 名声の内訳：勝者の名声（プラスの入り口の合計）に占める各入り口の割合と、どれかが4割を超えた勝者の割合。
 // - カード：取ったカード（リーダー・ドラフト・補充・山から引いたもの）ごとの「名声 − 卓の平均」の平均（30局以上出たもの）。
 import { spawn } from 'node:child_process';
@@ -23,12 +23,13 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { AI, CARD_SET, drive, Game, Rng, LOOPS, loopDone, scoreBreakdown, score, type EngineTag, type Level } from '../../packages/engine/src/kiridani2/index';
 
+const FORCE_TAGS: EngineTag[] = ['hunt', 'gather', 'trade', 'fort', 'smith', 'family', 'arcane', 'beast', 'quest', 'ally', 'ruins', 'boss'];
 const env = (k: string, d: string) => process.env[k] ?? d;
 
 interface PRec {
   seat: number; level: Level; target: string; targets: string[]; leader: string; score: number; rel: number; win: boolean;
   bd: Record<string, number>; picked: string[]; loopN: number; loopOk: number; repeats: number; rounds: number; fed: number; winters: number;
-  plaza: number; places: number; fateMean: number; fates: number;
+  plaza: number; places: number; fateMean: number; fates: number; comps: number; kills: number;
 }
 interface GRec { years: number; n: number; mixed: boolean; seed: number; players: PRec[]; ms: number }
 
@@ -36,7 +37,9 @@ function playOne(years: number, n: number, seed: number, mixed: boolean): GRec {
   const lr = new Rng(seed * 7919 + 13);
   let levels: Level[] = Array(n).fill('strong');
   if (mixed) do { levels = Array.from({ length: n }, () => lr.choice(['novice', 'normal', 'strong'] as Level[])); } while (new Set(levels).size < 2);
-  const ais = levels.map((l, i) => new AI(l, { seed: seed * 31 + i }));
+  // 同じ腕前の卓では、席ごとに目指す動きをくじで決める（強い動きごとの名声を同じ数ずつ比べるため。SIM_NATURAL=1 で AI まかせ）
+  const tags = lr.shuffle([...FORCE_TAGS]);
+  const ais = levels.map((l, i) => new AI(l, { seed: seed * 31 + i, ...(!mixed && !process.env.SIM_NATURAL ? { target: tags[i % tags.length] } : {}) }));
   const g = new Game(n, ais, { seed, years, cards: CARD_SET });
   const t0 = Date.now();
   const scores = drive(g.play());
@@ -63,7 +66,7 @@ function playOne(years: number, n: number, seed: number, mixed: boolean): GRec {
     return {
       seat: i, level: levels[i], target: t, targets: p.target, leader: p.leader ?? '', score: scores[i], rel: scores[i] - mean, win: scores[i] === top,
       bd: scoreBreakdown(g, p), picked: [p.leader ?? '', ...p.picked].filter(Boolean), loopN, loopOk, repeats, rounds: p.history.length,
-      fed: p.fed.filter(Boolean).length, winters: p.fed.length, plaza, places, fateMean: fv.length ? fv.reduce((a, b) => a + b, 0) / fv.length : 0.5, fates: fv.length,
+      fed: p.fed.filter(Boolean).length, winters: p.fed.length, plaza, places, fateMean: fv.length ? fv.reduce((a, b) => a + b, 0) / fv.length : 0.5, fates: fv.length, comps: p.comps.length, kills: p.kills,
     };
   });
   if (g.errors.length) throw new Error(`errors in game ${seed}: ${g.errors.join(';')}`);
@@ -154,7 +157,7 @@ function summarize(years: number, eq: GRec[], mx: GRec[]) {
   // 強い動きごと
   res.engine = Object.fromEntries([...new Set(P.map((p) => p.target))].sort().map((t) => {
     const q = P.filter((p) => p.target === t);
-    return [t, { n: q.length, rel: avg(q.map((p) => p.rel)), fame: avg(q.map((p) => p.score)), win: avg(q.map((p) => (p.win ? 1 : 0))) }];
+    return [t, { n: q.length, rel: avg(q.map((p) => p.rel)), fame: avg(q.map((p) => p.score)), win: avg(q.map((p) => (p.win ? 1 : 0))), comps: avg(q.map((p) => p.comps)), kills: avg(q.map((p) => p.kills)), src: Object.fromEntries(Object.entries(SRC).map(([k, f]) => [k, avg(q.map((p) => f(p.bd)))])), neg: avg(q.map((p) => p.bd.discontent + p.bd.raid + Math.min(0, p.bd.dragon))) }];
   }));
   // 名声の内訳（勝者）
   const W = P.filter((p) => p.win);
@@ -199,6 +202,14 @@ function print(all: Record<string, any>[]) {
   console.log('\n--- 強い動きごとの「名声 − 卓の平均」（目標±3以内）[人数]');
   const tags = [...new Set(all.flatMap((r) => Object.keys(r.engine)))].sort();
   for (const t of tags) L(`  ${t}`, (r) => (r.engine[t] ? `${f1(r.engine[t].rel)} [${r.engine[t].n}]` : '-'));
+  console.log('\n--- 同じ値を5年換算（÷ 年数/5。長い試合は名声の桁が大きいので、±3 はこの値で見る）');
+  for (const t of tags) L(`  ${t}`, (r) => (r.engine[t] ? f1(r.engine[t].rel / (r.years / 5)) : '-'));
+  console.log('\n--- 強い動きごとの終わりの仲間の数／倒した数');
+  for (const t of tags) L(`  ${t}`, (r) => (r.engine[t] ? `${f1(r.engine[t].comps)}/${f1(r.engine[t].kills)}` : '-'));
+  if (process.env.SIM_DETAIL) for (const r of all) {
+    console.log(`\n--- 強い動きごとの名声の入り口（${r.years}年、平均）: ${[...Object.keys(SRC), 'neg'].join(' / ')}`);
+    for (const t of tags) if (r.engine[t]) console.log(`  ${t.padEnd(8)} ${[...Object.keys(SRC).map((k) => f1(r.engine[t].src[k])), f1(r.engine[t].neg)].join(' / ')}`);
+  }
   console.log('\n--- 強い動きごとの「一周」の割合');
   for (const t of tags) L(`  ${t}`, (r) => (r.loopBy[t] !== undefined ? pct(r.loopBy[t]) : '-'));
   for (const r of all) {

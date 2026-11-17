@@ -18,16 +18,16 @@ export const TOOLS: CardDef[] = [
     id: 't_basket', kind: 'tool', name: '採集籠', engine: ['gather'], mech: 'boost',
     cost: { wood: 1 },
     effects: [{ when: 'passive', mod: { accum_bonus: { meadow: 1, forest: 1 } } }],
-    text: '薬草の野と古の森は、ラウンドの始めにたまる量が1ずつ多い（あなたが取るときだけでなく盤面に足す）。',
+    text: '薬草の野と古の森を使うと、たまった分に加えてさらに1つずつ多く取れる。',
   },
   {
     id: 't_storehouse', kind: 'tool', name: '貯蔵庫', engine: ['gather', 'trade'], mech: 'convert',
     cost: { wood: 3 },
     effects: [
       { when: 'round_end', do: [{ convert: { from: { wood: 3 }, to: { gold: 2 } } }], limit: 'round' },
-      { when: 'round_end', do: [{ convert: { from: { herb: 3 }, to: { gold: 2 } } }], limit: 'round' },
+      { when: 'round_end', do: [{ pay: { wood: 2, herb: 2 } }, { fame: 1 }], limit: 'round' },
     ],
-    text: 'ラウンドの終わりに、木材3を金貨2に、薬草3を金貨2に替えてよい（それぞれラウンド1回）。',
+    text: 'ラウンドの終わりに、木材3を金貨2に替えてよい。また木材2・薬草2を蔵に納めて名声1（それぞれラウンド1回）。',
   },
   // ---- trade ----
   {
@@ -41,9 +41,9 @@ export const TOOLS: CardDef[] = [
     cost: { wood: 3, gold: 1 }, prereq: { occs: 1 },
     effects: [
       { when: 'passive', mod: { trade_count: 1 } },
-      { when: 'sell', do: [{ gain: { gold: 1 } }], limit: 'round' },
+      { when: 'sell', do: [{ fame: 1 }], limit: 'round' },
     ],
-    text: '前提：職能1枚。取引の回数+1。交換所で売ると金貨+1（ラウンド1回）。',
+    text: '前提：職能1枚。1ラウンドにできる取引の回数+1。交換所で売ると名声+1（ラウンド1回）。',
   },
   // ---- fort ----
   {
@@ -59,8 +59,11 @@ export const TOOLS: CardDef[] = [
   {
     id: 't_anvil', kind: 'tool', name: '鍛冶場の金床', engine: ['smith'], mech: 'convert',
     cost: { iron: 2 },
-    effects: [{ when: 'craft', do: [{ gain: { iron: 1 } }], limit: 'round' }],
-    text: '装備を作ると鉄1が戻る（ラウンド1回）。',
+    effects: [
+      { when: 'craft', do: [{ gain: { iron: 1 } }], limit: 'round' },
+      { when: 'craft', do: [{ fame: 1 }], limit: 'year' },
+    ],
+    text: '装備を作ると鉄1が戻る（ラウンド1回）。1年に1回、装備を作ると名声+1。',
   },
   {
     id: 't_bellows', kind: 'tool', name: '大ふいご', engine: ['smith'], mech: 'action',
@@ -74,9 +77,9 @@ export const TOOLS: CardDef[] = [
     cost: { wood: 4 },
     effects: [
       { when: 'passive', mod: { bed_cap: 2 } },
-      { when: 'hire', do: [{ gain: { food: 1 } }] },
+      { when: 'hire', do: [{ gain: { food: 1 } }], limit: 'year' },
     ],
-    text: '寝床2つぶんになる。仲間が増えるたび食料+1。',
+    text: '寝床2つぶんになる。仲間が増えると食料+1（1年に1回）。',
   },
   {
     id: 't_smokehouse', kind: 'tool', name: '燻製小屋', engine: ['family', 'hunt'], mech: 'convert',
@@ -88,8 +91,8 @@ export const TOOLS: CardDef[] = [
   {
     id: 't_mana_font', kind: 'tool', name: '魔力の泉水', engine: ['arcane'], mech: 'accrue',
     cost: { wood: 2, mana: 1 },
-    effects: [{ when: 'round_start', if: { season: ['spring', 'summer', 'autumn'] }, do: [{ gain: { mana: 1 } }] }],
-    text: '春・夏・秋のラウンドの始めに魔石+1（冬はなし）。',
+    effects: [{ when: 'round_start', if: { season: ['spring', 'autumn'] }, do: [{ gain: { mana: 1 } }] }],
+    text: '春と秋のラウンドの始めに魔石+1。',
   },
   // ---- beast ----
   {

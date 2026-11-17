@@ -10,9 +10,14 @@ export const SEAT_FOOD: Record<number, number[]> = { 2: [0, 1], 3: [0, 1, 1], 4:
 export const MAX_COMPS = 6;
 export const MAX_SKILL = 2;
 export const UPKEEP = 2;
+/** 5人目からの仲間は維持費3（調整：大所帯を重くする） */
+export const UPKEEP_BIG = { from: 5, food: 3 };
+export function upkeepOf(comps: number) { return comps * UPKEEP + Math.max(0, comps - UPKEEP_BIG.from + 1) * (UPKEEP_BIG.food - UPKEEP); }
 export const DISCONTENT = 3;
-export const FAME_PER_COMP = 3;
+export const FAME_PER_COMP = 1;
 export const GOLD_PER_FAME = 4;
+/** 金貨の名声の上限（5年。POINT_SCALE 倍）。超えた分は8枚で1点 */
+export const GOLD_FAME_CAP = 4;
 export const FATE_DECK = [-1, 0, 0, 1, 1, 2];
 export const POWER_PER = 2;
 export const GUARD_PER = 1;
@@ -24,7 +29,7 @@ export const WEAK_BONUS = 1;
 export const NEST_CAP = 2;
 /** 1回に送れる仲間の数 */
 export const MAX_SEND = 3;
-export const BED_COST: Cost = { wood: 3 };
+export const BED_COST: Cost = { wood: 4 };
 export const WALL_COST: Cost = { wood: 2, iron: 1 };
 /** 回復の費用（薬草2で即回復） */
 export const HEAL_COST = 2;
@@ -43,6 +48,8 @@ export const TRADE_MAX = 3;
 // ---- 交換所
 export const BUY: Record<Res, number> = { wood: 1, iron: 2, herb: 1, food: 1, mana: 3, mat: 2, gold: 0 };
 export const MARKET_QTY = 3;
+/** 装備を売る値段＝費用（交換所の買値で数えた金貨）× この割合（調整：仕様は半分） */
+export const ITEM_SELL_RATE = 0.8;
 export const sellPrice = (r: Res) => Math.max(1, BUY[r] - 1);
 
 // ---- 古代の品の組
@@ -63,6 +70,8 @@ export const TABLE_JP: Record<string, string> = {
   kills: '倒した魔物', races: '倒した種族', facilities: '施設', walls: '防壁', gear: '持たせた装備', occs: '出した職能', pets: '使い魔',
 };
 export const TABLE_SCALE: Record<number, number> = { 5: 1, 10: 1.6, 15: 2 };
+/** 終わりの点（分野表の点・仲間の点・金貨の上限）の倍率。試合中の名声はラウンド数に比例して増えるので、年数に比例させる（調整） */
+export const POINT_SCALE: Record<number, number> = { 5: 1, 10: 2, 15: 3 };
 /** 種族は5種しかないので伸ばさない（実装メモ） */
 export const TABLE_NOSCALE = new Set(['races']);
 const tableCache = new Map<number, Record<string, number[]>>();
@@ -93,7 +102,7 @@ export const SPACES: SpaceDef[] = [
   { id: 'workshop', name: '工房', options: [[{ build: 'any' }]] },
   { id: 'market', name: '交換所', options: [[{ exchange: true }]] },
   { id: 'plaza', name: '広場', cap: 0, options: [[{ gain: { food: 1 } }], [{ gain: { mat: 1 } }]] },
-  { id: 'hall', name: '集会所', options: [[{ first: true }, { gain: { food: 1 } }]] },
+  { id: 'hall', name: '集会所', options: [[{ first: true }, { gain: { food: 1 } }], [{ first: true }, { donate: { pay: { gold: 6 }, fame: 2 } }]] },
   { id: 'grove', name: '雑木林', accum: { wood: 2 }, min_p: 4, options: [[]] },
   { id: 'market2', name: '小さな交換所', min_p: 4, options: [[{ exchange: true }]] },
   { id: 'deepmine', name: '深い坑道', accum: { iron: 1 }, min_p: 5, options: [[]] },
@@ -161,7 +170,13 @@ export const ANCIENT_DRAGON: MonsterType = M('b_ancient', '谷底の古竜', 'dr
 export const BOSS: Record<string, MonsterType> = Object.fromEntries([...BOSS_TYPES, ANCIENT_DRAGON].map((m) => [m.id, m]));
 
 // ---- 魔物の数値（§6）
-export const MON_ROLL = { base: 5, slope: 8, sd: 1.2, clip: 2.5, lootSd: 0.5, lootClip: 2 };
+export const MON_ROLL = {
+  base: 5, slope: 8, sd: 1.2, clip: 2.5, lootSd: 0.5, lootClip: 2,
+  /** 証＝round(強さ/trophyDiv + n)、反撃＝round(強さ/counterDiv)（調整：仕様は 2.5 と 3） */
+  trophyDiv: 5.5, counterDiv: 2.5, bossTrophy: 3.5,
+  /** 空いた巣に予告の魔物が入る確率（調整：毎ラウンド全部は埋まらない） */
+  spawnP: 0.85,
+};
 
 /** AI・評価用の資源の目安 */
 export const RES_VAL: Record<Res, number> = { wood: 0.4, iron: 0.6, herb: 0.45, mana: 0.9, food: 0.55, gold: 0.3, mat: 0.6 };

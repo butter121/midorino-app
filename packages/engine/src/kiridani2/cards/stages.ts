@@ -9,8 +9,8 @@ export const STAGES: StageDef[] = [
   // ---------------- 段階1（最初の年 R2〜R4、3枚全部）
   {
     id: 'tavern', kind: 'stage', stage: 1, name: '酒場で募集', engine: ['family'], mech: 'action',
-    effects: [opt([{ pay: { food: 2 } }, { hire: 1 }])],
-    text: '食料2を払い、仲間を1人雇う（寝床が要る）。',
+    effects: [opt([{ pay: { food: 3, gold: 1 } }, { hire: 1 }])],
+    text: '食料3・金貨1を払い、仲間を1人雇う（寝床が要る）。',
   },
   {
     id: 'training', kind: 'stage', stage: 1, name: '訓練場', engine: ['fort', 'hunt'], mech: 'action',
@@ -57,8 +57,8 @@ export const STAGES: StageDef[] = [
   },
   {
     id: 'family', kind: 'stage', stage: 2, name: '対家の家族', engine: ['family'], mech: 'action',
-    effects: [opt([{ pay: { food: 3 } }, { hire_free: 1 }])],
-    text: '食料3を払い、寝床なしで仲間を1人増やす。',
+    effects: [opt([{ pay: { food: 4, gold: 1 } }, { hire_free: 1 }])],
+    text: '食料4・金貨1を払い、寝床なしで仲間を1人増やす。',
   },
   {
     id: 'caravan', kind: 'stage', stage: 2, name: '行商隊', engine: ['trade'], mech: 'action',
@@ -101,10 +101,10 @@ export const STAGES: StageDef[] = [
   {
     id: 'kennel', kind: 'stage', stage: 3, name: '獣舎の開放', engine: ['beast'], mech: 'action',
     effects: [
-      opt([{ pay: { food: 2 } }, { tame: true }]),
+      opt([{ pay: { food: 3 } }, { tame: true }]),
       opt([{ gain: { food: 1, mat: 1 } }]),
     ],
-    text: '次のどれか：食料2を払い、巣にいる獣1体を戦わずに使い魔にする／食料1と素材1を得る。',
+    text: '次のどれか：食料3を払い、巣にいる獣1体を戦わずに使い魔にする／食料1と素材1を得る。',
   },
   // ---------------- 段階4（候補6から4枚）
   {

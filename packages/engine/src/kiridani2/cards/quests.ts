@@ -33,7 +33,7 @@ export const QUESTS: QuestDef[] = [
   { id: 'sq_quest', kind: 'quest', name: '依頼の達人', secret: true, fame: 4, need: { min: { quests: 2 } }, text: '共通の依頼を2つ達成する。' },
   { id: 'sq_ally', kind: 'quest', name: '盟友', secret: true, fame: 5, need: { min: { coop: 3 } }, text: '共闘で魔物を3体倒す。' },
   { id: 'sq_ruins', kind: 'quest', name: '古代の探究者', secret: true, fame: 5, need: { min: { ancient: 4 } }, text: '古代の品を4つ持つ。' },
-  { id: 'sq_boss', kind: 'quest', name: '主殺し', secret: true, fame: 6, need: { min: { boss: 2 } }, text: '主を2体倒す（共闘でもよい）。' },
+  { id: 'sq_boss', kind: 'quest', name: '主殺し', secret: true, fame: 6, need: { min: { boss: 2 } }, text: '主・古竜を合わせて2体倒す（共闘でもよい）。' },
   { id: 'sq_pious', kind: 'quest', name: '敬虔な寄進者', secret: true, fame: 4, need: { min: { donations: 3 } }, text: '寄進を3回する。' },
   { id: 'sq_balance', kind: 'quest', name: '万能の団', secret: true, fame: 6, need: { min: { races: 4, occs: 3 } }, text: '4種類の種族を倒し、職能を3枚出す。' },
 ];

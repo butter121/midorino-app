@@ -50,8 +50,8 @@ export const WEAPONS: CardDef[] = [
   {
     id: 'w_net', kind: 'weapon', name: '捕獲の投げ網', engine: ['beast'], mech: 'instead',
     cost: { wood: 2, mat: 1 }, slot: 'weapon', power: 1,
-    effects: [{ when: 'instead:nest', if: { race: 'beast' }, do: [{ pay: { food: 2 } }, { tame: true }] }],
-    text: '戦力+1。持ち手を獣のいる巣に置いたとき、戦う代わりに食料2を払って使い魔にできる。',
+    effects: [{ when: 'instead:nest', if: { race: 'beast' }, do: [{ pay: { food: 3 } }, { tame: true }] }],
+    text: '戦力+1。持ち手を獣のいる巣に置いたとき、戦う代わりに食料3を払って使い魔にできる。',
   },
   {
     id: 'w_whip', kind: 'weapon', name: '獣使いの鞭', engine: ['beast', 'hunt'], mech: 'combat',
@@ -89,9 +89,9 @@ export const WEAPONS: CardDef[] = [
   // ---- boss ----
   {
     id: 'w_dragonslayer', kind: 'weapon', name: '竜殺しの大剣', engine: ['boss'], mech: 'combat',
-    cost: { iron: 4, mana: 1 }, slot: 'weapon', two_hand: true, power: 2, vs_race: 'dragon',
+    cost: { iron: 4, mana: 1 }, slot: 'weapon', two_hand: true, power: 3, vs_race: 'dragon',
     effects: [{ when: 'fight', if: { boss: true }, do: [{ power: 4 }] }],
-    text: '両手持ち。戦力+2。主・古竜との戦闘ではさらに戦力+4。',
+    text: '両手持ち。戦力+3。主・古竜との戦闘ではさらに戦力+4。',
   },
   {
     id: 'a_dragon_scale', kind: 'armor', name: '竜鱗の盾', engine: ['boss', 'fort'], mech: 'combat',
@@ -102,7 +102,7 @@ export const WEAPONS: CardDef[] = [
   {
     id: 'w_holy_lance', kind: 'weapon', name: '聖騎士の槍', engine: ['boss'], mech: 'endfame',
     cost: { iron: 2, gold: 2 }, slot: 'weapon', leader_only: true, power: 3,
-    effects: [{ when: 'win', if: { boss: true }, do: [{ fame: 2 }] }],
-    text: 'リーダー専用。戦力+3。主を倒すたび名声+2。',
+    effects: [{ when: 'win', if: { boss: true }, do: [{ fame: 4 }] }],
+    text: 'リーダー専用。戦力+3。主・古竜を倒すたび名声+4。',
   },
 ];

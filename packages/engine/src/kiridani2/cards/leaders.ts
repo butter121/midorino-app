@@ -24,56 +24,60 @@ export const LEADERS: CardDef[] = [
     effects: [
       { when: 'passive', mod: { market_qty: 1 } },
       { when: 'other:market', do: [{ steal_gain: { gold: 1 } }], limit: 'round' },
+      { when: 'sell', do: [{ fame: 1 }], limit: 'year' },
     ],
-    text: '交換所で扱える数+1。他の人が交換所を使うと金貨1を得る（ラウンド1回）。',
+    text: '交換所で扱える数+1。他の人が交換所を使うと金貨1を得る（ラウンド1回）。交換所で売ると名声+1（1年に1回）。',
   },
   {
     id: 'l_goro', kind: 'leader', name: '城塞の騎士ゴロウ', engine: ['fort'], mech: 'boost',
     effects: [
       { when: 'passive', mod: { base_guard: 1 } },
       { when: 'build', do: [{ gain: { wood: 1 } }], limit: 'round' },
+      { when: 'build', do: [{ fame: 1 }], limit: 'year' },
     ],
-    text: '拠点の守り+1。施設・寝床・防壁を建てると木材1が戻る（ラウンド1回）。',
+    text: '拠点の守り+1。施設・寝床・防壁を建てると木材1が戻る（ラウンド1回）。1年に1回、建てると名声+1。',
   },
   {
     id: 'l_gan', kind: 'leader', name: 'ドワーフの鍛冶師ガン', engine: ['smith'], mech: 'convert',
     effects: [
       { when: 'craft', do: [{ gain: { iron: 1 } }], limit: 'round' },
       { when: 'use:mine', do: [{ convert: { from: { iron: 2 }, to: { gold: 3 } } }] },
+      { when: 'craft', do: [{ fame: 1 }], limit: 'year' },
     ],
-    text: '装備を作ると鉄1が戻る（ラウンド1回）。鉄の坑道を使ったあと、鉄2を金貨3に替えてよい。',
+    text: '装備を作ると鉄1が戻る（ラウンド1回）。鉄の坑道を使ったあと、鉄2を金貨3に替えてよい。1年に1回、装備を作ると名声+1。',
   },
   {
     id: 'l_momo', kind: 'leader', name: '野営の料理人モモ', engine: ['family'], mech: 'convert',
     effects: [
       { when: 'passive', mod: { upkeep: -1 } },
-      { when: 'hire', do: [{ gain: { food: 1 } }] },
     ],
-    text: '冬の維持費が食料1少ない。仲間が増えるたび食料+1。',
+    text: '冬の維持費が食料1少ない。',
   },
   {
     id: 'l_mina', kind: 'leader', name: '土くれの魔導士ミナ', engine: ['arcane'], mech: 'accrue',
     effects: [
       { when: 'spell', do: [{ gain: { mana: 1 } }], limit: 'round' },
       { when: 'use:spring', do: [{ gain: { mana: 1 } }] },
+      { when: 'spell', do: [{ fame: 1 }], limit: 'year' },
     ],
-    text: '秘術を使うと魔石1が戻る（ラウンド1回）。魔石の泉を使うたび魔石+1。',
+    text: '秘術を使うと魔石1が戻る（ラウンド1回）。魔石の泉を使うたび魔石+1。1年に1回、秘術を使うと名声+1。',
   },
   {
     id: 'l_haru', kind: 'leader', name: '獣使いのハル', engine: ['beast'], mech: 'instead',
     effects: [
-      { when: 'instead:nest', if: { race: 'beast' }, do: [{ pay: { food: 3 } }, { tame: true }] },
+      { when: 'instead:nest', if: { race: 'beast' }, do: [{ pay: { food: 4 } }, { tame: true }] },
       { when: 'passive', mod: { pet_power: 1 } },
     ],
-    text: '獣のいる巣に置いたとき、戦う代わりに食料3を払って使い魔にできる。使い魔の戦力+1。',
+    text: '獣のいる巣に置いたとき、戦う代わりに食料4を払って使い魔にできる。使い魔の戦力+1。',
   },
   {
     id: 'l_jin', kind: 'leader', name: '賞金稼ぎのジン', engine: ['quest'], mech: 'boost',
     effects: [
       { when: 'use:board', do: [{ gain: { gold: 1 } }] },
+      { when: 'use:board', do: [{ fame: 1 }], limit: 'round' },
       { when: 'win', do: [{ gain: { gold: 1 } }], limit: 'round' },
     ],
-    text: '依頼板を使うたび金貨+1。魔物に勝つと金貨+1（ラウンド1回）。',
+    text: '依頼板を使うたび金貨+1、名声+1（名声はラウンド1回）。魔物に勝つと金貨+1（ラウンド1回）。',
   },
   {
     id: 'l_aya', kind: 'leader', name: '旅の吟遊詩人アヤ', engine: ['ally'], mech: 'social',
@@ -88,15 +92,18 @@ export const LEADERS: CardDef[] = [
     effects: [
       { when: 'instead:spring', do: [{ draw: { from: 'ancient', look: 2, take: 1 } }], limit: 'year' },
       { when: 'use:ruins', do: [{ gain: { mana: 1 } }] },
+      { when: 'use:ruins', do: [{ fame: 1 }], limit: 'year' },
     ],
-    text: '魔石の泉に置いたとき、魔石の代わりに古代の品を2枚見て1枚取れる（1年に1回）。遺跡の探索を使うたび魔石+1。',
+    text: '魔石の泉に置いたとき、魔石の代わりに古代の品を2枚見て1枚取れる（1年に1回）。遺跡の探索を使うたび魔石+1。1年に1回、遺跡の探索を使うと名声+1。',
   },
   {
     id: 'l_nana', kind: 'leader', name: '光の神官ナナ', engine: ['boss'], mech: 'combat',
     effects: [
-      { when: 'fight', if: { boss: true }, do: [{ power: 2 }, { counter: -1 }] },
+      { when: 'fight', if: { boss: true }, do: [{ power: 3 }] },
+      { when: 'fight', do: [{ counter: -1 }] },
+      { when: 'win', if: { boss: true }, do: [{ fame: 4 }] },
       { when: 'lose', do: [{ heal: 1 }], limit: 'round' },
     ],
-    text: '主・古竜との戦闘で戦力+2、反撃−1。負けたとき負傷した仲間1人を回復（ラウンド1回）。',
+    text: '戦闘で反撃−1。主・古竜との戦闘で戦力+3、勝てば名声+4。負けたとき負傷した仲間1人を回復（ラウンド1回）。',
   },
 ];
