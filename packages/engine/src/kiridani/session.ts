@@ -115,7 +115,11 @@ export class KiridaniSession implements SeatSession {
   /** 取引の相手（取引する AI の席） */
   tradePartners(): number[] {
     const me = this.player?.pid ?? this.human;
-    return this.g.players.filter((o) => o.pid !== me && o.ai instanceof AI && o.ai.trade_on).map((o) => o.pid);
+    return this.g.players.filter((o) => o.pid !== me && ((o.ai instanceof AI && o.ai.trade_on) || this.isHuman(o.pid))).map((o) => o.pid);
+  }
+
+  /** 人間の席か（人どうしの取引は申し込み → 相手が受ける／断る） */
+  isHuman(seat: number): boolean { return this.humans.includes(seat) && !this.g.players[seat]?.ai;
   }
 
   /** 取引の提案が成り立つか、相手の AI が受けるか（AI の取引の評価をそのまま使い、乱数は使わない） */
@@ -129,13 +133,16 @@ export class KiridaniSession implements SeatSession {
     if (!p || !this.waiting || this.waiting.k !== 'choose') return fail('あなたの番に持ちかけられる');
     if (this.tradeLeft() <= 0) return fail('このラウンドの取引は終わり');
     const o = g.players[b];
-    if (!o || o === p || !(o.ai instanceof AI)) return fail('相手がいない');
-    if (!o.ai.trade_on) return fail('この相手は取引しない');
+    const human = !!o && this.isHuman(b);
+    if (!o || o === p || (!(o.ai instanceof AI) && !human)) return fail('相手がいない');
+    if (o.ai instanceof AI && !o.ai.trade_on) return fail('この相手は取引しない');
     if (!units(give) || !units(get)) return fail('渡すものと受け取るものを選ぶ');
     if (units(give) > TRADE_MAX || units(get) > TRADE_MAX) return fail(`片側${TRADE_MAX}個まで`);
     for (const r of Object.keys(give)) if (r in get) return fail('同じ資源を渡して受け取ることはできない');
     for (const [r, n] of Object.entries(give)) if (!BASIC.includes(r as Res) || p.res[r as Res] < (n as number)) return fail('渡すものが足りない');
     for (const [r, n] of Object.entries(get)) if (!BASIC.includes(r as Res) || o.res[r as Res] < (n as number)) return fail('相手の持ち物が足りない');
+    // 人が相手なら、受けるかどうかは相手が決める（申し込める、というだけ）
+    if (human || !(o.ai instanceof AI)) return { ok: true, accept: true, gain: 0, human: true };
     // 相手から見ると get を渡して give を受け取る
     const j = o.ai.judge_offer(g, o, get, give);
     return { ok: true, accept: j.accept, gain: j.gain };
@@ -145,7 +152,20 @@ export class KiridaniSession implements SeatSession {
   trade(b: number, give: Cost, get: Cost): GameEvent[] {
     const j = this.judgeTrade(b, give, get);
     if (!j.ok) throw new Error(j.error);
+    if (j.human) throw new Error('人との取引は申し込んで、相手が受けたときに成立する');
     if (!j.accept) throw new Error('相手が断った');
+    return this.applyTrade(b, give, get);
+  }
+
+  /** 人どうしの取引（相手の人が受けたあと。審判が呼ぶ）。持ち物・回数をもう一度確かめてから行う */
+  tradeHuman(b: number, give: Cost, get: Cost): GameEvent[] {
+    if (!this.isHuman(b)) throw new Error('相手が人ではない');
+    const j = this.judgeTrade(b, give, get);
+    if (!j.ok) throw new Error(j.error);
+    return this.applyTrade(b, give, get);
+  }
+
+  private applyTrade(b: number, give: Cost, get: Cost): GameEvent[] {
     const w = this.waiting as Extract<Req, { k: 'choose' }>;
     const clean = (c: Cost) => Object.fromEntries(Object.entries(c).filter(([, n]) => n)) as Cost;
     this.g.trade(w.p, this.g.players[b], clean(give), clean(get));
@@ -255,7 +275,7 @@ export function describeOption(g: Game, p: Player, [sid, opt]: Option): { title:
 // ------------------------------------------------------------ 取引・戦闘の選択（人間の席）
 /** 人間からの取引の上限（片側の個数）。AI どうしは 1:1・2:1・1:2 */
 export const TRADE_MAX = 3;
-export interface TradeJudge { ok: boolean; accept: boolean; gain: number; error?: string; /** ホストに問い合わせ中（オンライン） */ pending?: boolean }
+export interface TradeJudge { ok: boolean; accept: boolean; gain: number; error?: string; /** ホストに問い合わせ中（オンライン） */ pending?: boolean; /** 相手が人（申し込んで返事を待つ） */ human?: boolean }
 
 export interface FightChip {
   /** 画面の中で一意（同じ名前が2つあるときは #1 など） */

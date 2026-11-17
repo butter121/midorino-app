@@ -1,10 +1,11 @@
 // 霧谷：「トレイ」で選ぶシート。持ち物や使うものをタップでオン・オフし、選んだものがトレイに並び、合計がその場で変わる。
 //   ・FightTray：巣・主の巣に挑む（何人で・矢・ポーション・士気・秘術・武具の力・待ち伏せ）→ 戦力と強さ・勝つ見込み・反撃・費用
 //   ・MarketTray：市場で1種類を好きな数だけ売る／買う
-//   ・TradeTray：AI と資源を交換する（渡すトレイ・受け取るトレイ。相手が受けるかはその AI の考えで決まる）
+//   ・TradeTray：ほかの団と資源を交換する（渡すトレイ・受け取るトレイ。AI はその考えで受ける／断る、人には申し込む）
+//   ・OfferWait / OfferIncoming：人どうしの取引（申し込んだ人の返事待ち・申し込まれた人の受ける／断る）
 // ルールの計算はエンジン（session.ts の previewPick・judgeTrade など）。ここは並べて見せるだけ。
-import { useMemo, useState } from 'react';
-import { fightChips, marketQuote, previewPick, TRADE_MAX, type FightChip, type SeatSession } from '@midorino/engine/src/kiridani';
+import { useEffect, useMemo, useState } from 'react';
+import { fightChips, marketQuote, previewPick, TRADE_MAX, type FightChip, type OfferView, type SeatSession } from '@midorino/engine/src/kiridani';
 import { BossArt, HeroArt, KIcon, MonsterArt } from '../art-registry';
 import { ACT, CHAR, EL_JP, NEST_JP, RES, RES_JP, type Cost, type Res } from '../data';
 import { monsterDef } from '../reduce';
@@ -294,13 +295,13 @@ export function TradeTray({ s, onTrade, onCancel }: { s: SeatSession; onTrade: (
   const pickPartner = (x: number) => { setB(x); setGet({}); };
   const tapMine = (r: Res) => { if (sumCost(give) < TRADE_MAX && p.res[r] > (give[r] ?? 0) && !get[r]) setGive(addTo(give, r, 1)); };
   const tapTheirs = (r: Res) => { if (o && sumCost(get) < TRADE_MAX && o.res[r] > (get[r] ?? 0) && !give[r]) setGet(addTo(get, r, 1)); };
-  const mood = j?.ok ? (j.accept ? (j.gain > 1 ? '大よろこびで受ける' : '受ける') : j.gain > -0.3 ? 'もうひと声…' : '断る') : null;
+  const mood = j?.ok ? (j.human ? '申し込める（受けるかは相手しだい）' : j.accept ? (j.gain > 1 ? '大よろこびで受ける' : '受ける') : j.gain > -0.3 ? 'もうひと声…' : '断る') : null;
   return (
     <Sheet label="取引">
       <header className="kd-tray-h">
         <span className="kd-tray-foe" aria-hidden><KIcon name="gold" size={48} /></span>
         <div className="kd-tray-ht">
-          <small>あなたの番に、AI と資源を交換（片側{TRADE_MAX}個まで・置き場所は使わない）</small>
+          <small>あなたの番に、ほかの団と資源を交換（片側{TRADE_MAX}個まで・置き場所は使わない）</small>
           <strong>取引を持ちかける</strong>
           <span className="kd-tray-stats"><span>このラウンドあと<b>{left}</b>回</span></span>
         </div>
@@ -348,7 +349,7 @@ export function TradeTray({ s, onTrade, onCancel }: { s: SeatSession; onTrade: (
       <div className="kd-tray-act">
         <button type="button" className="kd-btn" onClick={onCancel}>閉じる</button>
         <button type="button" className="kd-btn is-primary" disabled={!j?.ok || !j.accept || left <= 0} onClick={() => onTrade(b, give, get)}>
-          {j?.ok && !j.accept ? '受けてもらえない' : '取引する'}
+          {j?.ok && j.human ? '申し込む' : j?.ok && !j.accept ? '受けてもらえない' : '取引する'}
         </button>
       </div>
     </Sheet>
@@ -362,3 +363,71 @@ export function TradeButton({ s, onOpen }: { s: SeatSession | null; onOpen: () =
   return <button type="button" className="kd-btn kd-tradebtn" disabled={left <= 0} onClick={onOpen} aria-label={`取引（あと${left}回）`}>⇄ 取引<small>{left}</small></button>;
 }
 
+
+// ---------------------------------------------------------------- 人どうしの取引
+/** 締め切りまでの残り秒（受け取った時点の ms から数える） */
+function useSecondsLeft(ms: number, key: string) {
+  const [end] = useState(() => Date.now() + ms);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, [key]);
+  return Math.max(0, Math.ceil((end - now) / 1000));
+}
+
+/** 申し込んだ人：相手の返事を待つ（取り下げられる） */
+export function OfferWait({ offer, names, onWithdraw }: { offer: OfferView; names: string[]; onWithdraw: () => void }) {
+  const left = useSecondsLeft(offer.ms, offer.id);
+  return (
+    <Sheet label="取引の申し込み">
+      <header className="kd-tray-h">
+        <span className="kd-tray-foe" aria-hidden><Token seat={offer.to} size={40} /></span>
+        <div className="kd-tray-ht">
+          <small>取引を申し込みました</small>
+          <strong>{names[offer.to]}の返事を待っています…</strong>
+          <span className="kd-tray-stats"><span>あと<b>{left}</b>秒で取り下げ</span></span>
+        </div>
+      </header>
+      <ExchangeBox give={offer.give} get={offer.get} giveLabel="渡す" getLabel="受け取る" verdict={<small role="status">相手が受けると、すぐに交換します</small>} />
+      <div className="kd-tray-act">
+        <button type="button" className="kd-btn" onClick={onWithdraw}>取り下げる</button>
+      </div>
+    </Sheet>
+  );
+}
+
+/** 申し込まれた人：受ける／断る（受けたあとの持ち物も見せる） */
+export function OfferIncoming({ offer, names, onReply }: { offer: OfferView; names: string[]; onReply: (accept: boolean) => void }) {
+  const left = useSecondsLeft(offer.ms, offer.id);
+  // 相手が渡すもの（offer.give）を受け取り、相手が受け取るもの（offer.get）を渡す
+  const after = Object.fromEntries(RES.map((r) => [r, offer.res[r] + (offer.give[r] ?? 0) - (offer.get[r] ?? 0)])) as Record<Res, number>;
+  const can = RES.every((r) => after[r] >= 0);
+  return (
+    <Sheet label="取引の申し込みが届いた" tone="offer">
+      <header className="kd-tray-h">
+        <span className="kd-tray-foe" aria-hidden><Token seat={offer.from} size={40} /></span>
+        <div className="kd-tray-ht">
+          <small>取引の申し込みが届きました</small>
+          <strong>{names[offer.from]}から取引の申し込み</strong>
+          <span className="kd-tray-stats"><span>あと<b>{left}</b>秒で自動的に断る</span></span>
+        </div>
+      </header>
+      <ExchangeBox give={offer.get} get={offer.give} giveLabel="あなたが渡す" getLabel="あなたが受け取る" />
+      <div className="kd-tray-sec">
+        <h4>受けたあとの持ち物</h4>
+        <div className="kd-chips is-res kd-offer-after">
+          {RES.filter((r) => offer.res[r] || after[r]).map((r) => {
+            const d = after[r] - offer.res[r];
+            return (
+              <span key={r} className={`kd-tchip is-res is-mini${d > 0 ? ' is-on' : d < 0 ? ' is-less' : ''}`} aria-label={`${RES_JP[r]} ${offer.res[r]}→${after[r]}`}>
+                <span className="kd-tchip-ic"><KIcon name={r} size={22} /></span><span className="kd-tchip-l">{after[r]}{d ? <small>{d > 0 ? `+${d}` : d}</small> : null}</span>
+              </span>
+            );
+          })}
+        </div>
+      </div>
+      <div className="kd-tray-act">
+        <button type="button" className="kd-btn" onClick={() => onReply(false)}>断る</button>
+        <button type="button" className="kd-btn is-primary" disabled={!can} onClick={() => onReply(true)}>受ける</button>
+      </div>
+    </Sheet>
+  );
+}

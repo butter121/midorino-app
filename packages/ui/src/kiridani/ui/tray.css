@@ -211,3 +211,8 @@
   .kd-tray, .kd-insp, .kd-tray-item, .kd-xitem, .kd-tchip-n { animation: none; }
   .kd-tg-us, .kd-tg-need, .kd-tchip { transition: none; }
 }
+
+/* 人どうしの取引：受けたあとの持ち物（増える・減る） */
+.kd-offer-after .kd-tchip-l small { margin-left: 2px; font-size: 11px; color: var(--kd-good); }
+.kd-offer-after .kd-tchip.is-less .kd-tchip-l small { color: var(--kd-bad); }
+.kd-tray.is-offer { border-color: var(--kd-gold); }

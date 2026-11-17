@@ -25,12 +25,14 @@ export class KdHostRoom {
   referee: KiridaniReferee | null = null;
   status: 'connecting' | 'open' | 'error' = 'connecting';
   error = '';
-  private actions: [number, string, Action][] = [];
   private server: { close(): void } | null = null;
   private listeners = new Set<() => void>();
   private store: Store;
+  /** 人どうしの取引の返事を待つ長さ（テスト用。既定は審判の 60 秒） */
+  private offerMs?: number;
 
-  constructor(private net: Net, hostName: string, opts: { saved?: Saved; store?: Store; seed?: number } = {}) {
+  constructor(private net: Net, hostName: string, opts: { saved?: Saved; store?: Store; seed?: number; offerTimeoutMs?: number } = {}) {
+    this.offerMs = opts.offerTimeoutMs;
     this.store = opts.store === undefined ? defaultStore() : opts.store;
     const s = opts.saved;
     if (s) {
@@ -62,7 +64,7 @@ export class KdHostRoom {
   private changed() { this.save(); this.listeners.forEach((f) => f()); }
   private save() {
     try {
-      const saved: Saved = { roomId: this.roomId, seats: this.seats, level: this.level, game: this.game, actions: this.actions, members: this.members.map(({ conn: _c, online: _o, sent: _s, ...m }) => m) };
+      const saved: Saved = { roomId: this.roomId, seats: this.seats, level: this.level, game: this.game, actions: this.referee?.history ?? [], members: this.members.map(({ conn: _c, online: _o, sent: _s, ...m }) => m) };
       this.store?.setItem(KD_HOST_KEY, JSON.stringify(saved));
     } catch { /* 保存できない環境 */ }
   }
@@ -192,11 +194,10 @@ export class KdHostRoom {
   private begin(game: KdGame, actions: [number, string, Action][]) {
     this.game = game;
     const humans = game.seats.map((id, i) => (id ? i : -1)).filter((i) => i >= 0);
-    const ref = new KiridaniReferee({ n: game.n, seed: game.seed, humans, levels: Array(game.n).fill(game.level), names: game.names });
+    const ref = new KiridaniReferee({ n: game.n, seed: game.seed, humans, offerTimeoutMs: this.offerMs, levels: Array(game.n).fill(game.level), names: game.names });
     ref.start();
     // 読み込み直し：同じ答えを同じ順に渡して、同じところまで進める
-    this.actions = [];
-    for (const [seat, id, a] of actions) if (ref.act(seat, id, a).ok) this.actions.push([seat, id, a]);
+    ref.replay(actions);
     this.referee = ref;
     ref.subscribe(() => { this.pushAll(); this.changed(); });
   }
@@ -208,7 +209,7 @@ export class KdHostRoom {
     const ref = this.referee, seat = this.seatOf(memberId);
     if (!ref || seat < 0) return { ok: false, error: '席がありません' };
     const r = ref.act(seat, id, a);
-    if (r.ok) { this.actions.push([seat, id, a]); this.save(); }
+    if (r.ok) this.save();
     return r;
   }
   judge(memberId: string, b: number, give: Cost, get: Cost): TradeJudge {
@@ -221,6 +222,8 @@ export class KdHostRoom {
   hostAct(id: string, a: Action) { return this.act(this.me.id, id, a); }
   hostJudge(b: number, give: Cost, get: Cost) { return this.judge(this.me.id, b, give, get); }
   prompt(seat: number): Prompt | null { return this.referee?.prompt(seat) ?? null; }
+  offerFor(seat: number) { return this.referee?.offerFor(seat) ?? null; }
+  noteFor(seat: number) { return this.referee?.noteFor(seat) ?? null; }
 
   private send(conn: Conn, msg: KdToGuest) {
     try {
@@ -240,7 +243,7 @@ export class KdHostRoom {
     do {
       const evs = log.slice(from, from + EV_CHUNK);
       const last = from + evs.length >= log.length;
-      this.send(m.conn, { t: 'game', seat, names: g.names, from, evs, last, ...(last ? { prompt: ref.prompt(seat), wait: ref.waitingSeats(), done: ref.done } : {}) });
+      this.send(m.conn, { t: 'game', seat, names: g.names, from, evs, last, ...(last ? { prompt: ref.prompt(seat), wait: ref.waitingSeats(), done: ref.done, offer: ref.offerFor(seat), note: ref.noteFor(seat) } : {}) });
       from += evs.length;
     } while (from < log.length);
     m.sent = log.length;

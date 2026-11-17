@@ -111,3 +111,156 @@ describe('霧谷：オンライン対戦の審判', () => {
     expect(checked).toBeGreaterThan(0);
   });
 });
+
+// ------------------------------------------------------------ 人どうしの取引
+import { KiridaniReferee as Ref2, simpleAnswer as ans2, ShadowSession as Sh2 } from '../src/kiridani';
+
+/** 人の席 0・1（＋AI）で、席0が置き場所を選ぶ場面まで進め、席0・1がどちらも食料と金貨を持っているところで止める */
+function toTrade(opts: { offerTimeoutMs?: number; now?: () => number } = {}) {
+  for (let seed = 1; seed < 30; seed++) {
+    const ref = new Ref2({ n: 3, seed, humans: [0, 1], names: ['ホスト', 'ゲスト', 'AI'], offerTimeoutMs: opts.offerTimeoutMs ?? 0, now: opts.now });
+    ref.start();
+    for (let i = 0; i < 400 && !ref.done; i++) {
+      const p0 = ref.prompt(0);
+      const g = ref.g;
+      if (p0?.k === 'choose' && p0.left > 0 && g.players[0].res.food >= 1 && g.players[1].res.gold >= 1 && p0.partners.includes(1)) return { ref, p0, seed };
+      for (const seat of ref.waitingSeats()) { const p = ref.prompt(seat)!; ref.act(seat, p.id, ans2(new Sh2(JSON.parse(JSON.stringify(p))))); }
+    }
+  }
+  throw new Error('取引の場面がない');
+}
+const trades = (ref: InstanceType<typeof Ref2>, seat: number) => ref.logs[seat].filter((e) => e.t === 'trade').length;
+
+describe('霧谷：人どうしの取引（審判）', () => {
+  it('申し込み → 受ける：両方の持ち物が変わり、全員に取引の出来事、回数を1つ使う', () => {
+    const { ref, p0 } = toTrade();
+    const [f0, g0, f1, g1] = [ref.g.players[0].res.food, ref.g.players[0].res.gold, ref.g.players[1].res.food, ref.g.players[1].res.gold];
+    const before = [0, 1, 2].map((x) => trades(ref, x));
+    expect(new Sh2(JSON.parse(JSON.stringify(p0))).judgeTrade(1, { food: 1 }, { gold: 1 })).toMatchObject({ ok: true, human: true });
+    expect(ref.act(0, p0.id, { t: 'offer', b: 1, give: { food: 1 }, get: { gold: 1 } })).toEqual({ ok: true });
+    const of = ref.offerFor(1)!;
+    expect(of).toMatchObject({ from: 0, to: 1, give: { food: 1 }, get: { gold: 1 } });
+    expect(ref.prompt(0)!.offer?.id).toBe(of.id);
+    expect(ref.offerFor(2)).toBeNull();
+    // 返事を待つあいだ、申し込んだ人はほかの答えを出せない
+    const pw = ref.prompt(0)!;
+    expect(ref.act(0, pw.id, { t: 'opt', i: 0 }).ok).toBe(false);
+    expect(ref.act(2, of.id, { t: 'reply', accept: true }).ok).toBe(false);
+    expect(ref.act(0, of.id, { t: 'reply', accept: true }).ok).toBe(false);
+    expect(ref.act(1, of.id, { t: 'reply', accept: true })).toEqual({ ok: true });
+    expect(ref.offer).toBeNull();
+    const aya = (x: number) => (ref.g.players[x].char === 'aya' ? 2 : 0);
+    expect(ref.g.players[0].res.food).toBe(f0 - 1);
+    expect(ref.g.players[0].res.gold).toBe(g0 + 1 + aya(0));
+    expect(ref.g.players[1].res.food).toBe(f1 + 1);
+    expect(ref.g.players[1].res.gold).toBe(g1 - 1 + aya(1));
+    expect([0, 1, 2].map((x) => trades(ref, x))).toEqual(before.map((n) => n + 1));
+    expect(ref.prompt(0)!.left).toBe(p0.left - 1);
+    expect(ref.noteFor(0)).toMatchObject({ ok: true, text: 'ゲストが取引を受けました' });
+    expect(ref.noteFor(2)).toBeNull();
+  });
+
+  it('断る：何も変わらず、回数も使わず、ほかの席には何も届かない', () => {
+    const { ref, p0 } = toTrade();
+    const res = JSON.stringify(ref.g.players.map((p) => p.res));
+    const logs = ref.logs.map((l) => l.length);
+    ref.act(0, p0.id, { t: 'offer', b: 1, give: { food: 1 }, get: { gold: 1 } });
+    const id = ref.offer!.id;
+    expect(ref.act(1, id, { t: 'reply', accept: false })).toEqual({ ok: true });
+    expect(JSON.stringify(ref.g.players.map((p) => p.res))).toBe(res);
+    expect(ref.logs.map((l) => l.length)).toEqual(logs);
+    const p = ref.prompt(0)!;
+    expect(p.left).toBe(p0.left);
+    expect(p.offer).toBeUndefined();
+    expect(ref.noteFor(0)?.text).toBe('ゲストが取引を断りました');
+    expect(ref.noteFor(1)).toBeNull();
+    // 番は続く：置き場所を選べる
+    expect(ref.act(0, p.id, { t: 'opt', i: 0 })).toEqual({ ok: true });
+  });
+
+  it('取り下げ・時間切れ', () => {
+    let now = 1000;
+    const { ref, p0 } = toTrade({ offerTimeoutMs: 60_000, now: () => now });
+    ref.act(0, p0.id, { t: 'offer', b: 1, give: { food: 1 }, get: { gold: 1 } });
+    const id1 = ref.offer!.id;
+    expect(ref.act(1, id1, { t: 'withdraw' }).ok).toBe(false);
+    expect(ref.act(0, id1, { t: 'withdraw' })).toEqual({ ok: true });
+    expect(ref.noteFor(1)?.text).toBe('ホストが取引の申し込みを取り下げました');
+    expect(ref.act(1, id1, { t: 'reply', accept: true }).ok).toBe(false);
+    // 時間切れ：締め切り前は何もしない
+    const p1 = ref.prompt(0)!;
+    ref.act(0, p1.id, { t: 'offer', b: 1, give: { food: 1 }, get: { gold: 1 } });
+    expect(ref.offerFor(1)!.ms).toBe(60_000);
+    now += 59_000;
+    expect(ref.expire()).toBe(false);
+    now += 2_000;
+    expect(ref.expire()).toBe(true);
+    expect(ref.offer).toBeNull();
+    expect(ref.noteFor(0)?.text).toContain('返事がなく');
+    expect(ref.prompt(0)!.left).toBe(p0.left);
+    // 取り下げ・時間切れも記録に入る
+    expect(ref.history.filter(([, , a]) => a.t === 'expire' || a.t === 'withdraw').length).toBe(2);
+  });
+
+  it('本物のタイマーで時間切れになる', async () => {
+    const { ref, p0 } = toTrade({ offerTimeoutMs: 30 });
+    ref.act(0, p0.id, { t: 'offer', b: 1, give: { food: 1 }, get: { gold: 1 } });
+    expect(ref.offer).not.toBeNull();
+    await new Promise((r) => setTimeout(r, 60));
+    expect(ref.offer).toBeNull();
+    expect(ref.history.at(-1)![2]).toEqual({ t: 'expire' });
+  });
+
+  it('受けるときにもう一度確かめる・回数の上限・形の確認', () => {
+    const { ref, p0 } = toTrade();
+    ref.act(0, p0.id, { t: 'offer', b: 1, give: { food: 1 }, get: { gold: 1 } });
+    const id = ref.offer!.id;
+    const gold = ref.g.players[1].res.gold;
+    ref.g.players[1].res.gold = 0;   // 返事までに持ち物が変わった
+    expect(ref.act(1, id, { t: 'reply', accept: true })).toEqual({ ok: true });
+    expect(ref.noteFor(0)?.text).toContain('成立しませんでした');
+    expect(trades(ref, 0)).toBe(0);
+    ref.g.players[1].res.gold = gold;
+    const p = ref.prompt(0)!;
+    expect(p.left).toBe(p0.left);
+    // 形の崩れた申し込み・AI への申し込み・人への即時の取引は断る
+    expect(ref.act(0, p.id, { t: 'offer', b: 1, give: { food: 1, gold: 1 }, get: { gold: 1 } }).ok).toBe(false);
+    expect(ref.act(0, p.id, { t: 'offer', b: 1, give: { food: 9 }, get: { gold: 1 } }).ok).toBe(false);
+    expect(ref.act(0, p.id, { t: 'offer', b: 1, give: { food: 1, wood: 1, herb: 1, iron: 1 }, get: { gold: 1 } }).ok).toBe(false);
+    expect(ref.act(0, p.id, { t: 'offer', b: 2, give: { food: 1 }, get: { gold: 1 } }).ok).toBe(false);
+    expect(ref.act(0, p.id, { t: 'offer', b: 1, give: { food: 1 }, get: {} }).ok).toBe(false);
+    expect(ref.act(0, p.id, { t: 'trade', b: 1, give: { food: 1 }, get: { gold: 1 } }).ok).toBe(false);
+    // 上限まで受けてもらうと、もう申し込めない
+    let left = p.left;
+    while (left > 0) {
+      const q = ref.prompt(0)!;
+      expect(ref.act(0, q.id, { t: 'offer', b: 1, give: { food: 1 }, get: { gold: 1 } })).toEqual({ ok: true });
+      ref.act(1, ref.offer!.id, { t: 'reply', accept: true });
+      left--;
+      expect(ref.prompt(0)!.left).toBe(left);
+      if (ref.g.players[0].res.food < 1 || ref.g.players[1].res.gold < 1) break;
+    }
+    if (left === 0) {
+      const r = ref.act(0, ref.prompt(0)!.id, { t: 'offer', b: 1, give: { food: 1 }, get: { gold: 1 } });
+      expect(r).toMatchObject({ ok: false, error: 'このラウンドの取引は終わり' });
+    }
+  });
+
+  it('記録を読み直すと、申し込み・返事・時間切れを含めて同じ試合に戻る', () => {
+    const { ref, p0, seed } = toTrade();
+    ref.act(0, p0.id, { t: 'offer', b: 1, give: { food: 1 }, get: { gold: 1 } });
+    ref.act(1, ref.offer!.id, { t: 'reply', accept: false });
+    const p = ref.prompt(0)!;
+    ref.act(0, p.id, { t: 'offer', b: 1, give: { food: 1 }, get: { gold: 1 } });
+    ref.act(-1, ref.offer!.id, { t: 'expire' });
+    const q = ref.prompt(0)!;
+    ref.act(0, q.id, { t: 'offer', b: 1, give: { food: 1 }, get: { gold: 1 } });
+    ref.act(1, ref.offer!.id, { t: 'reply', accept: true });
+    const r2 = new Ref2({ n: 3, seed, humans: [0, 1], names: ['ホスト', 'ゲスト', 'AI'], offerTimeoutMs: 0 });
+    r2.start();
+    r2.replay(ref.history);
+    expect(r2.log).toEqual(ref.log);
+    expect(r2.history).toEqual(ref.history);
+    expect(r2.prompt(0)!.id).toBe(ref.prompt(0)!.id);
+  });
+});

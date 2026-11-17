@@ -63,3 +63,4 @@
   font: 600 12px/1.5 var(--kd-font, sans-serif); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kd-netnote .is-bad { color: var(--kd-bad, #FF7A66); pointer-events: auto; }
 .kd-netnote b { color: var(--kd-gold-l, #FFE29A); }
+.kd-netnote .is-good { color: var(--kd-good, #7FE0A0); }

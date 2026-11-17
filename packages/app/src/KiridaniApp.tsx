@@ -145,6 +145,14 @@ function useStablePrompt(p: Prompt | null): Prompt | null {
   return ref.current;
 }
 
+/** 同じ番号・同じ文なら同じものを返す（取引の申し込み・お知らせ） */
+function useStableById<T extends { id: string; text?: string }>(x: T | null): T | null {
+  const ref = useRef<T | null>(null);
+  if (!x) ref.current = null;
+  else if (!ref.current || ref.current.id !== x.id || ref.current.text !== x.text) ref.current = x;
+  return ref.current;
+}
+
 function Menu({ items }: { items: [string, () => void][] }) {
   return (
     <details className="kd-cat-menu">
@@ -169,6 +177,8 @@ function HostScreen({ resume, onLeave }: { resume: boolean; onLeave: () => void 
   const evLen = ref && seat >= 0 ? ref.logs[seat].length : 0;
   const events = useMemo(() => (ref && seat >= 0 ? ref.logs[seat].slice() : []), [ref, seat, evLen]); // eslint-disable-line react-hooks/exhaustive-deps
   const onAct = useCallback((id: string, a: Action) => Promise.resolve(room.hostAct(id, a)), [room]);
+  const hostOffer = useStableById(ref && seat >= 0 ? room.offerFor(seat) : null);
+  const hostNote = useStableById(ref && seat >= 0 ? room.noteFor(seat) : null);
   const onJudge = useCallback((b: number, give: Cost, get: Cost) => Promise.resolve(room.hostJudge(b, give, get)), [room]);
 
   if (!ref || !room.game) {
@@ -183,11 +193,13 @@ function HostScreen({ resume, onLeave }: { resume: boolean; onLeave: () => void 
     );
   }
   const g = room.game;
+  const offer = hostOffer; const note = hostNote;
   const waitFor = ref.waitingSeats();
   const away = room.members.filter((m) => m.status === 'joined' && !m.online && waitFor.includes(g.seats.indexOf(m.id)));
   const banner = away.length ? <><b>{away.map((m) => m.name).join('・')}</b>の接続が切れています（戻るのを待っています）</> : undefined;
   return (
     <KiridaniOnlineGame seat={seat} events={events} prompt={prompt} waitFor={waitFor} names={g.names} onAct={onAct} onJudge={onJudge} banner={banner} speed={SPEED}
+      offer={offer} note={note}
       extra={<Menu items={[['部屋を閉じてタイトルへ', leave]]} />} />
   );
 }
@@ -209,6 +221,7 @@ function GuestScreen({ roomId, onLeave }: { roomId: string; onLeave: () => void 
     const banner = client.status === 'offline' ? (client.reason || 'ホストとの接続が切れました。つなぎ直しています…') : undefined;
     return (
       <KiridaniOnlineGame seat={client.seat} events={client.events} prompt={prompt} waitFor={client.wait} names={client.names} onAct={onAct} onJudge={onJudge} banner={banner} speed={SPEED}
+        offer={client.offer} note={client.note}
         extra={<Menu items={[['部屋を出てタイトルへ', leave]]} />} />
     );
   }

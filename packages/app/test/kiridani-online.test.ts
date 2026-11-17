@@ -29,8 +29,8 @@ function spy(net: ReturnType<typeof memoryNet>, log: KdToGuest[]) {
 /** ホスト・参加者の答え（写しだけを見て決める） */
 const answer = (p: Prompt) => simpleAnswer(new ShadowSession(JSON.parse(JSON.stringify(p)) as Prompt));
 
-async function setupRoom(net: ReturnType<typeof memoryNet>, stores = [memStore(), memStore(), memStore()]) {
-  const host = new KdHostRoom(net, 'ホスト', { store: stores[0] });
+async function setupRoom(net: ReturnType<typeof memoryNet>, stores = [memStore(), memStore(), memStore()], offerTimeoutMs?: number) {
+  const host = new KdHostRoom(net, 'ホスト', { store: stores[0], offerTimeoutMs });
   host.open();
   await until(() => host.status === 'open');
   const a = new KdGuestClient(net, host.roomId, 'アオイ', { store: stores[1], retryMs: 5 });
@@ -177,5 +177,87 @@ describe('霧谷：オンライン対戦（ホスト＋参加者2人＋AI）', (
     expect((await a.act('n0', { t: 'card', id: p.cards![0] })).ok).toBe(false);
     expect((await a.act(p.id, { t: 'card', id: p.cards![0] })).ok).toBe(true);
     host.close();
+  });
+
+  it('人どうしの取引：ホストが申し込み、参加者が受ける／断る。ほかの参加者には成立した取引だけが届く', async () => {
+    const net = memoryNet();
+    const seen: KdToGuest[] = [];
+    spy(net, seen);
+    const { host, a, b } = await setupRoom(net);
+    host.setSeats(3);
+    host.start(31);
+    await until(() => a.seat >= 0 && b.seat >= 0);
+    // ホストの番（置き場所）で、ホストが食料・アオイが金貨を持つところまで進める
+    let hp: Prompt | null = null;
+    await playAll(host, [a, b], { every: 1, onStep: async () => {
+      const p = host.prompt(0); const g = host.referee!.g;
+      if (p?.k === 'choose' && p.left > 0 && p.partners.includes(1) && g.players[0].res.food >= 2 && g.players[1].res.gold >= 2) { hp = p; throw new Error('stop'); }
+    } }).catch((e) => { if (e.message !== 'stop') throw e; });
+    expect(hp).not.toBeNull();
+    const ref = host.referee!;
+    const tradesIn = (evs: GameEvent[]) => evs.filter((e) => e.t === 'trade').length;
+    const t0 = tradesIn(b.events);
+    const resB = JSON.stringify(ref.g.players.map((p) => p.res));
+
+    // 1. 申し込み → 断る
+    expect(host.hostAct(hp!.id, { t: 'offer', b: 1, give: { food: 1 }, get: { gold: 1 } })).toEqual({ ok: true });
+    await until(() => !!a.offer);
+    expect(a.offer).toMatchObject({ from: 0, to: 1, give: { food: 1 }, get: { gold: 1 } });
+    expect(a.offer!.res).toEqual(ref.g.players[1].res);
+    expect(b.offer).toBeNull();
+    expect((await a.act(a.offer!.id, { t: 'reply', accept: false })).ok).toBe(true);
+    await until(() => a.offer === null);
+    expect(host.noteFor(0)?.text).toBe('アオイが取引を断りました');
+    expect(JSON.stringify(ref.g.players.map((p) => p.res))).toBe(resB);
+
+    // 2. もう一度申し込み → 受ける：全員の画面に取引の出来事
+    const p2 = host.prompt(0)!;
+    expect(p2.left).toBe(hp!.left);
+    expect(host.hostAct(p2.id, { t: 'offer', b: 1, give: { food: 2 }, get: { gold: 1 } })).toEqual({ ok: true });
+    await until(() => !!a.offer);
+    expect((await a.act(a.offer!.id, { t: 'reply', accept: true })).ok).toBe(true);
+    await until(() => tradesIn(b.events) === t0 + 1 && tradesIn(a.events) === tradesIn(ref.logs[1]));
+    expect(a.note?.text).toBe('ホストとの取引が成立しました');
+    expect(b.note).toBeNull();
+    const ev = b.events.filter((e) => e.t === 'trade').at(-1)!;
+    expect(ev).toMatchObject({ t: 'trade', a: 0, b: 1, give: { food: 2 }, get: { gold: 1 } });
+    expect(host.prompt(0)!.left).toBe(hp!.left - 1);
+
+    // 申し込みの中身は当事者以外（ベニ）には一度も届いていない
+    for (const m of seen) if (m.t === 'game' && m.seat === 2) { expect(m.offer ?? null).toBeNull(); expect(m.note ?? null).toBeNull(); }
+    await playAll(host, [a, b]);
+    expect(ref.done).toBe(true);
+    expect(b.events).toEqual(ref.logs[2]);
+  });
+
+  it('人どうしの取引：参加者から参加者へ。返事がなければ時間切れで断ったことになり、申し込んだ人の番が続く', async () => {
+    const net = memoryNet();
+    const { host, a, b } = await setupRoom(net, undefined, 40);
+    host.setSeats(3);
+    host.start(12);
+    await until(() => a.seat >= 0 && b.seat >= 0);
+    let ap: Prompt | null = null;
+    await playAll(host, [a, b], { every: 1, onStep: async () => {
+      const p = a.prompt;
+      if (p?.k === 'choose' && p.left > 0 && p.partners.includes(2)) {
+        const g = decodeGame(p.snap);
+        if (g.players[1].res.food >= 1 && g.players[2].res.gold >= 1) { ap = p; throw new Error('stop'); }
+      }
+    } }).catch((e) => { if (e.message !== 'stop') throw e; });
+    expect(ap).not.toBeNull();
+    expect((await a.act(ap!.id, { t: 'offer', b: 2, give: { food: 1 }, get: { gold: 1 } })).ok).toBe(true);
+    await until(() => !!b.offer && !!a.offer);
+    expect(a.prompt!.offer?.id).toBe(a.offer!.id);
+    expect(host.offerFor(0)).toBeNull();
+    // 返事をしない → 40ms で時間切れ
+    await until(() => a.offer === null && b.offer === null);
+    expect(a.note?.text).toContain('返事がなく');
+    expect(b.note?.text).toBe('時間切れで、取引の申し込みは流れました');
+    expect(a.prompt!.k).toBe('choose');
+    expect(a.prompt!.left).toBe(ap!.left);
+    // ホストの記録に時間切れが残り、読み直しても同じ
+    expect(host.referee!.history.at(-1)![2]).toEqual({ t: 'expire' });
+    await playAll(host, [a, b]);
+    expect(host.referee!.done).toBe(true);
   });
 });
