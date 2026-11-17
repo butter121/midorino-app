@@ -6,7 +6,7 @@ import { Kiridani2Referee } from '@midorino/engine/src/kiridani2';
 import { randomHex, type LobbyMember } from './protocol';
 import {
   EV_CHUNK, KD_AWAY_GRACE_MS, KD_MAX_MSG, type AnyAction, type AnyEvent, type AnyJudge, type AnyOfferNote, type AnyOfferView, type AnyPrompt,
-  type KdLevel, type KdLobby, type KdRules, type KdToGuest, type KdToHost,
+  KD_HOST_KEY, type KdLevel, type KdLobby, type KdRules, type KdToGuest, type KdToHost,
 } from './kiridaniProtocol';
 import type { Conn, Net } from './transport';
 import { CHAT_KEEP, CHAT_STAMPS, ChatLimiter, sanitizeChat, type ChatMsg } from './chat';
@@ -35,7 +35,7 @@ export interface KdReferee {
   setAway(seat: number, v: boolean): boolean;
 }
 
-export const KD_HOST_KEY = 'kiridani.host';
+export { KD_HOST_KEY };
 const AI_NAMES = ['ハヤテ', 'コトネ', 'ジン', 'ルリ', 'タケル', 'ミオ'];
 
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;

@@ -4,14 +4,32 @@ import { AnimQueue } from '../kiridani/anim/queue';
 import type { Speed } from '../kiridani/anim/timing';
 import { SoundPlayer } from '../kiridani/sound';
 import type { GameEvent as V1Event } from '../kiridani/types';
+import { RES, type Res } from '@midorino/engine/src/kiridani2';
 import { eventMs2, minMs2 } from './timing';
 import { applyEvent2, initialView2, type Ev, type Seat, type View2 } from './view';
 
 export interface Playing2 { ev: Ev; ms: number; key: number; prev: View2 }
+/** 「合わせ」（sync）で出来事に出ていなかった名声・持ち物の増減（画面はこれで数字を光らせ、増減を浮かべる） */
+export interface Pulse2 { key: number; fame: number[]; res: Partial<Record<Res, number>>[] }
+
+/** 合わせの前後の差（なければ null） */
+export function pulseOf(prev: View2, next: View2, key: number): Pulse2 | null {
+  if (next.phase === 'final' || !prev.players.length) return null;
+  let any = false;
+  const fame = next.players.map((p, i) => { const d = p.fame - (prev.players[i]?.fame ?? p.fame); if (d) any = true; return d; });
+  const res = next.players.map((p, i) => {
+    const o: Partial<Record<Res, number>> = {};
+    for (const r of RES) { const d = p.res[r] - (prev.players[i]?.res[r] ?? p.res[r]); if (d) { o[r] = d; any = true; } }
+    return o;
+  });
+  return any ? { key, fame, res } : null;
+}
 
 export interface TablePlayer2 {
   view: View2;
   cur: Playing2 | null;
+  /** 最後の「合わせ」で動いた数（演出の外で変わった名声・持ち物） */
+  pulse: Pulse2 | null;
   busy: boolean;
   queued: number;
   speed: Speed;
@@ -33,6 +51,7 @@ export function useTable2(me: Seat, opts: { speed?: Speed; soundBase?: string } 
   const [view, setView] = useState<View2>(() => initialView2(me));
   const viewRef = useRef(view);
   const [cur, setCur] = useState<Playing2 | null>(null);
+  const [pulse, setPulse] = useState<Pulse2 | null>(null);
   const [busy, setBusy] = useState(false);
   const [queued, setQueued] = useState(0);
   const [speed, setSpeedState] = useState<Speed>(opts.speed ?? 'normal');
@@ -55,6 +74,7 @@ export function useTable2(me: Seat, opts: { speed?: Speed; soundBase?: string } 
       if (ms > 0) setCur({ ev, ms, key: ++keyRef.current, prev });
       setBusy(true);
       if (ev.t !== 'sync') sound.event(e, meRef.current);
+      else { const pl = pulseOf(prev, next, ++keyRef.current); if (pl) setPulse(pl); }
     },
     onIdle: () => { setCur(null); setBusy(false); setQueued(0); },
   }), []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -83,5 +103,5 @@ export function useTable2(me: Seat, opts: { speed?: Speed; soundBase?: string } 
   }, [queue]);
   const setMuted = useCallback((m: boolean) => { sound.setMuted(m); setMutedState(m); }, [sound]);
 
-  return { view, cur, busy, queued, speed, setSpeed, push, submit, skip, reset, load, sound, muted, setMuted, reduced };
+  return { view, cur, pulse, busy, queued, speed, setSpeed, push, submit, skip, reset, load, sound, muted, setMuted, reduced };
 }

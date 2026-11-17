@@ -5,6 +5,20 @@ import { InfoDot } from '../kiridani/ui/inspect';
 import { CostRow } from '../kiridani/ui/parts';
 import { DATA, FLAVOR, type Monster } from '@midorino/engine/src/kiridani2';
 import { ANC2, CARD2, QUEST2 } from './view';
+import { createContext, useContext } from 'react';
+import { endFameBase, pointScale } from '@midorino/engine/src/kiridani2/uihelp';
+
+/** いまの試合の年数（終わりの名声の倍率を出すため。試合の外では undefined） */
+export const YearsCtx = createContext<number | undefined>(undefined);
+
+/** 終わりの名声（game_end の効果・秘密依頼）の倍率の注記。年数が分かればその値、分からなければ倍率の決まり */
+export function endFameNote(id: string, years: number | undefined): string | null {
+  const base = endFameBase(CARD2[id] ?? QUEST2[id]);
+  if (!base) return null;
+  if (!years) return `終わりの名声は10年の試合で×${DATA.POINT_SCALE[10]}・15年で×${DATA.POINT_SCALE[15]}`;
+  const sc = pointScale(years);
+  return sc > 1 ? `${years}年の試合なので終わりの名声×${sc}（+${base}→+${base * sc}）` : null;
+}
 
 export const KIND2_JP: Record<string, string> = { leader: 'リーダー', occ: '職能', weapon: '武具', armor: '防具', tool: '道具', spell: '秘術', gear: '共通の装備', stage: '段階', ancient: '古代の品', quest: '依頼' };
 const KIND_CLASS: Record<string, string> = { leader: 'occ', occ: 'occ', weapon: 'weapon', armor: 'weapon', gear: 'weapon', tool: 'tool', spell: 'spell', stage: 'tool' };
@@ -38,6 +52,7 @@ export function CardArt2({ id, size }: { id: string; size: number }) {
 
 /** カードの表（職能・品物・リーダー・共通の装備・段階カード） */
 export function CardFace2({ id, size = 'm', selected, onClick, disabled, anchor }: { id: string; size?: 's' | 'm' | 'l'; selected?: boolean; onClick?: () => void; disabled?: boolean; anchor?: string }) {
+  const years = useContext(YearsCtx);
   const c = CARD2[id];
   const q = QUEST2[id];
   const a = ANC2[id];
@@ -56,8 +71,9 @@ export function CardFace2({ id, size = 'm', selected, onClick, disabled, anchor 
         {size !== 's' && <>
           {(c?.cost || c?.fame || stats.length > 0) && <div className="kd-card-cost">{c?.cost && <CostRow cost={c.cost} size={14} />}{c?.fame ? <span className="kd-fame-s">名声{c.fame}</span> : null}{stats.map((s) => <span key={s} className="kd-fame-s">{s}</span>)}</div>}
           <p className="kd-card-text">{text}</p>
+          {endFameNote(id, years) && <p className="kd2-scale">{endFameNote(id, years)}</p>}
           {size === 'l' && FLAVOR[id] && <p className="kd2-flavor">{FLAVOR[id]}</p>}
-          {q && <div className="kd-card-chars">{q.secret ? `秘密依頼・名声${q.fame ?? DATA.SECRET_FAME}` : `共通の依頼・先着 ${DATA.QUEST_FAME.join('・')}`}</div>}
+          {q && <div className="kd-card-chars">{q.secret ? `秘密依頼・名声${(q.fame ?? DATA.SECRET_FAME) * pointScale(years)}` : `共通の依頼・先着 ${DATA.QUEST_FAME.join('・')}`}</div>}
         </>}
       </div>
     </>

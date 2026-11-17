@@ -7,7 +7,8 @@ import { SPEED_JP, SPEEDS } from '../kiridani/anim/timing';
 import { FxLayer, type FxApi } from '../kiridani/ui/fx';
 import { InfoDot, useInspect } from '../kiridani/ui/inspect';
 import { CostRow, Num, ResCount, SEAT_COLORS, SEAT_MARKS, Token } from '../kiridani/ui/parts';
-import { CardChip2, CardFace2, LeaderArt, MonArt, MonsterCard2 } from './parts2';
+import { CardChip2, CardFace2, LeaderArt, MonArt, MonsterCard2, YearsCtx } from './parts2';
+import { pointScale } from '@midorino/engine/src/kiridani2/uihelp';
 import { Inspect2 } from './inspect2';
 import type { Playing2, TablePlayer2 } from './useTable2';
 import { CARD2, NEST_JP, QUEST2, RES_JP, SEASON_JP, cardName, placeName, progressPct, type PV2, type Seat, type View2 } from './view';
@@ -366,7 +367,7 @@ export function QuestsView2({ v, cur }: { v: View2; cur: Playing2 | null }) {
       {secret && (
         <div className="kd-quest kd2-secret" data-inspect={`card2:${secret.id}`} role="button" tabIndex={0}>
           <span className="kd-quest-ic">🔒</span>
-          <strong>秘密依頼：{secret.name}<small className="kd2-qtext">{secret.text}（終わりに達成していれば名声{secret.fame ?? DATA.SECRET_FAME}）</small></strong>
+          <strong>秘密依頼：{secret.name}<small className="kd2-qtext">{secret.text}（終わりに達成していれば名声{(secret.fame ?? DATA.SECRET_FAME) * pointScale(v.years)}{pointScale(v.years) > 1 ? `：${v.years}年なので×${pointScale(v.years)}` : ''}）</small></strong>
         </div>
       )}
     </div>
@@ -531,6 +532,30 @@ export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions }: Tabl
   const insp = useInspect();
 
   useLayoutEffect(() => { if (cur && fxRef.current) runFx(fxRef.current, cur, v); }, [cur?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  // 合わせ（sync）で動いた名声・持ち物：数字を光らせ、増減を浮かべる（出来事の演出に出なかった分だけ）
+  const pulse = t.pulse;
+  useLayoutEffect(() => {
+    const root = rootRef.current, fx = fxRef.current;
+    if (!pulse || !root) return;
+    const flash = (sel: string, up: boolean) => {
+      root.querySelectorAll<HTMLElement>(`[data-kd="${sel}"]`).forEach((el) => {
+        el.classList.remove('kd2-flash', 'is-up', 'is-down');
+        void el.offsetWidth;
+        el.classList.add('kd2-flash', up ? 'is-up' : 'is-down');
+      });
+    };
+    const ms = t.speed === 'minimal' ? 500 : 900;
+    pulse.fame.forEach((d, s) => {
+      if (!d) return;
+      flash(`fame:${s}`, d > 0);
+      if (!t.reduced) fx?.float(`fame:${s}`, `名声${d > 0 ? '+' : ''}${d}`, { ms, tone: d > 0 ? 'gold' : 'bad' });
+    });
+    for (const [r, d] of Object.entries(pulse.res[v.me] ?? {})) {
+      if (!d) continue;
+      flash(`res:${r}`, d > 0);
+      if (!t.reduced) fx?.float(`res:${r}`, `${d > 0 ? '+' : ''}${d}`, { ms, tone: d > 0 ? 'good' : 'bad' });
+    }
+  }, [pulse?.key]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setSel(null); setQueued(null); if (ask?.kind === 'place') { setTab('board'); setPeek(null); } }, [ask]);
   useEffect(() => {
     if (!cur) return;
@@ -588,6 +613,7 @@ export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions }: Tabl
 
   return (
     <insp.Provider value={insp.open}>
+    <YearsCtx.Provider value={v.phase === 'title' ? undefined : v.years}>
     <div className={`kd-root kd-play kd2 is-ph-${v.phase === 'setup' || setupPhase ? 'draft' : v.phase}${t.reduced ? ' is-reduced' : ''} is-${v.season}${myTurn ? ' is-myturn' : ''}${v.players.length >= 5 ? ' is-many' : ''}`} ref={rootRef} onClick={insp.onClick} onKeyDown={insp.onKeyDown}>
       <header className="kd-hud" ref={hudRef}>
         <div className="kd-hud-title">
@@ -664,6 +690,7 @@ export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions }: Tabl
       <FxLayer ref={fxRef} root={() => rootRef.current} reduced={t.reduced} />
       {insp.target && <Inspect2 target={insp.target} v={v} depth={insp.depth} onBack={insp.back} onClose={insp.close} />}
     </div>
+    </YearsCtx.Provider>
     </insp.Provider>
   );
 }

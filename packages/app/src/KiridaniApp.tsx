@@ -3,31 +3,32 @@
 // タイトル →「ひとりで遊ぶ（AI）」（人数と AI の強さ・新ルールは年数を選んで、あなた＋AI の試合）
 //          →「友だちと遊ぶ」（部屋をつくって招待リンク・QR で呼ぶ。招待リンク #join=… を開いた人は参加の画面へ）
 // オンラインはミドリノと同じ仕組み：ホストの端末が審判で、参加者は自分の答えだけを送る（net/kiridaniHost.ts・kiridaniGuest.ts）。
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import qrcode from 'qrcode-generator';
-import { ChatFloat, ChatSheet, KiridaniEngineGame, KiridaniOnlineGame, HeroArt, RoomJoin, RoomLobby, RoomMessage, UnreadBadge } from '@midorino/ui/src/kiridani';
-import { Kiridani2EngineGame, Kiridani2OnlineGame, type Ev } from '@midorino/ui/src/kiridani2';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+// 試合の画面（v1・v2）は使うときに読み込む（kdLazy）。ここではタイトル・待合室・チャットの軽い部品だけを直に読む
+import { HeroArt } from '@midorino/ui/src/kiridani/art-registry';
+import { RoomJoin, RoomLobby, RoomMessage } from '@midorino/ui/src/kiridani/ui/lobby';
+import type { Ev } from '@midorino/ui/src/kiridani2/view';
+import { KiridaniEngineGame, KiridaniOnlineGame, Kiridani2EngineGame, Kiridani2OnlineGame, preload } from './kdLazy';
 import type { Action, Cost, GameEvent, OfferNote, OfferView, Prompt, TradeJudge } from '@midorino/engine/src/kiridani';
-import { toLevel2, type Action2, type OfferNote2, type OfferView2, type Prompt2, type TradeJudge as TradeJudge2 } from '@midorino/engine/src/kiridani2';
+import type { Action2, Level as Level2, OfferNote2, OfferView2, Prompt2, TradeJudge as TradeJudge2 } from '@midorino/engine/src/kiridani2';
 import '@midorino/ui/src/kiridani/kiridani.css';
 import '@midorino/ui/src/kiridani2/kiridani2.css';
 import './kiridani-app.css';
-import { inviteUrl, roomFromHash } from './net/protocol';
+import { roomFromHash } from './net/protocol';
 import { peerNet } from './net/peerNet';
-import { KdHostRoom, KD_HOST_KEY } from './net/kiridaniHost';
+import { KD_HOST_KEY } from './net/kiridaniProtocol';
+import { load, save, SPEED, YEARS, useRoom, useStablePrompt, Menu, useChat } from './kdShared';
 import { KdGuestClient } from './net/kiridaniGuest';
-import type { AnyAction, AnyPrompt, KdLevel, KdRules } from './net/kiridaniProtocol';
-import { CHAT_STAMPS, type ChatMsg } from './net/chat';
-import type { ReactNode } from 'react';
+import type { AnyAction, KdLevel, KdRules } from './net/kiridaniProtocol';
+
+/** ホストの画面は審判（両方のルールのエンジン）ごと、使うときに読み込む */
+const HostScreen = lazy(() => import('./KdHostScreen'));
 
 type Level = KdLevel;
 const LEVELS: [Level, string][] = [['novice', 'やさしい'], ['mid', 'ふつう'], ['expert', 'つよい']];
 const HEROES = ['toma', 'mina', 'goro', 'nana'];
-const YEARS: [number, string][] = [[5, '5年'], [10, '10年'], [15, '15年']];
 const YEARS_SUB: Record<number, string> = { 5: '20ラウンド・約40分', 10: '40ラウンド', 15: '60ラウンド' };
 
-function load<T>(k: string, d: T): T { try { const v = localStorage.getItem(k); return v ? (JSON.parse(v) as T) : d; } catch { return d; } }
-function save(k: string, v: unknown) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* 保存できなくても遊べる */ } }
 const hasSavedRoom = () => { try { return !!localStorage.getItem(KD_HOST_KEY); } catch { return false; } };
 /** 途中の試合（ホストなら保存した部屋が始まっている、参加者なら最後に入った試合の部屋） */
 const LAST_ROOM = 'kd.lastRoom';
@@ -39,12 +40,19 @@ function unfinished(): Mode | null {
   const room = load<string>(LAST_ROOM, '');
   return room ? { k: 'guest', room } : null;
 }
+/** v2 のひとり用の途中の試合（同じ条件で最初から答えを当て直して再開する） */
+const SOLO2 = 'kd2.solo';
+interface Solo2Save { v: 1; n: number; seed: number; years: number; level: Level; hist: Action2[]; auto?: boolean; at: number }
+function loadSolo2(): Solo2Save | null {
+  const s = load<Solo2Save | null>(SOLO2, null);
+  return s && s.v === 1 && Array.isArray(s.hist) && Number.isInteger(s.n) && Number.isInteger(s.seed) ? s : null;
+}
+const forgetSolo2 = () => { try { localStorage.removeItem(SOLO2); } catch { /* 無視 */ } };
+const LEVEL2: Record<Level, Level2> = { novice: 'novice', mid: 'normal', expert: 'strong' };
 const forgetRoom = () => { try { localStorage.removeItem(LAST_ROOM); } catch { /* 無視 */ } };
-/** 演出の速さ（?speed=minimal などはテスト用） */
-const SPEED = (() => { try { const v = new URLSearchParams(location.search).get('speed'); return v === 'minimal' || v === 'fast' || v === 'normal' ? v : undefined; } catch { return undefined; } })();
 const clearHash = () => { try { history.replaceState(null, '', location.pathname + location.search); } catch { /* 無視 */ } };
 
-type Mode = { k: 'title' } | { k: 'solo' } | { k: 'friends' } | { k: 'host'; resume: boolean } | { k: 'guest'; room: string };
+type Mode = { k: 'title' } | { k: 'solo'; resume?: boolean } | { k: 'friends' } | { k: 'host'; resume: boolean } | { k: 'guest'; room: string };
 
 /** ルールの版の選択（新ルールが標準。旧ルールは「旧ルール」で選ぶ） */
 function RulesPick({ rules, onRules }: { rules: KdRules; onRules: (r: KdRules) => void }) {
@@ -83,11 +91,12 @@ export default function KiridaniApp() {
 
   const [rules, setRulesState] = useState<KdRules>(() => (load<number>('kd.rules', 2) === 1 ? 1 : 2));
   const setRules = (r: KdRules) => { setRulesState(r); save('kd.rules', r); };
-  if (mode.k === 'solo') return <Solo rules={rules} onBack={toTitle} />;
+  if (mode.k === 'solo') return <Solo rules={mode.resume ? 2 : rules} resume={mode.resume} onBack={toTitle} />;
   if (mode.k === 'friends') return <Friends rules={rules} onBack={toTitle} onHost={(resume) => setMode({ k: 'host', resume })} />;
-  if (mode.k === 'host') return <HostScreen resume={mode.resume} onLeave={toTitle} />;
+  if (mode.k === 'host') return <Suspense fallback={<div className="kd-root kda-title" role="status"><p className="kda-sub">部屋を用意しています…</p></div>}><HostScreen resume={mode.resume} onLeave={toTitle} /></Suspense>;
   if (mode.k === 'guest') return <GuestScreen roomId={mode.room} onLeave={toTitle} />;
   const back = unfinished();
+  const solo2 = loadSolo2();
 
   return (
     <div className="kd-root kda-title">
@@ -100,32 +109,47 @@ export default function KiridaniApp() {
       <div className="kda-modes">
         <button type="button" className="kd-btn kda-start" onClick={() => setMode({ k: 'solo' })}>ひとりで遊ぶ（AI）</button>
         <button type="button" className="kd-btn kda-start is-alt" onClick={() => setMode({ k: 'friends' })}>友だちと遊ぶ</button>
-        {back && <button type="button" className="kd-btn kda-start is-resume" onClick={() => setMode(back)}>途中の試合にもどる</button>}
+        {solo2 && <button type="button" className="kd-btn kda-start is-resume" data-kd="resume-solo" onClick={() => setMode({ k: 'solo', resume: true })}>途中の試合にもどる{back ? '（ひとり）' : ''}<small className="kda-resume-sub">{solo2.n}人・{solo2.years}年{solo2.hist.length ? '' : '・始めたところ'}</small></button>}
+        {back && <button type="button" className="kd-btn kda-start is-resume" onClick={() => setMode(back)}>途中の試合にもどる{solo2 ? '（友だち）' : ''}</button>}
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------- ひとりで遊ぶ
-function Solo({ rules, onBack }: { rules: KdRules; onBack: () => void }) {
+function Solo({ rules, resume, onBack }: { rules: KdRules; resume?: boolean; onBack: () => void }) {
   const [n, setN] = useState<number>(() => load('kd.n', 4));
   const [level, setLevel] = useState<Level>(() => load('kd.level', 'mid'));
   const [years, setYears] = useState<number>(() => load('kd.years', 5));
-  const [game, setGame] = useState<{ seed: number; key: number } | null>(null);
+  const [saved] = useState(() => (resume ? loadSolo2() : null));
+  const [game, setGame] = useState<{ seed: number; key: number; n: number; years: number; level: Level; resume?: Solo2Save } | null>(() => (saved ? { seed: saved.seed, key: Date.now(), n: saved.n, years: saved.years, level: saved.level, resume: saved } : null));
+  useEffect(() => { preload(rules); }, [rules]);
   const seatsFor = rules === 2 ? [2, 3, 4, 5, 6] : [3, 4, 5, 6];
   const nn = seatsFor.includes(n) ? n : 4;
-  const start = () => { save('kd.n', nn); save('kd.level', level); save('kd.years', years); setGame({ seed: Math.floor(Math.random() * 1e6), key: Date.now() }); };
+  const start = () => {
+    save('kd.n', nn); save('kd.level', level); save('kd.years', years);
+    const g = { seed: Math.floor(Math.random() * 1e6), key: Date.now(), n: nn, years, level };
+    if (rules === 2) save(SOLO2, { v: 1, n: g.n, seed: g.seed, years: g.years, level: g.level, hist: [], at: Date.now() } satisfies Solo2Save);
+    setGame(g);
+  };
+  const g2 = game && rules === 2 ? game : null;
+  const onProgress = useCallback((p: { hist: Action2[]; auto: boolean; done: boolean }) => {
+    if (!g2) return;
+    if (p.done) { forgetSolo2(); return; }
+    save(SOLO2, { v: 1, n: g2.n, seed: g2.seed, years: g2.years, level: g2.level, hist: p.hist, auto: p.auto, at: Date.now() } satisfies Solo2Save);
+  }, [g2]);
 
-  if (game && rules === 2) {
+  if (g2) {
     return (
-      <Kiridani2EngineGame key={game.key} n={nn} seed={game.seed} years={years} level={toLevel2(level)} speed={SPEED}
+      <Kiridani2EngineGame key={g2.key} n={g2.n} seed={g2.seed} years={g2.years} level={LEVEL2[g2.level] ?? 'normal'} speed={SPEED}
+        resume={g2.resume ? { hist: g2.resume.hist, auto: g2.resume.auto } : undefined} onProgress={onProgress}
         extra={({ auto, setAuto }) => (
           <details className="kd-cat-menu">
             <summary aria-label="メニュー">⚙</summary>
             <div>
               <button type="button" className="kd-btn" onClick={() => setAuto(!auto)}>{auto ? '自分で選ぶ' : '自分の席もAIに任せる'}</button>
               <button type="button" className="kd-btn" onClick={start}>新しい試合</button>
-              <button type="button" className="kd-btn" onClick={onBack}>タイトルへ</button>
+              <button type="button" className="kd-btn" onClick={onBack}>タイトルへ（続きはあとで）</button>
             </div>
           </details>
         )} />
@@ -199,124 +223,6 @@ function Friends({ rules, onBack, onHost }: { rules: KdRules; onBack: () => void
   );
 }
 
-function useRoom<T extends { subscribe(f: () => void): () => void }>(x: T) {
-  const [, setV] = useState(0);
-  useEffect(() => x.subscribe(() => setV((v) => v + 1)), [x]);
-}
-
-/** 同じ問い（番号が同じ）なら同じものを返す（開いているトレイを閉じない） */
-function useStablePrompt(p: AnyPrompt | null): AnyPrompt | null {
-  const ref = useRef<AnyPrompt | null>(null);
-  if (!p) ref.current = null;
-  else if (!ref.current || ref.current.id !== p.id || ref.current.seat !== p.seat) ref.current = p;
-  return ref.current;
-}
-
-/** 同じ番号・同じ文なら同じものを返す（取引の申し込み・お知らせ） */
-function useStableById<T extends { id: string; text?: string }>(x: T | null): T | null {
-  const ref = useRef<T | null>(null);
-  if (!x) ref.current = null;
-  else if (!ref.current || ref.current.id !== x.id || ref.current.text !== x.text) ref.current = x;
-  return ref.current;
-}
-
-/** ⚙ のメニュー（オンラインでは「チャット」と未読のしるし） */
-function Menu({ items, chat }: { items: [string, () => void][]; chat?: Chat }) {
-  const ref = useRef<HTMLDetailsElement>(null);
-  const n = chat?.unread ?? 0;
-  return (
-    <details className="kd-cat-menu" ref={ref}>
-      <summary aria-label={n ? `メニュー（チャットの未読${n}件）` : 'メニュー'}>⚙<UnreadBadge n={n} /></summary>
-      <div>
-        {chat && <button type="button" className="kd-btn kd-chatbtn" onClick={() => { if (ref.current) ref.current.open = false; chat.setOpen(true); }}>💬 チャット<UnreadBadge n={n} /></button>}
-        {items.map(([l, f]) => <button key={l} type="button" className="kd-btn" onClick={f}>{l}</button>)}
-      </div>
-    </details>
-  );
-}
-
-// ---------------------------------------------------------------- チャット
-interface Chat { unread: number; setOpen: (o: boolean) => void; node: ReactNode; lobbyButton: ReactNode }
-/** チャットの開け閉め・未読・流れる発言。me は色の席（自分の発言は未読に数えない） */
-function useChat(msgs: ChatMsg[], me: number, send: (text: string, stamp: boolean) => Promise<{ ok: boolean; error?: string }>): Chat {
-  const [open, setOpen] = useState(false);
-  const [seen, setSeen] = useState(0);
-  const lastId = msgs.at(-1)?.id ?? 0;
-  useEffect(() => { if (open) setSeen(lastId); }, [open, lastId]);
-  const unread = open ? 0 : msgs.filter((m) => m.id > seen && m.seat !== me).length;
-  const close = useCallback(() => setOpen(false), []);
-  const node = (
-    <>
-      <ChatFloat msgs={msgs} me={me} hidden={open} />
-      {open && <ChatSheet msgs={msgs} me={me} stamps={CHAT_STAMPS} onSend={send} onClose={close} />}
-    </>
-  );
-  const lobbyButton = <button type="button" className="kd-iconbtn kd-chatbtn" aria-label={unread ? `チャット（未読${unread}件）` : 'チャット'} onClick={() => setOpen(true)}>💬<UnreadBadge n={unread} /></button>;
-  return { unread, setOpen, node, lobbyButton };
-}
-
-// ---------------------------------------------------------------- ホスト
-function HostScreen({ resume, onLeave }: { resume: boolean; onLeave: () => void }) {
-  const [room] = useState(() => (resume && KdHostRoom.resume(peerNet())) || (KdHostRoom.clearSaved(), new KdHostRoom(peerNet(), load('kd.name', 'ホスト'), { rules: load<number>('kd.rules', 2) === 1 ? 1 : 2, years: load('kd.years', 5) })));
-  useRoom(room);
-  useEffect(() => { room.open(); }, [room]);
-  const [copied, setCopied] = useState(false);
-  const url = inviteUrl(room.roomId);
-  const qr = useMemo(() => { const q = qrcode(0, 'M'); q.addData(url); q.make(); return q.createSvgTag({ cellSize: 4, margin: 1, scalable: true }); }, [url]);
-  const leave = () => { room.close(); onLeave(); };
-  const ref = room.referee;
-  const seat = room.mySeat;
-  const prompt = useStablePrompt(ref && seat >= 0 ? room.prompt(seat) : null);
-  const evLen = ref && seat >= 0 ? ref.logs[seat].length : 0;
-  const events = useMemo(() => (ref && seat >= 0 ? ref.logs[seat].slice() : []), [ref, seat, evLen]); // eslint-disable-line react-hooks/exhaustive-deps
-  const onAct = useCallback((id: string, a: AnyAction) => Promise.resolve(room.hostAct(id, a)), [room]);
-  const hostOffer = useStableById(ref && seat >= 0 ? room.offerFor(seat) : null);
-  const hostNote = useStableById(ref && seat >= 0 ? room.noteFor(seat) : null);
-  const onJudge = useCallback((b: number, give: Cost, get: Cost) => Promise.resolve(room.hostJudge(b, give, get)), [room]);
-  const chat = useChat(room.chat, 0, useCallback((t: string, st: boolean) => Promise.resolve(room.hostSay(t, st)), [room]));
-
-  if (!ref || !room.game) {
-    const copy = async () => { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* コピーできない */ } };
-    const share = typeof navigator !== 'undefined' && 'share' in navigator ? () => { navigator.share({ title: '霧谷の冒険者団', text: '一緒に冒険しよう！', url }).catch(() => {}); } : undefined;
-    return (
-      <>
-      <RoomLobby inviteUrl={url} qr={<span dangerouslySetInnerHTML={{ __html: qr }} style={{ display: 'contents' }} />} members={room.lobby().members}
-        isHost seats={room.seats} level={room.level} copied={copied}
-        status={room.status === 'connecting' ? '部屋を開いています…' : room.status === 'error' ? room.error : '招待を待っています'}
-        onSeats={(n) => room.setSeats(n)} onLevel={(l) => room.setLevel(l)} onApprove={(id) => room.approve(id, true)} onDecline={(id) => room.approve(id, false)}
-        onRemove={(id) => room.kick(id)} onStart={() => room.start()} onCopy={copy} onShare={share} onLeave={leave} extra={chat.lobbyButton}
-        seatOptions={room.rules === 2 ? [2, 3, 4, 5, 6] : [3, 4, 5, 6]}
-        settings={<>
-          <div className="kd-room-seg" role="radiogroup" aria-label="ルール">
-            {([[2, '新ルール'], [1, '旧ルール']] as [KdRules, string][]).map(([r, jp]) => <button key={r} type="button" role="radio" aria-checked={room.rules === r} className={room.rules === r ? 'is-on' : ''} onClick={() => { room.setRules(r); save('kd.rules', r); }}>{jp}</button>)}
-          </div>
-          {room.rules === 2 && <div className="kd-room-seg" role="radiogroup" aria-label="年数">
-            {YEARS.map(([y, jp]) => <button key={y} type="button" role="radio" aria-checked={room.years === y} className={room.years === y ? 'is-on' : ''} onClick={() => { room.setYears(y); save('kd.years', y); }}>{jp}</button>)}
-          </div>}
-        </>} />
-      {chat.node}
-    </>
-    );
-  }
-  const g = room.game;
-  const offer = hostOffer; const note = hostNote;
-  const waitFor = ref.waitingSeats();
-  const dropping = room.dropping;
-  const banner = dropping.length ? <><b>{dropping.join('・')}</b>の接続が切れました（戻らなければ、少ししてAIが代わりに動かします）</> : undefined;
-  const awayNames = ref.away.map((x) => g.names[x]);
-  const menu = <Menu chat={chat} items={[['部屋を閉じてタイトルへ', leave]]} />;
-  return (
-    <>
-    {g.rules === 2
-      ? <Kiridani2OnlineGame seat={seat} events={events as Ev[]} prompt={prompt as Prompt2 | null} waitFor={waitFor} names={g.names} onAct={onAct as (id: string, a: Action2) => Promise<{ ok: true } | { ok: false; error: string }>}
-        onJudge={onJudge as (b: number, give: Cost, get: Cost) => Promise<TradeJudge2>} banner={banner} away={awayNames} speed={SPEED} offer={offer as OfferView2 | null} note={note as OfferNote2 | null} extra={menu} />
-      : <KiridaniOnlineGame seat={seat} events={events as GameEvent[]} prompt={prompt as Prompt | null} waitFor={waitFor} names={g.names} onAct={onAct as (id: string, a: Action) => Promise<{ ok: true } | { ok: false; error: string }>}
-        onJudge={onJudge as (b: number, give: Cost, get: Cost) => Promise<TradeJudge>} banner={banner} away={awayNames} speed={SPEED} offer={offer as OfferView | null} note={note as OfferNote | null} extra={menu} />}
-    {chat.node}
-    </>
-  );
-}
-
 // ---------------------------------------------------------------- 参加者
 function GuestScreen({ roomId, onLeave }: { roomId: string; onLeave: () => void }) {
   const [client] = useState(() => new KdGuestClient(peerNet(), roomId, load('kd.name', '')));
@@ -324,6 +230,8 @@ function GuestScreen({ roomId, onLeave }: { roomId: string; onLeave: () => void 
   const [joining, setJoining] = useState(client.known);
   useEffect(() => { if (joining) client.connect(); }, [client, joining]);
   const leave = () => { client.close(); onLeave(); };
+  const lobbyRules = client.lobby?.rules ?? client.rules;
+  useEffect(() => { if (lobbyRules === 1 || lobbyRules === 2) preload(lobbyRules); }, [lobbyRules]);
   const quit = () => { forgetRoom(); leave(); };
   const prompt = useStablePrompt(client.prompt);
   // 途中の試合を覚えておく（終わった・閉じた・断られたら忘れる）

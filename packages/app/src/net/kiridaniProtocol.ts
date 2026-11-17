@@ -5,6 +5,8 @@ import type { Action2, NetEvent as Event2, OfferNote2, OfferView2, Prompt2, Trad
 import type { LobbyMember } from './protocol';
 import type { ChatMsg } from './chat';
 
+/** ホストの部屋の保存先（localStorage のキー） */
+export const KD_HOST_KEY = 'kiridani.host';
 export type KdLevel = 'novice' | 'mid' | 'expert';
 /** ルールの版（1＝旧ルール、2＝新ルール）。書いていない古い部屋・保存は 1 */
 export type KdRules = 1 | 2;

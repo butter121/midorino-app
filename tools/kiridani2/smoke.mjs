@@ -191,6 +191,30 @@ async function solo() {
   log('solo counts', counts);
   check((counts.pick ?? 0) >= 4 && counts.ratio >= 1 && (counts.place ?? 0) > 3, `準備（カード・割合）と置き場所を答えた ${JSON.stringify(counts)}`);
   check(boardShot, '盤面の写真が撮れた');
+  // ⚙ → タイトルへ →「途中の試合にもどる」：答えの記録から同じ場面に戻る
+  for (let i = 0; i < 50 && await page.$('.kd-tray, .kd-sheet'); i++) { await step(page).catch(() => null); await sleep(100); }
+  // 戦闘・冬の重なりが消えて、自分が置く番になるまで進める（メニューを押せるように）
+  for (let i = 0; i < 400; i++) {
+    if (await page.$('.kd-root.is-myturn') && !(await page.$('.kd-ovwrap, .kd-tray, .kd-sheet'))) break;
+    await step(page).catch(() => null); await sleep(60);
+  }
+  // 自分の番の問いは演出より先に出るので、盤面の演出が追いつくまで待ってから比べる
+  await page.waitForSelector('.kd-hud-ctl .kd-iconbtn[disabled]', { timeout: 120000 }).catch(() => {}); await sleep(300);
+  try {
+    const r0 = await roundOf(page);
+    const fame0 = await page.$$eval('.kd-pchip b[data-kd^="fame:"]', (e) => e.map((x) => x.textContent));
+    await page.click('.kd-hud-ctl .kd-cat-menu:not(.kd-hudmenu) summary');
+    await page.click('button:has-text("タイトルへ")');
+    await page.waitForSelector('[data-kd="resume-solo"]', { timeout: 10000 });
+    check(true, 'タイトルに「途中の試合にもどる」（ひとり）が出る');
+    await shot(page, '02-title-resume-solo.png');
+    await page.click('[data-kd="resume-solo"]');
+    await page.waitForSelector('.kd-root.kd2 .kd-pchip', { timeout: 20000 });
+    await idle(page);
+    const r1 = await roundOf(page);
+    const fame1 = await page.$$eval('.kd-pchip b[data-kd^="fame:"]', (e) => e.map((x) => x.textContent));
+    check(r1 === r0 && JSON.stringify(fame1) === JSON.stringify(fame0), `再開して同じ場面に戻る（ラウンド ${r0}→${r1}・名声 ${fame0.join(',')} → ${fame1.join(',')}）`);
+  } catch (e) { check(false, `ひとりの途中再開：${String(e).split('\n')[0]}`); }
   // ⚙ → 自分の席もAIに任せる → 最後まで（開いているトレイ・シートは先に答える）
   for (let i = 0; i < 50 && await page.$('.kd-tray, .kd-sheet'); i++) { await step(page).catch(() => null); await sleep(100); }
   await page.click('.kd-hud-ctl .kd-cat-menu:not(.kd-hudmenu) summary');
@@ -204,6 +228,7 @@ async function solo() {
     await sleep(150);
   }
   await idle(page); await sleep(1500);
+  check(!(await page.evaluate(() => localStorage.getItem('kd2.solo'))), '終わった試合は「途中の試合」から消える');
   const tot = await page.$$eval('.kd-final .kd-ftotal', (els) => els.map((e) => e.textContent.trim()));
   check(tot.length === 4, `最終得点が4人分出る：${tot.join(',')}`);
   await both(page, '40-final', '最終得点');
