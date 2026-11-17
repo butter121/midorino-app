@@ -2,7 +2,7 @@
 //   ホスト：「友だちと遊ぶ」→ 部屋をつくる → 参加申請を承認 → 3人（空き1席は AI）で開始
 //   参加者：招待リンクを開く → 名前 → 承認待ち → 待合室 → 試合
 //   両方の画面でドラフト・キャラ・置き場所・トレイ・シートを答えて進め、途中で参加者を読み込み直し（同じ席に戻るか）、
-//   人どうしの取引（ホストが申し込み → 1回目は参加者が断る・2回目は受ける）を試し、
+//   チャット（ホスト→参加者・参加者→ホストの文字とスタンプ、流れる発言・未読のしるし）、人どうしの取引（ホストが申し込み → 1回目は参加者が断る・2回目は受ける）を試し、
 //   最後にホストが部屋を閉じて、参加者に知らせが出るかを見る。
 // 使い方：node tools/kiridani/online-smoke.mjs [--rounds 12] [--shots DIR] [--headed]
 //   （アプリを VITE_PEER_* つきで一時フォルダに作り直し、内蔵のサーバーで配る）
@@ -189,6 +189,88 @@ try {
     await sleep(500);
     return true;
   }
+  // チャット：ホスト→参加者・参加者→ホスト（文字とスタンプ）。閉じているあいだは流れる発言と未読のしるし
+  const MENU = '.kd-hud-ctl .kd-cat-menu:not(.kd-hudmenu) summary';
+  const fitsChat = (page) => page.evaluate(() => {
+    const se = document.scrollingElement;
+    const bad = [];
+    if (se.scrollHeight > innerHeight || se.scrollWidth > innerWidth) bad.push(`page ${se.scrollWidth}x${se.scrollHeight}`);
+    const c = document.querySelector('.kd-chat');
+    if (!c) bad.push('no sheet');
+    else { const r = c.getBoundingClientRect(); if (r.top < -1 || r.bottom > innerHeight + 1 || r.right > innerWidth + 1) bad.push(`sheet ${Math.round(r.top)}..${Math.round(r.bottom)}`); }
+    // 発言の一覧（.kd-chatlist）だけは中で動かせる。ほかは中ではみ出さない
+    for (const el of document.querySelectorAll('.kd-chat *:not(.kd-chatlist)')) {
+      const cs = getComputedStyle(el);
+      if (/(auto|scroll)/.test(cs.overflowY) && el.scrollHeight - el.clientHeight > 2) bad.push(el.className);
+    }
+    const inp = document.querySelector('.kd-chat-in input')?.getBoundingClientRect();
+    if (!inp || inp.bottom > innerHeight) bad.push('input hidden');
+    return bad;
+  });
+  async function openChat(page) {
+    await page.click(MENU);
+    await page.waitForSelector('.kd-chatbtn');
+    return page;
+  }
+  async function say(page, text) {
+    await page.fill('.kd-chat-in input', text);
+    await page.click('.kd-chat-in .kd-btn');
+    await page.waitForSelector(`.kd-chatline.is-me:has-text("${text}")`, { timeout: 8000 });
+  }
+  let chatted = false;
+  async function chatScenario() {
+    chatted = true;
+    // ホスト：⚙ → チャット → 送る → 閉じる
+    await openChat(host);
+    await host.click('.kd-chatbtn');
+    await host.waitForSelector('.kd-chat');
+    await say(host, 'こんにちは、よろしく');
+    await host.click('.kd-chat-x');
+    // 参加者：流れる発言と ⚙ の未読
+    await guest.waitForSelector('.kd-chatfloat-l:has-text("こんにちは、よろしく")', { timeout: 8000 });
+    check(true, '参加者の盤面に、ホストの発言が下から流れる');
+    await guest.waitForSelector(`${MENU} .kd-unread`, { timeout: 5000 });
+    check((await guest.textContent(`${MENU} .kd-unread`)).trim() === '1', '参加者の ⚙ に未読1のしるし');
+    await shot(guest, '62-chat-float-guest.png');
+    await openChat(guest);
+    check(!!(await guest.$('.kd-chatbtn .kd-unread')), '⚙ のメニューの「チャット」にも未読のしるし');
+    await shot(guest, '62-menu-badge-guest.png');
+    await guest.click('.kd-chatbtn');
+    await guest.waitForSelector('.kd-chatline:has-text("こんにちは、よろしく")');
+    check(!(await guest.$(`${MENU} .kd-unread`)), '開くと未読が消える');
+    await say(guest, 'こちらこそ！');
+    await guest.click('.kd-chat-stamps button:has-text("ナイス！")');
+    await guest.waitForSelector('.kd-chatline.is-me.is-stamp:has-text("ナイス！")', { timeout: 8000 });
+    await sleep(500);
+    await shot(guest, '62-chat-sheet-guest.png');
+    let b = await fitsChat(guest); check(!b.length, `チャットが1画面に収まる（390×844）${b.join(' ')}`);
+    await guest.setViewportSize({ width: 844, height: 390 });
+    await sleep(400);
+    b = await fitsChat(guest); check(!b.length, `チャットが1画面に収まる（844×390）${b.join(' ')}`);
+    await shot(guest, '62-chat-sheet-guest-landscape.png');
+    await guest.setViewportSize({ width: 390, height: 844 });
+    await guest.click('.kd-chat-x');
+    // ホスト：参加者の発言とスタンプが流れ、未読2
+    await host.waitForSelector('.kd-chatfloat-l:has-text("ナイス！")', { timeout: 8000 });
+    await sleep(300);
+    const lines = await host.$$eval('.kd-chatfloat-l', (els) => els.map((e) => e.textContent));
+    check(lines.some((l) => l.includes('こちらこそ！')) && lines.some((l) => l.includes('ナイス！')), `ホストの盤面に参加者の発言が流れる：${lines.join(' / ')}`);
+    await shot(host, '62-chat-float-host.png');
+    check((await host.textContent(`${MENU} .kd-unread`)).trim() === '2', 'ホストの ⚙ に未読2のしるし');
+    await openChat(host);
+    await host.click('.kd-chatbtn');
+    await host.waitForSelector('.kd-chatline.is-stamp:has-text("ナイス！")');
+    const texts = await host.$$eval('.kd-chatline .kd-chat-text', (els) => els.map((e) => e.textContent));
+    check(JSON.stringify(texts) === JSON.stringify(['こんにちは、よろしく', 'こちらこそ！', 'ナイス！']), `ホストのチャットの順（新しいものが下）：${texts.join(' / ')}`);
+    await host.setViewportSize({ width: 844, height: 390 });
+    await sleep(400);
+    await shot(host, '62-chat-sheet-host-landscape.png');
+    b = await fitsChat(host); check(!b.length, `ホストのチャットが1画面に収まる（844×390）${b.join(' ')}`);
+    await host.setViewportSize({ width: 390, height: 844 });
+    await sleep(200);
+    await shot(host, '62-chat-sheet-host.png');
+    await host.click('.kd-chat-x');
+  }
   let traded = false;
   async function tradeScenario() {
     if (!(await propose(1))) return false;
@@ -230,6 +312,9 @@ try {
       check(await fits(guest), '参加者の試合画面が1画面に収まる（390×844）');
       guestShot = true;
     }
+    if (!chatted && guestShot) {
+      try { await chatScenario(); } catch (e) { check(false, `チャットの通し：${String(e).split('\n')[0]}`); }
+    }
     if (!traded && reloaded && guestShot && await host.$('.kd-root.is-myturn')) {
       await host.waitForSelector('.kd-hud-ctl .kd-iconbtn[disabled]', { timeout: 15000 }).catch(() => {});
       await sleep(400);
@@ -260,6 +345,7 @@ try {
   }
   if (!guestShot) check(false, '参加者の番の盤面にたどり着けなかった');
   if (!traded) check(false, '人どうしの取引を試せなかった');
+  if (!chatted) check(false, 'チャットを試せなかった');
   if (ROUNDS >= 12) {
     await guest.waitForSelector('.kd-final', { timeout: 60000 });
     for (const p of [host, guest]) await p.waitForSelector('.kd-hud-ctl .kd-iconbtn[disabled]', { timeout: 60000 });

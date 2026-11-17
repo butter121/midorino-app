@@ -3,6 +3,7 @@
 import type { Action, ActResult, Cost, GameEvent, OfferNote, OfferView, Prompt, TradeJudge } from '@midorino/engine/src/kiridani';
 import { KD_MAX_MSG, type KdLobby, type KdToGuest, type KdToHost } from './kiridaniProtocol';
 import type { Conn, Net } from './transport';
+import type { ChatMsg } from './chat';
 
 const keyFor = (roomId: string) => `kiridani.guest.${roomId}`;
 type Store = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> | null;
@@ -23,6 +24,8 @@ export class KdGuestClient {
   offer: OfferView | null = null;
   /** 取引の結果のお知らせ */
   note: OfferNote | null = null;
+  /** チャット（ホストが配った分） */
+  chat: ChatMsg[] = [];
   private token: string | null = null;
   private conn: Conn | null = null;
   private reqId = 0;
@@ -117,6 +120,16 @@ export class KdGuestClient {
         f?.(msg.t === 'result' ? msg.result : msg.j);
         return;
       }
+      case 'chat': {
+        if (msg.reset) this.chat = [...msg.msgs];
+        else {
+          const have = new Set(this.chat.map((x) => x.id));
+          const add = msg.msgs.filter((x) => !have.has(x.id));
+          if (!add.length) return;
+          this.chat = [...this.chat, ...add].slice(-100);
+        }
+        break;
+      }
       case 'denied':
         this.status = 'denied'; this.reason = msg.reason;
         try { this.store?.removeItem(keyFor(this.roomId)); } catch { /* 無視 */ }
@@ -147,6 +160,11 @@ export class KdGuestClient {
   }
   judge(b: number, give: Cost, get: Cost): Promise<TradeJudge> {
     return this.request<TradeJudge>({ t: 'judge', b, give, get }, { ok: false, accept: false, gain: 0, error: 'ホストに届きませんでした' });
+  }
+
+  /** チャットを送る（ホストが整えて全員に配る。自分にも届く） */
+  say(text: string, stamp = false): Promise<ActResult> {
+    return this.request<ActResult>({ t: 'chat', text, ...(stamp ? { stamp: true } : {}) }, { ok: false, error: 'ホストに届きませんでした' });
   }
 
   close() {

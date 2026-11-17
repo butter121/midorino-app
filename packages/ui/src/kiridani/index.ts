@@ -17,3 +17,4 @@ export { SampleGame, SAMPLE_NAMES, type SimWait } from './sample/sim';
 export { KiridaniEngineGame, uiFor, optionSheet, isSceneStart, ENGINE_NAMES, type EngineGameProps } from './play';
 export { KiridaniOnlineGame, type OnlineGameProps } from './online';
 export { RoomLobby, RoomJoin, RoomMessage, AI_LEVELS, type RoomMember, type RoomLobbyProps, type AILevel } from './ui/lobby';
+export { ChatSheet, ChatFloat, UnreadBadge, type ChatLine } from './ui/chat';

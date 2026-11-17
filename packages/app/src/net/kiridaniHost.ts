@@ -5,6 +5,7 @@ import { KiridaniReferee, type Action, type ActResult, type Cost, type Prompt, t
 import { randomHex, type LobbyMember } from './protocol';
 import { EV_CHUNK, KD_MAX_MSG, type KdLevel, type KdLobby, type KdToGuest, type KdToHost } from './kiridaniProtocol';
 import type { Conn, Net } from './transport';
+import { CHAT_KEEP, CHAT_STAMPS, ChatLimiter, sanitizeChat, type ChatMsg } from './chat';
 
 interface Member extends LobbyMember { token: string; conn: Conn | null; sent: number }
 export interface KdGame { seed: number; n: number; seats: string[]; names: string[]; level: KdLevel }
@@ -28,10 +29,16 @@ export class KdHostRoom {
   private server: { close(): void } | null = null;
   private listeners = new Set<() => void>();
   private store: Store;
+  /** チャット（最後の CHAT_KEEP 件。ゲームの状態・記録には入らない） */
+  chat: ChatMsg[] = [];
+  private chatSeq = 0;
+  private limiter = new ChatLimiter();
+  private clock: () => number;
   /** 人どうしの取引の返事を待つ長さ（テスト用。既定は審判の 60 秒） */
   private offerMs?: number;
 
-  constructor(private net: Net, hostName: string, opts: { saved?: Saved; store?: Store; seed?: number; offerTimeoutMs?: number } = {}) {
+  constructor(private net: Net, hostName: string, opts: { saved?: Saved; store?: Store; seed?: number; offerTimeoutMs?: number; now?: () => number } = {}) {
+    this.clock = opts.now ?? (() => Date.now());
     this.offerMs = opts.offerTimeoutMs;
     this.store = opts.store === undefined ? defaultStore() : opts.store;
     const s = opts.saved;
@@ -100,6 +107,11 @@ export class KdHostRoom {
       try { msg = JSON.parse(raw); } catch { return; }
       if (!msg || typeof msg !== 'object') return;
       if (msg.t === 'hello') { member = this.hello(conn, msg); return; }
+      if (msg.t === 'chat' && member && member.conn === conn) {
+        // 承認待ちの人にも「話せない」と返す（say が確かめる）
+        this.send(conn, { t: 'result', reqId: Number(msg.reqId) || 0, result: this.say(member.id, msg.text, !!msg.stamp) });
+        return;
+      }
       if (!member || member.status !== 'joined' || member.conn !== conn) return;
       if (msg.t === 'act') {
         const result = this.act(member.id, String(msg.id), msg.a);
@@ -124,6 +136,7 @@ export class KdHostRoom {
         if (m.conn && m.conn !== conn) m.conn.close();
         m.conn = conn; m.online = true; m.sent = 0;
         this.send(conn, { t: 'welcome', memberId: m.id, token: m.token, status: m.status });
+        this.send(conn, { t: 'chat', msgs: this.chat, reset: true });
         this.broadcast();
         this.changed();
         return m;
@@ -140,6 +153,26 @@ export class KdHostRoom {
     return m;
   }
 
+  // ---- チャット ----
+  /** 色に使う席（参加者の並び順＝始まったあとの席） */
+  private chatSeat(id: string) { return this.game ? this.game.seats.indexOf(id) : this.humans().findIndex((m) => m.id === id); }
+
+  /** 発言を受け付け、整えて全員に配る（承認済みの人とホストだけ・回数制限あり） */
+  say(memberId: string, raw: unknown, stamp = false): ActResult {
+    const m = this.members.find((x) => x.id === memberId);
+    if (!m || (m.status !== 'host' && m.status !== 'joined')) return { ok: false, error: '参加してから話せます' };
+    const text = sanitizeChat(raw);
+    if (!text) return { ok: false, error: '何も書かれていません' };
+    const now = this.clock();
+    if (!this.limiter.allow(m.id, now)) return { ok: false, error: '少し待ってから送ってください' };
+    const msg: ChatMsg = { id: ++this.chatSeq, seat: this.chatSeat(m.id), name: m.name, text, at: now, ...(stamp && CHAT_STAMPS.includes(text) ? { stamp: true } : {}) };
+    this.chat = [...this.chat, msg].slice(-CHAT_KEEP);
+    for (const x of this.members) if (x.conn && (x.status === 'joined')) this.send(x.conn, { t: 'chat', msgs: [msg] });
+    this.listeners.forEach((f) => f());
+    return { ok: true };
+  }
+  hostSay(text: string, stamp = false) { return this.say(this.me.id, text, stamp); }
+
   private humans() { return this.members.filter((m) => m.status === 'host' || m.status === 'joined'); }
 
   // ---- ホストの操作 ----
@@ -150,7 +183,7 @@ export class KdHostRoom {
     if (ok && this.humans().length < 6) {
       m.status = 'joined';
       if (this.humans().length > this.seats) this.seats = this.humans().length;
-      if (m.conn) this.send(m.conn, { t: 'welcome', memberId: m.id, token: m.token, status: 'joined' });
+      if (m.conn) { this.send(m.conn, { t: 'welcome', memberId: m.id, token: m.token, status: 'joined' }); this.send(m.conn, { t: 'chat', msgs: this.chat, reset: true }); }
     } else {
       if (m.conn) { const c = m.conn; this.send(c, { t: 'denied', reason: 'ホストが参加を見送りました' }); setTimeout(() => c.close(), 500); }
       this.members.splice(i, 1);

@@ -2,6 +2,7 @@
 // ゲーム中、参加者が送るのは「答え（Action）」と「取引の見込みの問い合わせ」だけ。ホストは席ごとに隠した出来事と問いを送る。
 import type { Action, ActResult, Cost, GameEvent, OfferNote, OfferView, Prompt, TradeJudge } from '@midorino/engine/src/kiridani';
 import type { LobbyMember } from './protocol';
+import type { ChatMsg } from './chat';
 
 export type KdLevel = 'novice' | 'mid' | 'expert';
 export interface KdLobby { roomId: string; members: LobbyMember[]; started: boolean; seats: number; level: KdLevel }
@@ -12,7 +13,9 @@ export type KdToHost =
   | { t: 'act'; reqId: number; id: string; a: Action }
   | { t: 'judge'; reqId: number; b: number; give: Cost; get: Cost }
   /** 出来事が飛んだので、have 件目から送り直してほしい */
-  | { t: 'sync'; have: number };
+  | { t: 'sync'; have: number }
+  /** チャット（stamp はひと言スタンプ）。返事は result で届く */
+  | { t: 'chat'; reqId: number; text: string; stamp?: boolean };
 
 /** ホスト → 参加者 */
 export type KdToGuest =
@@ -23,6 +26,8 @@ export type KdToGuest =
   | { t: 'result'; reqId: number; result: ActResult }
   | { t: 'judged'; reqId: number; j: TradeJudge }
   | { t: 'denied'; reason: string }
+  /** チャット：reset のときはこれまでの分（つなぎ直し）、そうでなければ新しい分 */
+  | { t: 'chat'; msgs: ChatMsg[]; reset?: boolean }
   /** ホストが部屋を閉じた */
   | { t: 'closed'; reason: string };
 

@@ -4,7 +4,7 @@
 // オンラインはミドリノと同じ仕組み：ホストの端末が審判で、参加者は自分の答えだけを送る（net/kiridaniHost.ts・kiridaniGuest.ts）。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import qrcode from 'qrcode-generator';
-import { KiridaniEngineGame, KiridaniOnlineGame, HeroArt, RoomJoin, RoomLobby, RoomMessage } from '@midorino/ui/src/kiridani';
+import { ChatFloat, ChatSheet, KiridaniEngineGame, KiridaniOnlineGame, HeroArt, RoomJoin, RoomLobby, RoomMessage, UnreadBadge } from '@midorino/ui/src/kiridani';
 import type { Action, Cost, Prompt } from '@midorino/engine/src/kiridani';
 import '@midorino/ui/src/kiridani/kiridani.css';
 import './kiridani-app.css';
@@ -13,6 +13,8 @@ import { peerNet } from './net/peerNet';
 import { KdHostRoom, KD_HOST_KEY } from './net/kiridaniHost';
 import { KdGuestClient } from './net/kiridaniGuest';
 import type { KdLevel } from './net/kiridaniProtocol';
+import { CHAT_STAMPS, type ChatMsg } from './net/chat';
+import type { ReactNode } from 'react';
 
 type Level = KdLevel;
 const LEVELS: [Level, string][] = [['novice', 'やさしい'], ['mid', 'ふつう'], ['expert', 'つよい']];
@@ -153,13 +155,39 @@ function useStableById<T extends { id: string; text?: string }>(x: T | null): T 
   return ref.current;
 }
 
-function Menu({ items }: { items: [string, () => void][] }) {
+/** ⚙ のメニュー（オンラインでは「チャット」と未読のしるし） */
+function Menu({ items, chat }: { items: [string, () => void][]; chat?: Chat }) {
+  const ref = useRef<HTMLDetailsElement>(null);
+  const n = chat?.unread ?? 0;
   return (
-    <details className="kd-cat-menu">
-      <summary aria-label="メニュー">⚙</summary>
-      <div>{items.map(([l, f]) => <button key={l} type="button" className="kd-btn" onClick={f}>{l}</button>)}</div>
+    <details className="kd-cat-menu" ref={ref}>
+      <summary aria-label={n ? `メニュー（チャットの未読${n}件）` : 'メニュー'}>⚙<UnreadBadge n={n} /></summary>
+      <div>
+        {chat && <button type="button" className="kd-btn kd-chatbtn" onClick={() => { if (ref.current) ref.current.open = false; chat.setOpen(true); }}>💬 チャット<UnreadBadge n={n} /></button>}
+        {items.map(([l, f]) => <button key={l} type="button" className="kd-btn" onClick={f}>{l}</button>)}
+      </div>
     </details>
   );
+}
+
+// ---------------------------------------------------------------- チャット
+interface Chat { unread: number; setOpen: (o: boolean) => void; node: ReactNode; lobbyButton: ReactNode }
+/** チャットの開け閉め・未読・流れる発言。me は色の席（自分の発言は未読に数えない） */
+function useChat(msgs: ChatMsg[], me: number, send: (text: string, stamp: boolean) => Promise<{ ok: boolean; error?: string }>): Chat {
+  const [open, setOpen] = useState(false);
+  const [seen, setSeen] = useState(0);
+  const lastId = msgs.at(-1)?.id ?? 0;
+  useEffect(() => { if (open) setSeen(lastId); }, [open, lastId]);
+  const unread = open ? 0 : msgs.filter((m) => m.id > seen && m.seat !== me).length;
+  const close = useCallback(() => setOpen(false), []);
+  const node = (
+    <>
+      <ChatFloat msgs={msgs} me={me} hidden={open} />
+      {open && <ChatSheet msgs={msgs} me={me} stamps={CHAT_STAMPS} onSend={send} onClose={close} />}
+    </>
+  );
+  const lobbyButton = <button type="button" className="kd-iconbtn kd-chatbtn" aria-label={unread ? `チャット（未読${unread}件）` : 'チャット'} onClick={() => setOpen(true)}>💬<UnreadBadge n={unread} /></button>;
+  return { unread, setOpen, node, lobbyButton };
 }
 
 // ---------------------------------------------------------------- ホスト
@@ -180,16 +208,20 @@ function HostScreen({ resume, onLeave }: { resume: boolean; onLeave: () => void 
   const hostOffer = useStableById(ref && seat >= 0 ? room.offerFor(seat) : null);
   const hostNote = useStableById(ref && seat >= 0 ? room.noteFor(seat) : null);
   const onJudge = useCallback((b: number, give: Cost, get: Cost) => Promise.resolve(room.hostJudge(b, give, get)), [room]);
+  const chat = useChat(room.chat, 0, useCallback((t: string, st: boolean) => Promise.resolve(room.hostSay(t, st)), [room]));
 
   if (!ref || !room.game) {
     const copy = async () => { try { await navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* コピーできない */ } };
     const share = typeof navigator !== 'undefined' && 'share' in navigator ? () => { navigator.share({ title: '霧谷の冒険者団', text: '一緒に冒険しよう！', url }).catch(() => {}); } : undefined;
     return (
+      <>
       <RoomLobby inviteUrl={url} qr={<span dangerouslySetInnerHTML={{ __html: qr }} style={{ display: 'contents' }} />} members={room.lobby().members}
         isHost seats={room.seats} level={room.level} copied={copied}
         status={room.status === 'connecting' ? '部屋を開いています…' : room.status === 'error' ? room.error : '招待を待っています'}
         onSeats={(n) => room.setSeats(n)} onLevel={(l) => room.setLevel(l)} onApprove={(id) => room.approve(id, true)} onDecline={(id) => room.approve(id, false)}
-        onRemove={(id) => room.kick(id)} onStart={() => room.start()} onCopy={copy} onShare={share} onLeave={leave} />
+        onRemove={(id) => room.kick(id)} onStart={() => room.start()} onCopy={copy} onShare={share} onLeave={leave} extra={chat.lobbyButton} />
+      {chat.node}
+    </>
     );
   }
   const g = room.game;
@@ -198,9 +230,12 @@ function HostScreen({ resume, onLeave }: { resume: boolean; onLeave: () => void 
   const away = room.members.filter((m) => m.status === 'joined' && !m.online && waitFor.includes(g.seats.indexOf(m.id)));
   const banner = away.length ? <><b>{away.map((m) => m.name).join('・')}</b>の接続が切れています（戻るのを待っています）</> : undefined;
   return (
+    <>
     <KiridaniOnlineGame seat={seat} events={events} prompt={prompt} waitFor={waitFor} names={g.names} onAct={onAct} onJudge={onJudge} banner={banner} speed={SPEED}
       offer={offer} note={note}
-      extra={<Menu items={[['部屋を閉じてタイトルへ', leave]]} />} />
+      extra={<Menu chat={chat} items={[['部屋を閉じてタイトルへ', leave]]} />} />
+    {chat.node}
+    </>
   );
 }
 
@@ -214,19 +249,26 @@ function GuestScreen({ roomId, onLeave }: { roomId: string; onLeave: () => void 
   const prompt = useStablePrompt(client.prompt);
   const onAct = useCallback((id: string, a: Action) => client.act(id, a), [client]);
   const onJudge = useCallback((b: number, give: Cost, get: Cost) => client.judge(b, give, get), [client]);
+  // 色の席：始まったら自分の席、待合室では参加者の並び順（始まったあとの席と同じ）
+  const humans = client.lobby?.members.filter((m) => m.status === 'host' || m.status === 'joined') ?? [];
+  const mySeat = client.started ? client.seat : humans.findIndex((m) => m.id === client.memberId);
+  const chat = useChat(client.chat, mySeat, useCallback((t: string, st: boolean) => client.say(t, st), [client]));
 
   if (client.status === 'denied') return <RoomMessage title="参加できませんでした" text={client.reason} onBack={leave} />;
   if (client.status === 'closed') return <RoomMessage title="部屋が閉じました" text={client.started ? `${client.reason}。試合はここで終わりです。` : client.reason} onBack={leave} />;
   if (client.started) {
     const banner = client.status === 'offline' ? (client.reason || 'ホストとの接続が切れました。つなぎ直しています…') : undefined;
     return (
+      <>
       <KiridaniOnlineGame seat={client.seat} events={client.events} prompt={prompt} waitFor={client.wait} names={client.names} onAct={onAct} onJudge={onJudge} banner={banner} speed={SPEED}
         offer={client.offer} note={client.note}
-        extra={<Menu items={[['部屋を出てタイトルへ', leave]]} />} />
+        extra={<Menu chat={chat} items={[['部屋を出てタイトルへ', leave]]} />} />
+      {chat.node}
+      </>
     );
   }
   if (client.status === 'joined' && client.lobby) {
-    return <RoomLobby inviteUrl="" members={client.lobby.members} isHost={false} seats={client.lobby.seats} level={client.lobby.level} onLeave={leave} />;
+    return <><RoomLobby inviteUrl="" members={client.lobby.members} isHost={false} seats={client.lobby.seats} level={client.lobby.level} onLeave={leave} extra={chat.lobbyButton} />{chat.node}</>;
   }
   const status = client.status === 'offline' ? (client.reason || 'ホストにつないでいます…') : client.status === 'waiting' ? 'ホストの承認を待っています…' : 'ホストにつないでいます…';
   return <RoomJoin waiting={joining} status={status} defaultName={client.name} onBack={leave}

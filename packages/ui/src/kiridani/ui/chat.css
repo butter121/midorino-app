@@ -1,0 +1,57 @@
+/* 霧谷：チャット（新しい発言が下に入り、古いものは上へ流れる）。1画面に収め、発言の一覧だけは中で動かせる */
+.kd-root.kd-chatwrap { position: fixed; inset: 0; z-index: 90; min-height: 0; height: 100dvh; background: #0008; display: flex; flex-direction: column; justify-content: flex-end; align-items: stretch; overflow: hidden; }
+.kd-chat { box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; max-height: min(78dvh, 100%); min-height: min(360px, 100%); margin: 0 auto; width: min(100%, 560px);
+  padding: 12px var(--kd-gut-r) max(12px, env(safe-area-inset-bottom)) var(--kd-gut); background: var(--kd-panel); border: 1px solid var(--kd-line); border-bottom: 0; border-radius: 18px 18px 0 0; box-shadow: 0 -8px 30px #000a; }
+.kd-chat-h { display: flex; align-items: center; justify-content: space-between; }
+.kd-chat-h strong { font-size: 16px; color: var(--kd-gold-l); }
+.kd-chat-x { font-size: 20px; }
+.kd-chatlist { list-style: none; margin: 0; padding: 4px 2px; flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 6px; justify-content: flex-start; }
+.kd-chatlist > :first-child { margin-top: auto; }
+.kd-chatline { display: grid; gap: 1px; padding: 6px 10px; border-radius: 12px; background: var(--kd-bg2); border-left: 3px solid var(--seat); max-width: 88%; align-self: flex-start; }
+.kd-chatline.is-me { align-self: flex-end; background: var(--kd-panel2); border-left: 0; border-right: 3px solid var(--seat); }
+.kd-chatline.is-new { animation: kd-chat-in .35s ease-out both; }
+.kd-chat-who { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--kd-ink2); }
+.kd-chat-who b { color: var(--seat); }
+.kd-chat-who time { color: var(--kd-dim); font-size: 11px; margin-left: 4px; }
+.kd-chat-text { font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.kd-chatline.is-stamp .kd-chat-text { font-size: 18px; font-weight: 900; color: var(--kd-gold-l); }
+.kd-chat-empty { color: var(--kd-dim); text-align: center; font-size: 13px; }
+.kd-chat-more { align-self: center; }
+.kd-chat-more button { min-height: 32px; border-radius: 16px; border: 1px solid var(--kd-line); background: var(--kd-panel2); padding: 0 12px; cursor: pointer; font-size: 12px; }
+.kd-chat-stamps { display: flex; gap: 6px; overflow: hidden; flex-wrap: wrap; }
+.kd-chat-stamps button { min-height: 36px; padding: 0 10px; border-radius: 18px; border: 1px solid var(--kd-gold); background: #3a2f17; color: var(--kd-gold-l); font-weight: 800; cursor: pointer; font-size: 13px; }
+.kd-chat-in { display: flex; gap: 8px; }
+.kd-chat-in input { flex: 1; min-width: 0; min-height: 44px; border-radius: 12px; border: 2px solid var(--kd-line); background: var(--kd-bg2); color: var(--kd-ink); font: inherit; font-size: 16px; padding: 0 10px; }
+.kd-chat-in input:focus { outline: none; border-color: var(--kd-gold); }
+.kd-chat-in .kd-btn { min-height: 44px; padding: 0 16px; }
+.kd-chat-err { margin: 0; color: var(--kd-bad); font-size: 12px; }
+@keyframes kd-chat-in { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* 横画面：右側に縦長の欄 */
+@media (orientation: landscape) and (max-height: 540px) {
+  .kd-root.kd-chatwrap { justify-content: stretch; align-items: flex-end; }
+  .kd-chat { height: 100%; max-height: 100%; min-height: 0; margin: 0; width: min(420px, 60vw); border-radius: 18px 0 0 18px; border-bottom: 1px solid var(--kd-line); padding: 8px var(--kd-gut-r) 8px 12px; gap: 6px; }
+  .kd-chat-stamps { gap: 4px; }
+  .kd-chat-stamps button { min-height: 32px; padding: 0 8px; font-size: 12px; }
+  .kd-chat-in input, .kd-chat-in .kd-btn { min-height: 40px; }
+}
+
+/* 閉じているあいだに届いた発言：下から現れ、上へ漂って消える（最大4行・押せる所はふさがない） */
+.kd-chatfloat { position: fixed; left: max(12px, env(safe-area-inset-left)); z-index: 45; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; pointer-events: none; max-width: min(70vw, 420px); }
+.kd-chatfloat-l { padding: 3px 10px; border-radius: 14px; background: #15131cd9; border-left: 3px solid var(--seat, #999); color: #F1EADB; font: 600 13px/1.5 'Zen Kaku Gothic New', sans-serif; text-shadow: 0 1px 2px #000;
+  animation: kd-chat-drift 5.2s ease-out forwards; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.kd-chatfloat-l b { color: var(--seat, #FFE29A); margin-right: 6px; }
+.kd-chatfloat-l.is-stamp { font-size: 15px; color: #FFE29A; }
+@keyframes kd-chat-drift { 0% { transform: translateY(18px); opacity: 0; } 10% { transform: translateY(0); opacity: 1; } 75% { opacity: 1; } 100% { transform: translateY(-46px); opacity: 0; } }
+@keyframes kd-chat-fade { 0% { opacity: 0; } 8% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
+
+/* ⚙ と「チャット」に付く未読のしるし */
+.kd-unread { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--kd-bad, #FF7A66); color: #1a0d0a; font: 900 11px/1 sans-serif; margin-left: 4px; }
+.kd-cat-menu summary { position: relative; }
+.kd-cat-menu summary .kd-unread { position: absolute; top: -6px; right: -6px; margin: 0; }
+.kd-chatbtn { display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kd-chatline.is-new { animation: none; }
+  .kd-chatfloat-l { animation-name: kd-chat-fade; }
+}
