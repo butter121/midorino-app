@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { BossArt, CardBackArt, HeroArt, ItemArt, JobArt, KIcon, MonsterArt, WeatherArt } from '../art-registry';
 import { CARDS, CHAR, EL_JP, FATE_DECK, KIND_JP, MON, RACE_JP, RES, RES_JP, WEATHER_JP, type Cost, type ItemDef, type Res } from '../data';
 import { monsterDef } from '../reduce';
+import { InfoDot } from './inspect';
 import type { PlayerView, Seat } from '../types';
 
 export const SEAT_COLORS = ['#E8743B', '#3B8BD9', '#E3B22B', '#2FAE84', '#D16BA5', '#7DC4E8'];
@@ -68,6 +69,7 @@ export function CardFace({ id, size = 'm', selected, onClick, highlight, disable
 }) {
   const c = CARDS[id];
   if (!c) return <div className={`kd-card is-${size} is-back`} data-kd={anchor}><CardBackArt id="item" size={size === 's' ? 44 : 72} /></div>;
+  const ins = `card:${id}`;
   const it = c.kind !== 'occ' ? (c as ItemDef) : null;
   const body = (
     <>
@@ -85,8 +87,8 @@ export function CardFace({ id, size = 'm', selected, onClick, highlight, disable
   );
   const cls = `kd-card is-${size} is-${c.kind}${selected ? ' is-selected' : ''}${highlight ? ' is-hl' : ''}`;
   return onClick
-    ? <button type="button" className={cls} onClick={onClick} disabled={disabled} aria-pressed={selected} data-kd={anchor}>{body}</button>
-    : <div className={cls} data-kd={anchor}>{body}</div>;
+    ? <button type="button" className={cls} onClick={onClick} disabled={disabled} aria-pressed={selected} data-kd={anchor} data-inspect={ins}>{body}<InfoDot target={ins} label={`${c.name}をくわしく`} /></button>
+    : <div className={cls} data-kd={anchor} data-inspect={ins} role="button" tabIndex={0} aria-label={`${c.name}：タップで詳しく`}>{body}</div>;
 }
 
 /** 魔物カード（強さ・反撃・弱点・種族・戦利品・証・襲撃） */
@@ -96,7 +98,7 @@ export function MonsterCard({ id, wounds = 0, compact, shadow, anchor }: { id: s
   const boss = !MON[id];
   const left = Math.max(0, m.str - wounds);
   return (
-    <div className={`kd-mon${compact ? ' is-compact' : ''}${shadow ? ' is-shadow' : ''}${boss ? ' is-boss' : ''}`} data-kd={anchor}>
+    <div className={`kd-mon${compact ? ' is-compact' : ''}${shadow ? ' is-shadow' : ''}${boss ? ' is-boss' : ''}`} data-kd={anchor} data-inspect={shadow ? undefined : `mon:${id}:${wounds}`}>
       <div className="kd-mon-art">{boss ? <BossArt id={id} size={compact ? 56 : 88} /> : <MonsterArt id={id} size={compact ? 56 : 88} />}</div>
       {shadow ? <div className="kd-mon-name">次：？？？</div> : <>
         <div className="kd-mon-name">{m.name}</div>
@@ -127,15 +129,15 @@ export function FateDeck({ p, size = 's' }: { p: PlayerView; size?: 's' | 'm' })
 
 export function WeatherChip({ id, label, small }: { id?: string; label: string; small?: boolean }) {
   return (
-    <span className={`kd-wchip${small ? ' is-small' : ''}`}>
+    <span className={`kd-wchip${small ? ' is-small' : ''}`} data-inspect={id ? `weather:${id}` : undefined} role={id ? 'button' : undefined} tabIndex={id ? 0 : undefined}>
       {id ? <WeatherArt id={id} size={small ? 22 : 30} /> : <span className="kd-wq">?</span>}
       <span><small>{label}</small>{id ? WEATHER_JP[id] : '—'}</span>
     </span>
   );
 }
 
-export function HeroBadge({ id, size = 36 }: { id?: string; size?: number }) {
-  return id ? <HeroArt id={id} size={size} /> : <CardBackArt id="occ" size={size} />;
+export function HeroBadge({ id, size = 36, seat }: { id?: string; size?: number; seat?: Seat }) {
+  return id ? <span className="kd-herob" data-inspect={seat !== undefined ? `seat:${seat}` : `char:${id}`} style={{ display: 'contents' }}><HeroArt id={id} size={size} /></span> : <CardBackArt id="occ" size={size} />;
 }
 
 export function Section({ title, children, extra }: { title: ReactNode; children: ReactNode; extra?: ReactNode }) {
