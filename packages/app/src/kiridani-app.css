@@ -19,6 +19,14 @@ html, body { margin: 0; background: #15131c; }
   .kd-root.kda-title { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: 'heroes n' 'name lv' 'sub start'; align-content: center; justify-items: center; gap: 12px 32px; }
   .kda-heroes { grid-area: heroes; } .kda-name { grid-area: name; font-size: 36px; } .kda-sub { grid-area: sub; }
   .kda-group:nth-of-type(1) { grid-area: n; } .kda-group:nth-of-type(2) { grid-area: lv; }
-  .kd-root .kd-btn.kda-start { grid-area: start; margin-top: 0; }
+  .kda-modes { grid-area: start; } .kd-root .kd-btn.kda-start { margin-top: 0; }
+  .kd-root.kda-title:not(:has(.kda-group)) { grid-template-areas: 'heroes start' 'name start' 'sub start'; }
   .kda-heroes svg { width: 60px; height: 60px; }
 }
+
+/* 入口：遊び方を選ぶボタン */
+.kda-modes { display: grid; gap: 10px; width: min(100%, 320px); }
+.kd-root .kd-btn.kda-start.is-alt { background: var(--kd-panel2); color: var(--kd-gold-l); border-color: var(--kd-gold); }
+.kd-root .kd-btn.kda-back { min-width: 0; }
+.kda-hint { color: var(--kd-dim); font-size: 12px; text-align: center; }
+.kd-join form .kd-btn { width: 100%; }

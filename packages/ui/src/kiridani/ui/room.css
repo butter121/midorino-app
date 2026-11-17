@@ -1,0 +1,65 @@
+/* 霧谷：オンライン対戦の部屋（待合室・参加の入口）と、対戦中の通信のお知らせ。1画面に収める（縦 390×844・横 844×390） */
+.kd-root.kd-room { box-sizing: border-box; height: 100dvh; min-height: 0; overflow: hidden; padding: max(12px, env(safe-area-inset-top)) var(--kd-gut-r) max(12px, env(safe-area-inset-bottom)) var(--kd-gut); gap: 12px; }
+.kd-room h1 { font-family: var(--kd-title); color: var(--kd-gold-l); margin: 0; font-size: 22px; letter-spacing: .06em; }
+.kd-room h2 { margin: 0 0 6px; font-size: 15px; display: flex; align-items: baseline; gap: 6px; }
+.kd-room h2 small { color: var(--kd-dim); font-weight: 500; font-size: 12px; }
+.kd-room-h { display: flex; align-items: center; gap: 10px; }
+.kd-room-h small { margin-left: auto; color: var(--kd-dim); font-size: 12px; text-align: right; }
+.kd-room-inv { display: flex; gap: 14px; align-items: center; background: var(--kd-panel); border: 1px solid var(--kd-line); border-radius: var(--kd-r-lg); padding: 12px; }
+.kd-room-qr { flex: none; width: clamp(110px, 30vw, 150px); aspect-ratio: 1; background: #fff; border-radius: 10px; padding: 6px; display: grid; place-items: center; color: #333; }
+.kd-room-qr svg { width: 100%; height: 100%; }
+.kd-room-invb { min-width: 0; display: grid; gap: 6px; }
+.kd-room-invb small { color: var(--kd-dim); font-size: 12px; }
+.kd-room-url { margin: 0; font-size: 12px; color: var(--kd-ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+.kd-room-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.kd-room .kd-room-btns .kd-btn { min-height: 40px; padding: 0 14px; font-size: 14px; }
+.kd-room-mem { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.kd-room-wait { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.kd-room-wait li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 10px; border-radius: 12px; background: #3a2f17; border: 1px solid var(--kd-gold); }
+.kd-room-seats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.kd-room-seats li { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 10px; border-radius: 12px; background: var(--kd-panel); border: 1px solid var(--kd-line); border-left: 4px solid var(--seat); min-width: 0; }
+.kd-room-seats li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.kd-room-seats li em { font-style: normal; font-size: 11px; color: var(--kd-dim); border: 1px solid var(--kd-line); border-radius: 8px; padding: 0 5px; flex: none; }
+.kd-room-seats li.is-off { opacity: .55; }
+.kd-room-x { margin-left: auto; min-width: 32px; min-height: 32px; border-radius: 8px; border: 1px solid var(--kd-line); background: var(--kd-panel2); cursor: pointer; flex: none; }
+.kd-room-set { margin-top: auto; display: grid; gap: 8px; }
+.kd-room-seg { display: flex; gap: 6px; }
+.kd-room-seg button { flex: 1; min-height: 40px; border-radius: 12px; border: 2px solid var(--kd-line); background: var(--kd-panel); font-weight: 800; cursor: pointer; }
+.kd-room-seg button.is-on { border-color: var(--kd-gold); background: var(--kd-panel2); color: var(--kd-gold-l); }
+.kd-room-seg button:disabled { opacity: .35; cursor: default; }
+.kd-room .kd-room-start { width: 100%; }
+.kd-room-note { color: var(--kd-ink2); text-align: center; margin: auto 0 0; }
+
+.kd-root.kd-join { align-items: center; justify-content: center; text-align: center; }
+.kd-join h1 { font-size: clamp(28px, 8vw, 40px); }
+.kd-join p { margin: 0; color: var(--kd-ink2); }
+.kd-room-heroes { display: flex; gap: 8px; }
+.kd-join form { display: grid; gap: 8px; width: min(100%, 320px); text-align: left; }
+.kd-join label { font-size: 13px; color: var(--kd-dim); }
+.kd-join input { min-height: 48px; border-radius: 12px; border: 2px solid var(--kd-line); background: var(--kd-panel); color: var(--kd-ink); font: inherit; font-size: 18px; padding: 0 12px; }
+.kd-join input:focus { border-color: var(--kd-gold); outline: none; }
+.kd-join .kd-bad { color: var(--kd-bad); margin: 0; }
+.kd-room-back { margin-top: 8px; }
+
+/* 横画面：招待を左、席を右に */
+@media (orientation: landscape) and (min-width: 640px) {
+  .kd-root.kd-lobby { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); grid-template-rows: auto minmax(0, 1fr); gap: 10px 16px; }
+  .kd-lobby .kd-room-h { grid-column: 1 / -1; }
+  .kd-lobby .kd-room-inv { align-self: start; }
+  .kd-lobby:not(:has(.kd-room-inv)) .kd-room-mem { grid-column: 1 / -1; }
+  .kd-root.kd-join { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'heroes h1' 'heroes p' 'heroes form' 'heroes back'; justify-items: center; align-content: center; gap: 8px 32px; }
+  .kd-join .kd-room-heroes { grid-area: heroes; } .kd-join h1 { grid-area: h1; } .kd-join > p { grid-area: p; } .kd-join form, .kd-join .kd-room-note { grid-area: form; } .kd-join .kd-room-back { grid-area: back; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .kd-root.kd-room { gap: 8px; padding-top: 8px; padding-bottom: 8px; }
+  .kd-room-qr { width: clamp(96px, 34dvh, 140px); }
+  .kd-room-seg button, .kd-room .kd-room-btns .kd-btn, .kd-room-seats li { min-height: 36px; }
+  .kd-room .kd-btn { min-height: 40px; }
+}
+
+/* 対戦中：通信の状態・ほかの人を待っているお知らせ（盤面の上に小さく） */
+.kd-netnote { position: fixed; left: 50%; top: calc(var(--kd-hud-h, 56px) + 6px); transform: translateX(-50%); z-index: 40; max-width: calc(100vw - 24px);
+  padding: 4px 12px; border-radius: 16px; background: #1f1c29e6; border: 1px solid var(--kd-line, #463f55); color: var(--kd-ink2, #C4BAA6);
+  font: 600 12px/1.5 var(--kd-font, sans-serif); pointer-events: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kd-netnote .is-bad { color: var(--kd-bad, #FF7A66); pointer-events: auto; }
+.kd-netnote b { color: var(--kd-gold-l, #FFE29A); }

@@ -1,7 +1,7 @@
 // 霧谷：本物のエンジン（KiridaniSession）で1試合を遊ぶ画面。人間は1席、残りは AI。
 // エンジンの「人間に聞くこと」を、既存の画面（ドラフト・キャラ選択・盤面で置き場所）と選択のシート（ChoiceSheet）に振り分ける。
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { AI, KiridaniSession, describeOption, previewFight, type Level, type Option, type Req } from '@midorino/engine/src/kiridani';
+import { AI, KiridaniSession, describeOption, previewFight, type Level, type Option, type Req, type SeatSession } from '@midorino/engine/src/kiridani';
 import { CARDS, MARKETS, MON, SEASON_JP, WEATHER, WEATHER_JP, seasonOf, type Cost, type ItemDef, type Res } from './data';
 import type { Speed } from './anim/timing';
 import type { GameEvent } from './types';
@@ -31,7 +31,7 @@ const yesNo = (title: string, sub: string, yes = 'はい', no = 'いいえ'): Ch
 });
 
 /** 置き場所を選んだあとの細かい選択（何人で・方針・どのカード・いくつ） */
-export function optionSheet(s: KiridaniSession, sid: string, opts: Option[]): ChoiceSpec {
+export function optionSheet(s: SeatSession, sid: string, opts: Option[]): ChoiceSpec {
   const g = s.g; const p = s.player!;
   const fight = sid.startsWith('nest') || sid === 'lair';
   const items = opts.map((o, i) => {
@@ -54,7 +54,7 @@ export function optionSheet(s: KiridaniSession, sid: string, opts: Option[]): Ch
 }
 
 /** 人間に聞くことを、既存の画面（ask）か選択のシートに振り分ける */
-export function uiFor(s: KiridaniSession): { ask: Ask | null; sheet: ChoiceSpec | null } {
+export function uiFor(s: SeatSession): { ask: Ask | null; sheet: ChoiceSpec | null } {
   const w = s.waiting;
   if (!w) return { ask: null, sheet: null };
   const g = s.g;
@@ -81,7 +81,7 @@ export function uiFor(s: KiridaniSession): { ask: Ask | null; sheet: ChoiceSpec 
 const BOSS_ROUND = (r: number) => r % 4 === 0;
 
 /** シートの答えをエンジンの答えに直す */
-function sheetAnswer(w: Req, id: string): unknown {
+export function sheetAnswer(w: Req, id: string): unknown {
   switch (w.k) {
     case 'draft': return id;
     case 'weather': return id || null;

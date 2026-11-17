@@ -13,14 +13,30 @@ export interface SessionOptions {
   seed?: number;
   /** 人間の席（-1 なら AI だけで最後まで） */
   human?: number;
+  /** 人間の席が複数のとき（オンライン対戦）。指定すると human より優先 */
+  humans?: number[];
   /** 席ごとの AI の腕前（人間の席は無視） */
   levels?: Level[];
   names?: string[];
 }
 
-export class KiridaniSession {
+/** 1つの席から見た「いま選ぶこと」と盤面（トレイ・シートはこれだけを見る）。
+ * 手元で試合を回すときは KiridaniSession、オンラインの参加者は盤面の写し（ShadowSession）がこれになる */
+export interface SeatSession {
   readonly g: Game;
+  readonly player: Player | null;
+  readonly waiting: Req | null;
+  tradePartners(): number[];
+  tradeLeft(): number;
+  judgeTrade(b: number, give: Cost, get: Cost): TradeJudge;
+}
+
+export class KiridaniSession implements SeatSession {
+  readonly g: Game;
+  /** 最初の人間の席（ひとり遊びではその席） */
   readonly human: number;
+  /** 人間の席すべて */
+  readonly humans: number[];
   private gen: Gen<number[]>;
   /** いま人間に聞いていること */
   waiting: Req | null = null;
@@ -30,15 +46,19 @@ export class KiridaniSession {
 
   constructor(o: SessionOptions) {
     const seed = o.seed ?? 1;
-    this.human = o.human ?? 0;
+    this.humans = o.humans ? [...o.humans] : (o.human ?? 0) >= 0 ? [o.human ?? 0] : [];
+    this.human = this.humans[0] ?? -1;
     const levels = o.levels ?? Array(o.n).fill('mid');
-    const ais = Array.from({ length: o.n }, (_, i) => (i === this.human ? null : new AI(levels[i] ?? 'mid', { seed: seed * 100 + i })));
-    const names = o.names ?? Array.from({ length: o.n }, (_, i) => (i === this.human ? 'あなた' : `AI${i + 1}`));
+    const ais = Array.from({ length: o.n }, (_, i) => (this.humans.includes(i) ? null : new AI(levels[i] ?? 'mid', { seed: seed * 100 + i })));
+    const names = o.names ?? Array.from({ length: o.n }, (_, i) => (i === this.human ? 'あなた' : this.humans.includes(i) ? `P${i + 1}` : `AI${i + 1}`));
     this.g = new Game(o.n, ais, { seed, events: { me: this.human, names } });
     this.gen = this.g.play();
   }
 
-  get player(): Player | null { return this.g.players[this.human] ?? null; }
+  /** いま選んでいる人間の席（待っていなければ最初の人間の席） */
+  get player(): Player | null { return this.waiting?.p ?? this.g.players[this.human] ?? null; }
+  /** いま選ぶ番の席（-1 なら誰も選んでいない） */
+  get seat(): number { return this.waiting?.p.pid ?? -1; }
 
   private run(answer?: unknown): GameEvent[] {
     if (this.done) return [];
@@ -83,18 +103,19 @@ export class KiridaniSession {
   }
 
   /** このラウンドにした取引の数（人間の席） */
-  private tradesDone: Record<number, number> = {};
+  private tradesDone: Record<string, number> = {};
   /** このラウンドにあと何回取引を持ちかけられるか（AI と同じ：1回、アヤ・行商の荷車で+1ずつ） */
   tradeLeft(): number {
     const p = this.player;
     if (!p || !this.waiting || this.waiting.k !== 'choose') return 0;
     const tries = 1 + (p.char === 'aya' ? 1 : 0) + (p.tools.includes('i15') ? 1 : 0);
-    return Math.max(0, tries - (this.tradesDone[this.g.round] ?? 0));
+    return Math.max(0, tries - (this.tradesDone[`${p.pid}:${this.g.round}`] ?? 0));
   }
 
   /** 取引の相手（取引する AI の席） */
   tradePartners(): number[] {
-    return this.g.players.filter((o) => o.pid !== this.human && o.ai instanceof AI && o.ai.trade_on).map((o) => o.pid);
+    const me = this.player?.pid ?? this.human;
+    return this.g.players.filter((o) => o.pid !== me && o.ai instanceof AI && o.ai.trade_on).map((o) => o.pid);
   }
 
   /** 取引の提案が成り立つか、相手の AI が受けるか（AI の取引の評価をそのまま使い、乱数は使わない） */
@@ -128,7 +149,8 @@ export class KiridaniSession {
     const w = this.waiting as Extract<Req, { k: 'choose' }>;
     const clean = (c: Cost) => Object.fromEntries(Object.entries(c).filter(([, n]) => n)) as Cost;
     this.g.trade(w.p, this.g.players[b], clean(give), clean(get));
-    this.tradesDone[this.g.round] = (this.tradesDone[this.g.round] ?? 0) + 1;
+    const key = `${w.p.pid}:${this.g.round}`;
+    this.tradesDone[key] = (this.tradesDone[key] ?? 0) + 1;
     // 持ち物が変わったので選べる行動を数え直す
     this.waiting = { ...w, opts: this.g.legal(w.p) };
     return this.g.E!.splice(0);
@@ -233,7 +255,7 @@ export function describeOption(g: Game, p: Player, [sid, opt]: Option): { title:
 // ------------------------------------------------------------ 取引・戦闘の選択（人間の席）
 /** 人間からの取引の上限（片側の個数）。AI どうしは 1:1・2:1・1:2 */
 export const TRADE_MAX = 3;
-export interface TradeJudge { ok: boolean; accept: boolean; gain: number; error?: string }
+export interface TradeJudge { ok: boolean; accept: boolean; gain: number; error?: string; /** ホストに問い合わせ中（オンライン） */ pending?: boolean }
 
 export interface FightChip {
   /** 画面の中で一意（同じ名前が2つあるときは #1 など） */
