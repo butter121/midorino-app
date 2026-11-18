@@ -11,7 +11,7 @@ import { InfoDot } from '../kiridani/ui/inspect';
 import { CostRow, Token } from '../kiridani/ui/parts';
 import { TradeButton, TradeTray } from '../kiridani/ui/tray';
 import type { SeatSession } from '@midorino/engine/src/kiridani';
-import { CardArt2, MonArt } from './parts2';
+import { CardArt2, FateRow2, MonArt } from './parts2';
 import { whyTitle, type Ask2 } from './table2';
 import { CARD2, cardName, placeName } from './view';
 
@@ -275,6 +275,7 @@ export function FightTray2({ s, sid, onPick, onCancel }: { s: SeatSession2; sid:
               <small>{pv.fateNeed <= Math.min(...fvals) ? 'どの運命でも勝てる' : pv.fateNeed > Math.max(...fvals) ? '運命では届かない' : `運命 ${pv.fateNeed > 0 ? '+' : ''}${pv.fateNeed} 以上で勝ち`}</small>
               <span>{[...pv.fate].sort((a, b) => a[0] - b[0]).map(([f, pr], i) => <i key={i} className={f >= pv.fateNeed ? 'is-win' : 'is-lose'} title={`${Math.round(pr * 100)}%`}>{f > 0 ? `+${f}` : f}</i>)}</span>
             </div>
+            {p && <div className="kd2-tray-fdeck" data-kd="tray-fate"><small>運命の山の残り{p.fate.length ? ` ${p.fate.length}枚` : '（次は混ぜ直し）'}</small><FateRow2 left={p.fate} /></div>}
             <div className="kd-tray-ctr">
               <span><KIcon name="injury" size={16} />反撃{pv.counter} − 守り{pv.guard}</span>
               <b className={pv.injuries ? 'kd-bad' : 'kd-good'}>{pv.injuries ? `負傷 ${pv.injuries}人の見込み` : '負傷なし'}</b>

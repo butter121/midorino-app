@@ -64,6 +64,41 @@ describe('霧谷 v2：オンライン対戦の審判', () => {
     expect(ref.log.some((e) => leaksFor2(e, 0))).toBe(true);
   });
 
+  it('始めの先手・冬の食料・運命の山の残りは全員に届く（運命は中身だけ、並びは伏せる）', () => {
+    const ref = playReferee(3, 7, [0, 1]);
+    const fp = ref.log.find((e) => e.t === 'first_player');
+    for (let seat = 0; seat < 3; seat++) {
+      expect(ref.logs[seat].find((e) => e.t === 'first_player')).toEqual(fp);
+      const sy = ref.logs[seat].filter((e) => e.t === 'sync');
+      expect(sy.length).toBeGreaterThan(0);
+      for (const e of sy) {
+        if (e.t !== 'sync') continue;
+        expect(e.upkeep?.length).toBe(3);
+        expect(e.fate?.length).toBe(3);
+        for (const f of e.fate ?? []) expect(f).toEqual([...f].sort((a, b) => a - b));
+      }
+    }
+    const last = ref.log.filter((e) => e.t === 'sync').at(-1);
+    expect(last && last.t === 'sync' && last.upkeep).toEqual(ref.g.players.map((p) => ref.g.upkeepNeed(p)));
+  });
+
+  it('写しで戦闘の見込みを出せる（主の巣に先に送った人の手札は伏せてあっても落ちない）', () => {
+    for (const seed of [1, 2, 3, 4, 5, 6]) {
+      const ref = new Kiridani2Referee({ n: 3, seed, humans: [0, 1], names: NAMES.slice(0, 3), offerTimeoutMs: 0 });
+      ref.start();
+      for (let i = 0; i < 20000 && !ref.done; i++) {
+        for (const seat of ref.waitingSeats()) {
+          const pr = ref.prompt(seat);
+          if (!pr) continue;
+          const sh = new Shadow2Session(wire(pr));
+          if (sh.waiting.k === 'choose') for (const o of sh.waiting.opts) if (o.k) expect(() => previewFight(sh.g, sh.player, o)).not.toThrow();
+          expect(ref.act(seat, pr.id, simpleAnswer2(sh)).ok).toBe(true);
+        }
+      }
+      expect(ref.done).toBe(true);
+    }
+  });
+
   it('準備段階：リーダー・職能・割合・品物の種類・始めの2枚・秘密依頼を、席の番に聞く', () => {
     const ref = new Kiridani2Referee({ n: 3, seed: 9, humans: [0, 1], names: NAMES.slice(0, 3), offerTimeoutMs: 0 });
     ref.start();

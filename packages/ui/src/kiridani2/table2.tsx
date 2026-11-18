@@ -7,12 +7,12 @@ import { SPEED_JP, SPEEDS } from '../kiridani/anim/timing';
 import { FxLayer, type FxApi } from '../kiridani/ui/fx';
 import { InfoDot, useInspect } from '../kiridani/ui/inspect';
 import { CostRow, Num, ResCount, SEAT_COLORS, SEAT_MARKS, Token } from '../kiridani/ui/parts';
-import { CardArt2, CardChip2, CardFace2, LeaderArt, MonArt, MonsterCard2, NestArt, SpaceArt, YearsCtx } from './parts2';
+import { CardArt2, CardChip2, CardFace2, FateRow2, LeaderArt, MonArt, MonsterCard2, NestArt, SpaceArt, YearsCtx } from './parts2';
 import { pointScale } from '@midorino/engine/src/kiridani2/uihelp';
 import { Inspect2 } from './inspect2';
 import { FameGraph } from './fameGraph';
 import type { Playing2, TablePlayer2 } from './useTable2';
-import { CARD2, NEST_JP, QUEST2, RES_JP, SEASON_JP, cardName, groupSpaces, placeName, progressPct, type PV2, type Seat, type View2 } from './view';
+import { CARD2, NEST_JP, QUEST2, RES_JP, SEASON_JP, cardName, groupSpaces, placeName, progressPct, winterFood, type PV2, type Seat, type View2 } from './view';
 
 export type Tab2 = 'board' | 'base' | 'quests' | 'all';
 const TABS: { id: Tab2; label: string }[] = [{ id: 'board', label: '盤面' }, { id: 'base', label: '拠点' }, { id: 'quests', label: '依頼' }, { id: 'all', label: 'みんな' }];
@@ -99,6 +99,12 @@ function Overlay({ cur, v }: { cur: Playing2 | null; v: View2 }) {
       <div><small>ラウンド {ev.round} / {v.rounds}・{ev.year}年目／{v.years}年</small><strong>{SEASON_JP[ev.season]}</strong><span>進み具合 {Math.round(ev.progress * 100)}%</span></div>
     </div>
   );
+  if (ev.t === 'first_player') return (
+    <div className="kd-ov kd-band kd2-firstband" style={{ ...st, ['--seat' as string]: SEAT_COLORS[ev.seat] }} key={cur.key} aria-live="polite" data-kd="first-banner">
+      <span className="kd-firstmark">先</span>
+      <div><small>くじで決まった</small><strong>先攻は{nameOf(v, ev.seat)}</strong><span>この順で準備と手番を進める</span></div>
+    </div>
+  );
   if (ev.t === 'stage_reveal') return (
     <div className="kd-ov kd-toast is-gold" style={st} key={cur.key}>段階{ev.stage}：新しい場所「{cardName(ev.card)}」が開いた</div>
   );
@@ -164,7 +170,7 @@ export function CardPickScreen({ v, ask, onPick }: { v: View2; ask: Extract<Ask2
   return (
     <div className="kd-screen kd-draft kd2-setup">
       <header className="kd-screen-h">
-        <div><small>{v.round ? `${v.year}年目の春・補充` : '準備'}{ask?.sub ? `・${ask.sub}` : ''}</small><h2>{ask ? `${ask.title}${count}` : other !== undefined ? `${nameOf(v, other)}が選んでいます…` : '準備しています…'}</h2></div>
+        <div><small>{v.round ? `${v.year}年目の春・補充` : '準備'}{ask?.sub ? `・${ask.sub}` : ''}{!v.round && v.players[v.first] ? <span className="kd2-firstnote" data-kd="first-note">・先攻 <Token seat={v.first} size={12} />{nameOf(v, v.first)}</span> : null}</small><h2>{ask ? `${ask.title}${count}` : other !== undefined ? `${nameOf(v, other)}が選んでいます…` : '準備しています…'}</h2></div>
         {!v.round && <ol className="kd-laps" aria-label="準備の流れ">{SETUP_STEPS.map(([k, l], i) => <li key={k} className={i < at ? 'is-done' : i === at ? 'is-now' : ''}>{l}</li>)}</ol>}
       </header>
       {(() => {
@@ -263,10 +269,15 @@ export function Board2({ v, selectable, selected, onSelect, cur }: { v: View2; s
           <small className="kd-lair-when">{lair.defeated ? '討伐済み' : lairNow ? '今が決戦！' : lair.round ? `R${lair.round}に決戦` : ''}</small>
         </button>
       </div>
-      {v.forecast.length > 0 && (
-        <div className="kd2-forecast" aria-label="次のラウンドに出るかもしれない魔物" data-inspect="forecast">
-          <small>次の予告</small>
-          {v.forecast.map((m) => <span key={m.uid} className="kd2-fc" data-inspect={`fc:${m.uid}`} role="button" tabIndex={0} aria-label={`${m.name} 強さ${m.str}`}><MonArt m={m} size={26} /><b>{m.str}</b></span>)}
+      {(v.forecast.length > 0 || v.players[v.me]) && (
+        <div className="kd2-forecast">
+          {v.forecast.length > 0 && (
+            <span className="kd2-fcl" aria-label="次のラウンドに出るかもしれない魔物" data-inspect="forecast">
+              <small>次の予告</small>
+              {v.forecast.map((m) => <span key={m.uid} className="kd2-fc" data-inspect={`fc:${m.uid}`} role="button" tabIndex={0} aria-label={`${m.name} 強さ${m.str}`}><MonArt m={m} size={26} /><b>{m.str}</b></span>)}
+            </span>
+          )}
+          {v.players[v.me] && <FateRow2 left={v.players[v.me].fateLeft} label inspect={`fate2:${v.me}`} />}
         </div>
       )}
       <div className="kd-spaces kd2-spaces" role="group" aria-label="行動マス" data-kd-scroll="">
@@ -352,6 +363,7 @@ export function BaseView2({ p, v, cur, onEquip }: { p: PV2; v: View2; cur: Playi
             {Array.from({ length: p.walls }, (_, i) => <div key={`w${i}`} className={`kd-plot is-wall${lastBuild === 'wall' && i === p.walls - 1 ? ' is-new' : ''}`} title="防壁"><EffectArt id="wall-block" size={26} /></div>)}
           </div>
         </section>
+        <WinterFateSec p={p} v={v} />
         {!mine && (
           <section className="kd-bsec kd-bsec-res" aria-label="持ち物">
             <h3>持ち物</h3>
@@ -376,6 +388,28 @@ export function BaseView2({ p, v, cur, onEquip }: { p: PV2; v: View2; cur: Playi
         </section>
       </div>
     </div>
+  );
+}
+
+/** 冬の食料（要る・手持ち・足りない分）と運命の山の残り。自分も他の人も同じ計算 */
+export function WinterFood2({ p, v, compact }: { p: PV2; v: View2; compact?: boolean }) {
+  const f = winterFood(p);
+  return (
+    <span className={`kd2-wfood${f.short ? ' is-short' : ''}${compact ? ' is-compact' : ''}`} data-kd={`wfood:${p.seat}`} data-inspect={`upkeep2:${p.seat}`} role="button" tabIndex={0}
+      aria-label={`${nameOf(v, p.seat)}の冬の食料：要る${f.need}・手持ち${f.have}${f.short ? `・${f.short}足りない（不満${f.discontent}）` : ''}`}>
+      <KIcon name="upkeep" size={compact ? 13 : 16} /><b>{f.have}/{f.need}</b>{f.short ? <small>{compact ? `−${f.short}` : `${f.short}足りない・不満${f.discontent}`}</small> : !compact ? <small>足りる</small> : null}
+    </span>
+  );
+}
+function WinterFateSec({ p, v }: { p: PV2; v: View2 }) {
+  const f = winterFood(p);
+  return (
+    <section className="kd-bsec kd2-bsec-wf" aria-label="冬の食料と運命の山">
+      <h3>次の冬の食料<small>仲間{p.comps.length}人{f.need !== p.comps.length * DATA.UPKEEP ? `・カードの修正込み` : ''}</small></h3>
+      <div className="kd2-wf-row"><WinterFood2 p={p} v={v} /></div>
+      <h3>運命の山の残り<small>{p.fateLeft.length ? `${p.fateLeft.length}枚・春に混ぜ直し` : '次は混ぜ直し'}</small></h3>
+      <FateRow2 left={p.fateLeft} size="m" inspect={`fate2:${p.seat}`} />
+    </section>
   );
 }
 
@@ -416,6 +450,7 @@ export function Everyone2({ v, onOpen }: { v: View2; onOpen?: (s: Seat) => void 
           <span className="kd-ev-f"><KIcon name="fame" size={14} /><b>{p.fame}</b></span>
           <span className="kd-ev-d">仲間{p.comps.length}・討伐{p.trophies.length}・職能{p.occs.length}・装備{p.comps.filter((c) => c.weapon).length + p.comps.filter((c) => c.armor).length}・防壁{p.walls}・手札{p.hand.length}</span>
           <span className="kd-ev-r">{RES.map((r) => <ResCount key={r} r={r} n={p.res[r]} size={14} />)}</span>
+          <span className="kd2-ev-w"><small>冬</small><WinterFood2 p={p} v={v} compact /><FateRow2 left={p.fateLeft} label /></span>
         </button>
       ))}
     </div>
@@ -694,7 +729,7 @@ export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions, picker
                 <div key={p.seat} role="listitem" data-kd={`seat:${p.seat}`} data-inspect={`seat:${p.seat}`} tabIndex={0} aria-label={`${p.seat === v.me ? 'あなた' : p.name}：タップで詳しく`} className={`kd-pchip${v.turn === p.seat ? ' is-turn' : ''}${p.seat === v.me ? ' is-me' : ''}`} style={{ ['--seat' as string]: SEAT_COLORS[p.seat] }}>
                   <LeaderArt id={p.leader} size={30} />
                   <span className="kd-pchip-b"><span className="kd-pchip-n"><Token seat={p.seat} size={14} />{p.seat === v.me ? 'あなた' : p.name}{v.first === p.seat && v.round > 0 && <span className="kd-firstmark" title="先手">先</span>}</span>
-                    <span className="kd-pchip-s"><b data-kd={`fame:${p.seat}`}><KIcon name="fame" size={12} /><Num value={p.fame} /></b><span>{p.comps.map((c, i) => <i key={i} className={c.injured || c.rest ? 'is-inj' : c.at ? 'is-out' : ''} />)}</span></span>
+                    <span className="kd-pchip-s"><b data-kd={`fame:${p.seat}`}><KIcon name="fame" size={12} /><Num value={p.fame} /></b>{v.round > 0 && (() => { const f = winterFood(p); return <em className={`kd2-pfood${f.short ? ' is-short' : ''}`} data-kd={`pfood:${p.seat}`} title={`冬の食料 ${f.have}/${f.need}`}>食{f.have}/{f.need}</em>; })()}<span>{p.comps.map((c, i) => <i key={i} className={c.injured || c.rest ? 'is-inj' : c.at ? 'is-out' : ''} />)}</span></span>
                   </span>
                 </div>
               ))}
@@ -702,7 +737,7 @@ export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions, picker
             {v.log.length > 0 && (
               <section className="kd-log" aria-label="これまでの出来事">
                 <h3>できごと</h3>
-                <ol>{v.log.slice(0, 12).map((l, i) => <li key={`${v.log.length - i}`}>{l}</li>)}</ol>
+                <ol data-kd-scroll="">{v.log.slice(0, 40).map((l, i) => <li key={`${v.log.length - i}`}>{l}</li>)}</ol>
               </section>
             )}
           </aside>
@@ -711,7 +746,7 @@ export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions, picker
         {hasBar && me && (
           <footer className="kd-mybar" ref={barRef}>
             {placeAsk && !queued && picker}
-            <div className="kd-mybar-r">{RES.map((r) => <ResCount key={r} r={r} n={me.res[r]} size={22} anchor={`res:${r}`} />)}<span className="kd-upchip" data-inspect="upkeep2" role="button" tabIndex={0} aria-label="冬の食料"><KIcon name="upkeep" size={18} /><b>{me.res.food}/{me.comps.length * DATA.UPKEEP}</b></span></div>
+            <div className="kd-mybar-r">{RES.map((r) => <ResCount key={r} r={r} n={me.res[r]} size={22} anchor={`res:${r}`} />)}{(() => { const f = winterFood(me); return <span className={`kd-upchip${f.short ? ' is-short' : ''}`} data-inspect={`upkeep2:${v.me}`} role="button" tabIndex={0} aria-label={`冬の食料 ${f.have}/${f.need}`}><KIcon name="upkeep" size={18} /><b>{f.have}/{f.need}</b></span>; })()}</div>
             <div className="kd-mybar-a">
               {placeAsk ? (
                 queued ? <span className="kd-queued" role="status">{t.busy ? `予約：${pname(queued)}（演出のあとに実行）` : `${pname(queued)}へ`}</span>

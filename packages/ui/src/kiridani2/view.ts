@@ -11,6 +11,10 @@ export interface PV2 {
   beds: number; walls: number; tools: string[]; occs: string[]; items: string[]; hand: string[]; ancient: string[];
   comps: CompView[]; pets: number; trophies: string[]; discontent: number; raidLoss: number; quests: string[];
   secret?: string; ratio?: Record<string, number>; spellsUsed: string[];
+  /** 運命の山の残り（小さい順。空＝次にめくるとき混ぜ直し）。めくった値は全員に見えるので公開 */
+  fateLeft: number[];
+  /** 冬の食料のカードの修正（合わせで届いた「要る食料」− 仲間の数から出す値） */
+  upkeepMod: number;
 }
 export interface SpaceView2 { id: string; stock: Cost; occupants: Seat[]; stage?: number }
 export interface NestView2 { id: string; mon?: Monster; occupants: Seat[]; wait?: Seat }
@@ -85,7 +89,22 @@ function newPlayer(seat: Seat, name: string): PV2 {
   return {
     seat, name, fame: 0, res: emptyRes(), beds: DATA.START.beds, walls: 0, tools: [], occs: [], items: [], hand: [], ancient: [],
     comps: [newComp(true), newComp(false)], pets: 0, trophies: [], discontent: 0, raidLoss: 0, quests: [], spellsUsed: [],
+    fateLeft: fullFate(), upkeepMod: 0,
   };
+}
+
+const fullFate = () => [...DATA.FATE_DECK].sort((a, b) => a - b);
+/** 次の冬に要る食料（仲間の数 × 維持費、5人目から多め、カードの修正込み。エンジンの upkeepNeed と同じ） */
+export const upkeepNeed = (p: PV2) => Math.max(0, DATA.upkeepOf(p.comps.length) + (p.upkeepMod ?? 0));
+/** 冬の食料の見込み：要る・手持ち・足りない分・不満の枚数 */
+export function winterFood(p: PV2) {
+  const need = upkeepNeed(p), have = p.res.food, short = Math.max(0, need - have);
+  return { need, have, short, discontent: Math.ceil(short / DATA.UPKEEP) };
+}
+/** 運命の山：全部の札（小さい順）と、それぞれがまだ残っているか */
+export function fateCells(left: number[]): { v: number; left: boolean }[] {
+  const rest = left.length ? [...left] : [...DATA.FATE_DECK];
+  return fullFate().map((v) => { const i = rest.indexOf(v); if (i >= 0) { rest.splice(i, 1); return { v, left: true }; } return { v, left: false }; });
 }
 
 const add = (to: Record<Res, number>, c: Cost, sign = 1) => { for (const [r, n] of Object.entries(c)) if (r in to) to[r as Res] = Math.max(0, to[r as Res] + sign * (n ?? 0)); };
@@ -103,6 +122,12 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
     case 'sync':
       ev.res.forEach((r, i) => { if (v.players[i]) v.players[i].res = { ...emptyRes(), ...r }; });
       ev.fame.forEach((f, i) => { if (v.players[i] && v.phase !== 'final') v.players[i].fame = f; });
+      ev.fate?.forEach((f, i) => { if (v.players[i]) v.players[i].fateLeft = [...f].sort((a, b) => a - b); });
+      ev.upkeep?.forEach((n, i) => { const p = v.players[i]; if (p) p.upkeepMod = n - DATA.upkeepOf(p.comps.length); });
+      break;
+    case 'first_player':
+      v.first = ev.seat;
+      log(`先攻は${who(v, ev.seat)}（くじ）`);
       break;
     case 'game_start':
       v.me = ev.me; v.years = ev.years; v.rounds = ev.rounds; v.phase = 'setup';
@@ -135,6 +160,7 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
       v.lair.occupants = [];
       if (v.lair.round !== undefined && v.lair.round < ev.round) v.lair = { occupants: [] };
       for (const p of v.players) for (const c of p.comps) c.at = undefined;
+      if (ev.season === 'spring') for (const p of v.players) p.fateLeft = fullFate();
       log(`ラウンド${ev.round}・${ev.year}年目の${SEASON_JP[ev.season]}`);
       if (!v.fameHist.length) v.fameHist.push({ round: 0, year: 1, season: 'spring', fame: v.players.map((p) => p.fame) });
       v.fameHist = [...v.fameHist.filter((x) => x.round < ev.round), { round: ev.round, year: ev.year, season: ev.season, fame: [] }];
@@ -221,7 +247,12 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
       v.combat = { nest: ev.nest || (v.nests.find((n) => n.mon?.uid === ev.monster.uid)?.id ?? ''), monster: ev.monster, seats: ev.seats, mode: ev.mode, parts: [], injured: [] };
       break;
     case 'power': if (v.combat) { v.combat.parts = ev.parts; v.combat.total = ev.total; } break;
-    case 'fate_flip': if (v.combat) { v.combat.fate = (v.combat.fate ?? 0) + ev.value; v.combat.total = (v.combat.total ?? 0) + ev.value; } break;
+    case 'fate_flip': {
+      const p = P(ev.seat);
+      if (p) { if (!p.fateLeft.length) p.fateLeft = fullFate(); const i = p.fateLeft.indexOf(ev.value); if (i >= 0) p.fateLeft.splice(i, 1); }
+      if (v.combat) { v.combat.fate = (v.combat.fate ?? 0) + ev.value; v.combat.total = (v.combat.total ?? 0) + ev.value; }
+      break;
+    }
     case 'clash': if (v.combat) { v.combat.total = ev.total; v.combat.strength = ev.strength; v.combat.result = ev.result; } break;
     case 'counter': if (v.combat) v.combat.counter = { amount: ev.amount, defense: ev.defense }; break;
     case 'injury': { const c = P(ev.seat).comps[ev.companion]; if (c) c.injured = true; v.combat?.injured.push({ seat: ev.seat, companion: ev.companion }); break; }

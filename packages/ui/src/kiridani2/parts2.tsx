@@ -6,7 +6,7 @@ import { RasterScene, RasterSquare } from './raster';
 import { InfoDot } from '../kiridani/ui/inspect';
 import { CostRow } from '../kiridani/ui/parts';
 import { DATA, FLAVOR, type Monster } from '@midorino/engine/src/kiridani2';
-import { ANC2, CARD2, QUEST2 } from './view';
+import { ANC2, CARD2, QUEST2, fateCells } from './view';
 import { createContext, useContext } from 'react';
 import { endFameBase, pointScale } from '@midorino/engine/src/kiridani2/uihelp';
 
@@ -128,5 +128,18 @@ export function MonsterCard2({ m, compact, shadow, anchor }: { m: Monster; compa
       {!compact && <div className="kd-mon-loot"><CostRow cost={m.loot} size={14} /><span className="kd-fame-s">証{m.trophy}</span>{m.raid > 0 && <span className="kd-raid-s">襲撃{m.raid}</span>}</div>}
       {m.wounds > 0 && <div className="kd-hpbar" aria-label={`残り${left}`}><i style={{ width: `${(left / m.str) * 100}%` }} /></div>}
     </div>
+  );
+}
+
+/** 運命の山：全部の札（小さい順）。残りは明るく、めくった札は線で消す。山が空なら次は全部を混ぜ直すので全部明るく */
+export function FateRow2({ left, size = 's', label, inspect }: { left: number[]; size?: 's' | 'm'; label?: boolean; inspect?: string }) {
+  const cells = fateCells(left);
+  const n = left.length || cells.length;
+  const txt = cells.filter((c) => c.left).map((c) => (c.v > 0 ? `+${c.v}` : `${c.v}`)).join('、');
+  return (
+    <span className={`kd2-fate is-${size}`} data-kd="fate" data-inspect={inspect} role={inspect ? 'button' : undefined} tabIndex={inspect ? 0 : undefined} aria-label={`運命の山 残り${n}枚：${txt}${left.length ? '' : '（次は混ぜ直し）'}`}>
+      {label && <small className="kd2-fate-l">運命<b>{n}</b></small>}
+      <span className="kd-fate">{cells.map((c, i) => <i key={i} className={`${c.left ? '' : 'is-used'} ${c.v > 0 ? 'is-plus' : c.v < 0 ? 'is-minus' : ''}`}>{c.v > 0 ? `+${c.v}` : c.v}</i>)}</span>
+    </span>
   );
 }

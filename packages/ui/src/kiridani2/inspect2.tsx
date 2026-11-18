@@ -3,8 +3,8 @@ import { useEffect, type ReactNode } from 'react';
 import { DATA, type Monster, FLAVOR } from '@midorino/engine/src/kiridani2';
 import { KIcon } from '../kiridani/art-registry';
 import { CostRow, ResCount, Token } from '../kiridani/ui/parts';
-import { CardArt2, CardChip2, CardFace2, KIND2_JP, LeaderArt, MonArt, NestArt, SpaceArt } from './parts2';
-import { ANC2, CARD2, NEST_JP, QUEST2, RES_JP, cardName, placeName, type PV2, type Seat, type View2 } from './view';
+import { CardArt2, CardChip2, CardFace2, FateRow2, KIND2_JP, LeaderArt, MonArt, NestArt, SpaceArt } from './parts2';
+import { ANC2, CARD2, NEST_JP, QUEST2, RES_JP, cardName, placeName, winterFood, type PV2, type Seat, type View2 } from './view';
 import { RES } from '@midorino/engine/src/kiridani2';
 
 const nameOf = (v: View2, s: Seat) => (s === v.me ? 'あなた' : v.players[s]?.name ?? '');
@@ -25,6 +25,11 @@ function monBlock(m: Monster): ReactNode {
   </>;
 }
 
+function foodLine(p: PV2): ReactNode {
+  const f = winterFood(p);
+  return <span className={`kd2-wfood${f.short ? ' is-short' : ''}`} data-kd={`insp-wfood:${p.seat}`}><KIcon name="upkeep" size={16} /><b>{f.have}/{f.need}</b><small>{f.short ? `${f.short}足りない（不満${f.discontent}・名声−${f.discontent * DATA.DISCONTENT}）` : '足りる'}</small></span>;
+}
+
 function playerBlock(v: View2, p: PV2): ReactNode {
   return <>
     <div className="kd-insp-art"><LeaderArt id={p.leader} size={96} /></div>
@@ -35,6 +40,8 @@ function playerBlock(v: View2, p: PV2): ReactNode {
     <Row k="職能">{p.occs.length ? p.occs.map((c) => <CardChip2 key={c} id={c} />) : 'なし'}</Row>
     <Row k="施設・防壁">{p.tools.map((c) => <CardChip2 key={c} id={c} />)}寝床{p.beds}・防壁{p.walls}</Row>
     <Row k="討伐">{p.trophies.length}体・使い魔{p.pets}</Row>
+    <Row k="冬の食料">{foodLine(p)}</Row>
+    <Row k="運命の残り"><FateRow2 left={p.fateLeft} inspect={`fate2:${p.seat}`} /><small className="kd2-insp-sub">{p.fateLeft.length ? `${p.fateLeft.length}枚` : '次は混ぜ直し'}</small></Row>
   </>;
 }
 
@@ -90,10 +97,26 @@ function body(target: string, v: View2): { kind: string; title: string; node: Re
       return p ? { kind: 'プレイヤー', title: nameOf(v, p.seat), node: playerBlock(v, p) } : null;
     }
     case 'upkeep2': {
-      const p = v.players[v.me];
+      const p = v.players[id === undefined ? v.me : Number(id)];
       if (!p) return null;
-      const need = p.comps.length * DATA.UPKEEP;
-      return { kind: '冬の食料', title: `次の冬に要る食料 ${need}`, node: <><Row k="仲間">{p.comps.length}人 × 食料{DATA.UPKEEP}</Row><Row k="手持ち">{RES_JP.food}{p.res.food}</Row><p className="kd-insp-p">足りない食料{DATA.UPKEEP}ごとに不満1枚（名声−{DATA.DISCONTENT}）。カードで減ることがある。</p></> };
+      const f = winterFood(p);
+      const base = DATA.upkeepOf(p.comps.length);
+      return { kind: '冬の食料', title: `${nameOf(v, p.seat)}：次の冬に要る食料 ${f.need}`, node: <>
+        <Row k="仲間">{p.comps.length}人 × 食料{DATA.UPKEEP}{base !== p.comps.length * DATA.UPKEEP ? `（${DATA.UPKEEP_BIG.from}人目から1人${DATA.UPKEEP_BIG.food}）` : ''}＝{base}</Row>
+        {f.need !== base && <Row k="カード">{f.need - base > 0 ? '+' : ''}{f.need - base}</Row>}
+        <Row k="手持ち">{RES_JP.food}{f.have}</Row>
+        <Row k="見込み">{foodLine(p)}</Row>
+        <p className="kd-insp-p">足りない食料{DATA.UPKEEP}ごとに不満1枚（名声−{DATA.DISCONTENT}）。全員の分が見える。</p>
+      </> };
+    }
+    case 'fate2': {
+      const p = v.players[Number(id)];
+      if (!p) return null;
+      return { kind: '運命の山', title: `${nameOf(v, p.seat)}の運命の山`, node: <>
+        <Row k="残り"><FateRow2 left={p.fateLeft} size="m" /></Row>
+        <Row k="枚数">{p.fateLeft.length ? `${p.fateLeft.length}枚` : '0枚（次にめくるとき全部を混ぜ直す）'}</Row>
+        <p className="kd-insp-p">運命カードは1人1つの山（{[...DATA.FATE_DECK].sort((a, b) => a - b).map((x) => (x > 0 ? `+${x}` : x)).join('・')}）。戦闘のたびに1枚めくり、めくった札は全員に見える。毎年の春と、山が空になったときに全部を混ぜ直す。</p>
+      </> };
     }
     default: return null;
   }

@@ -220,3 +220,64 @@ button.kd2-slot { color: inherit; font: inherit; text-align: left; background: t
 .kd2-slot.is-edit i { opacity: .8; color: var(--kd-gold, #e8c66a); }
 .kd2-eqhint { margin-left: 6px; color: var(--kd-gold, #e8c66a); }
 .kd-choice-to { margin: 0 3px; opacity: .7; }
+
+/* 始めの先手（くじ）：帯で知らせる。準備の見出しにも小さく */
+.kd-band.kd2-firstband { --kd-season: var(--seat, #E8B923); }
+.kd2-firstband .kd-firstmark { width: 44px; height: 44px; font-size: 24px; flex: none; }
+.kd2-firstnote { display: inline-flex; align-items: center; gap: 2px; font-weight: 700; color: var(--kd-gold-l, #FFE29A); }
+
+/* 運命の山（残り＝明るい・めくった札＝線で消す） */
+.kd2-fate { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+.kd2-fate .kd-fate { gap: 2px; }
+.kd2-fate.is-s .kd-fate i { min-width: 17px; height: 18px; font-size: 10px; }
+.kd2-fate-l { display: inline-flex; align-items: baseline; gap: 2px; font-size: 10px; opacity: .85; white-space: nowrap; }
+.kd2-fate-l b { font-size: 12px; color: var(--kd-gold-l, #FFE29A); }
+.kd2-tray-fdeck { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin-top: 4px; }
+.kd2-tray-fdeck > small { font-size: 11px; opacity: .8; }
+.kd2-insp-sub { margin-left: 6px; font-size: 11px; opacity: .75; }
+
+/* 盤面の予告の行：左に魔物の予告（はみ出せばこの中だけ横に流す）、右に自分の運命の山 */
+.kd2-board > .kd2-forecast { gap: 8px; overflow: visible; }
+.kd2-fcl { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.kd2-fcl small { opacity: .75; white-space: nowrap; }
+.kd2-forecast > .kd2-fate { margin-left: auto; }
+@media (orientation: landscape) and (min-width: 640px) and (max-width: 999px), (orientation: landscape) and (min-width: 640px) and (max-height: 540px) {
+  .kd2-board > .kd2-forecast { flex-wrap: wrap; overflow: visible; row-gap: 2px; }
+  .kd2-board > .kd2-forecast > .kd2-fcl { flex-basis: 100%; gap: 4px; }
+  .kd2-board > .kd2-forecast > .kd2-fate { margin-left: 0; }
+}
+
+/* 冬の食料（要る・手持ち・足りない分）。自分も他の人も同じ */
+.kd2-wfood { display: inline-flex; align-items: center; gap: 3px; padding: 1px 7px 1px 4px; border-radius: 12px; background: #2a2433; border: 1px solid var(--kd-line); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kd2-wfood b { font-size: 13px; }
+.kd2-wfood small { font-size: 11px; color: var(--kd-good, #8fd18f); }
+.kd2-wfood.is-short { border-color: var(--kd-bad, #f28b6b); color: #FFD0C6; }
+.kd2-wfood.is-short small { color: #f28b6b; font-weight: 700; }
+.kd2-wfood.is-compact { padding: 0 5px 0 3px; } .kd2-wfood.is-compact b { font-size: 12px; }
+.kd2-bsec-wf h3 + h3, .kd2-bsec-wf .kd2-wf-row + h3 { margin-top: 6px; }
+.kd2-wf-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.kd2-pfood { font-style: normal; font-size: 10px; font-weight: 700; line-height: 1; padding: 1px 3px; border-radius: 5px; background: #ffffff10; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.kd2-pfood.is-short { background: #7a3a32; color: #FFD0C6; }
+/* 縦の狭いプレイヤー列では、足りない人だけ出す */
+@media (orientation: portrait), (max-width: 639px) { .kd2 .kd2-pfood:not(.is-short) { display: none; } .kd2 .kd2-pfood.is-short ~ span { display: none; } }
+.kd2 .kd-ev-row { grid-template-areas: 'h n f' 'h r r' 'h d d' 'h w w'; }
+.kd2-ev-w { grid-area: w; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; font-size: 11px; }
+.kd2-ev-w > small { opacity: .7; }
+
+/* 情報が収まらない場所は、その中だけ縦にスクロール（横にははみ出さない）：拠点・依頼・みんな・詳しく見るシート・PC の左の列 */
+.kd2 .kd-tabbody > :is(.kd-base, .kd-quests, .kd-everyone) { flex: 1 0 auto; min-height: auto; overflow: visible; }
+.kd2 .kd-base-grid { flex: none; overflow: visible; }
+.kd2 .kd-everyone { grid-auto-rows: minmax(min-content, 1fr); }
+.kd2 .kd-ev-row { overflow: visible; }
+.kd2 .kd-quest { flex: none; }
+.kd2 .kd-insp { max-height: 100%; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
+@media (orientation: landscape) and (min-width: 640px) { .kd2 .kd-rail { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; } }
+@media (orientation: landscape) and (min-width: 1000px) and (min-height: 541px) {
+  .kd2 .kd-rail { overflow: hidden; }
+  .kd2 .kd-strip { flex: none; }
+  .kd2 .kd-log ol { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; -webkit-mask-image: none; mask-image: none; }
+}
+@media (orientation: landscape) and (min-width: 640px) and (max-height: 540px) {
+  .kd2 .kd-base-grid { grid-template-areas: 'c p' 'c wf' 'pl t' 'h h'; align-content: start; }
+  .kd2 .kd2-bsec-wf { grid-area: wf; }
+}

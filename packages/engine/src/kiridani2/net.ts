@@ -35,7 +35,13 @@ export interface OfferNote { id: string; text: string; ok: boolean }
 export type Snapshot = Record<string, unknown>;
 
 /** 持ち物と名声の合わせ（エンジンは払いの一部を出来事にしないので、出来事のまとまりの終わりに付ける。画面だけが使う） */
-export interface SyncEvent { t: 'sync'; res: Record<Res, number>[]; fame: number[] }
+export interface SyncEvent {
+  t: 'sync'; res: Record<Res, number>[]; fame: number[];
+  /** 次の冬に要る食料（仲間の数とカードの修正込み。全員に見える） */
+  upkeep?: number[];
+  /** 運命の山の残り（小さい順。めくった値は全員に見えるので、残りも公開。並びは伏せる）。空なら次は混ぜ直し */
+  fate?: number[][];
+}
 export type NetEvent = GameEvent | SyncEvent;
 /** いまの盤面から合わせの出来事を作る */
 export function syncEvent(g: Game): SyncEvent {
@@ -43,6 +49,8 @@ export function syncEvent(g: Game): SyncEvent {
     t: 'sync',
     res: g.players.map((p) => ({ ...p.res })),
     fame: g.players.map((p) => Object.values(p.fame).reduce((a, n) => a + n, 0) - p.discontent * 3 - p.raidLoss),
+    upkeep: g.players.map((p) => g.upkeepNeed(p)),
+    fate: g.players.map((p) => [...p.fate].sort((a, b) => a - b)),
   };
 }
 export type ActResult = { ok: true } | { ok: false; error: string };
