@@ -129,6 +129,14 @@ async function inspImage(page, sel, what) {
   if (r) check(r.want.some((x) => x.art === 'image'), `詳しく見る（${what}）：置いてある絵の画像を使う`);
 }
 const roundOf = (page) => page.evaluate(() => Number(document.querySelector('.kd-hud-meta b')?.textContent ?? 0));
+/** 準備のカードの入れ物が画面に付くたびに記録する（同じカードを配り直していないかを見る） */
+const watchDeals = (page) => page.evaluate(() => {
+  window.__offers = [];
+  new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) { if (n.nodeType !== 1) continue; const o = n.matches?.('[data-kd="offer"]') ? [n] : [...(n.querySelectorAll?.('[data-kd="offer"]') ?? [])]; for (const x of o) window.__offers.push(x.getAttribute('data-cards')); } }).observe(document.body, { childList: true, subtree: true });
+});
+/** 人が答えられるもの（盤面の光る場所・トレイ・シート・決めるボタン・割合）が画面にあるか */
+const actionable = (page) => page.evaluate(() => !!document.querySelector('.kd-root.is-myturn [data-kd^="space:"].is-can, .kd-tray, .kd-sheet .kd-choice, .kd-confirm .kd-btn.is-primary, .kd2-ratio, .kd-final, .kd-root.is-myturn .kd-mybar .kd-btn'));
+const isIdle = (page) => page.evaluate(() => !!document.querySelector('.kd-hud-ctl .kd-iconbtn[disabled]') || !document.querySelector('.kd-hud-ctl'));
 const idle = async (page) => { await page.waitForSelector('.kd-hud-ctl .kd-iconbtn[disabled]', { timeout: 15000 }).catch(() => {}); await sleep(300); };
 
 // ---- 1手すすめる（画面に出ているものに答える）
@@ -358,11 +366,18 @@ async function solo() {
   await both(page, '01-solo-setup', 'ひとりで遊ぶの設定');
   await page.click('button:has-text("冒険をはじめる")');
   await page.waitForSelector('.kd-root.kd2', { timeout: 15000 });
+  await watchDeals(page);
+  let stuckSince = 0, stuck = false;
   const seen = new Set();
   const counts = {};
   const t0 = Date.now();
   let boardShot = false, inspShot = false, fightDone = false, moveChecked = false, chooseDone = false;
   while ((await roundOf(page)) < 4 || (!chooseDone && (await roundOf(page)) < 9)) {
+    // ひとり遊びでは AI はすぐ答えるので、演出が止まっているのに答えられるものが何もなければ、試合が止まっている
+    if ((await isIdle(page)) && !(await actionable(page))) {
+      if (!stuckSince) stuckSince = Date.now();
+      else if (Date.now() - stuckSince > 6000) { stuck = true; await shot(page, '99-stuck.png'); break; }
+    } else stuckSince = 0;
     if (!moveChecked && await page.$('.kd-offer .kd-card .kd-idot')) {
       moveChecked = true;
       await sleep(300);
@@ -423,6 +438,13 @@ async function solo() {
   check(chooseDone, '動かす仲間を選び、装備を持ち替える流れを試せた');
   check((counts.pick ?? 0) >= 4 && counts.ratio >= 1 && (counts.place ?? 0) > 3, `準備（カード・割合）と置き場所を答えた ${JSON.stringify(counts)}`);
   check(boardShot, '盤面の写真が撮れた');
+  check(!stuck, '自分の番なのに何も選べない状態にならない（演出が止まっているのに答えられるものがない、が6秒続かない）');
+  {
+    const offers = await page.evaluate(() => window.__offers ?? []);
+    const mine = offers.filter((x) => x?.startsWith('me:'));
+    const again = mine.filter((x, i) => i > 0 && x === mine[i - 1]);
+    check(mine.length >= 5 && !again.length, `準備のカードは1回だけ配る（自分のカードの配り ${mine.length} 回・同じカードの配り直し ${again.length} 回）`);
+  }
   // ⚙ → タイトルへ →「途中の試合にもどる」：答えの記録から同じ場面に戻る
   for (let i = 0; i < 50 && await page.$('.kd-tray, .kd-sheet'); i++) { await step(page).catch(() => null); await sleep(100); }
   // 戦闘・冬の重なりが消えて、自分が置く番になるまで進める（メニューを押せるように）
@@ -442,6 +464,10 @@ async function solo() {
     await shot(page, '02-title-resume-solo.png');
     await page.click('[data-kd="resume-solo"]');
     await page.waitForSelector('.kd-root.kd2 .kd-pchip', { timeout: 20000 });
+    // 演出で最初から流し直さず、すぐいまの場面になる
+    const rNow = await roundOf(page);
+    await sleep(500);
+    check(rNow === r0 && await isIdle(page), `再開するとすぐいまの場面になる（最初から演出で流さない：ラウンド ${rNow}／${r0}）`);
     await idle(page);
     const r1 = await roundOf(page);
     const fame1 = await page.$$eval('.kd-pchip b[data-kd^="fame:"]', (e) => e.map((x) => x.textContent));
@@ -556,6 +582,10 @@ async function online() {
         await host.click(MENU); await host.click('.kd-chatbtn'); await host.waitForSelector('.kd-chat');
         await host.fill('.kd-chat-in input', 'こんにちは、新ルール！'); await host.click('.kd-chat-in .kd-btn');
         await host.waitForSelector('.kd-chatline.is-me:has-text("こんにちは、新ルール！")', { timeout: 8000 });
+        {
+          const al = await host.evaluate(() => { const me = document.querySelector('.kd-chatline.is-me'), list = document.querySelector('.kd-chatlist'); return { a: getComputedStyle(me).alignSelf, dl: me.getBoundingClientRect().left - list.getBoundingClientRect().left }; });
+          check(al.a !== 'flex-end' && al.dl < 12, `自分の発言もほかの人と同じく左に出る（align-self ${al.a}・左から ${Math.round(al.dl)}px）`);
+        }
         await host.click('.kd-chat-x');
         await guest.waitForSelector('.kd-chatfloat-l:has-text("こんにちは、新ルール！")', { timeout: 8000 });
         check(true, '参加者の盤面にホストの発言が流れる');
@@ -587,6 +617,13 @@ async function online() {
         await shot(host, '56-away-host.png');
         await guest.click('button:has-text("途中の試合にもどる")');
         await guest.waitForSelector('.kd-pchip.is-me', { timeout: 20000 });
+        {
+          // 戻ったらすぐいまの場面（最初から演出で流し直さない）
+          const rg0 = await roundOf(guest), rh0 = await roundOf(host);
+          let quiet = false;
+          for (let i = 0; i < 30 && !quiet; i++) { await sleep(100); quiet = await isIdle(guest); }
+          check(rg0 === rh0 && rg0 > 1 && quiet, `戻るとすぐいまの場面になる（参加者 R${rg0}・ホスト R${rh0}・演出が3秒以内に止まる ${quiet}）`);
+        }
         await host.waitForFunction(() => !document.querySelector('.kd-netnote-away'), null, { timeout: 20000 });
         const after = await guest.textContent('.kd-pchip.is-me');
         const nm = (x) => x.replace(/[0-9先]/g, '');

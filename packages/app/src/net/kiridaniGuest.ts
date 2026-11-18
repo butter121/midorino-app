@@ -17,6 +17,8 @@ export class KdGuestClient {
   seat = -1;
   names: string[] = [];
   events: AnyEvent[] = [];
+  /** 分けて届いている途中の出来事（最後の分でまとめて events に足す） */
+  private chunk: AnyEvent[] = [];
   prompt: AnyPrompt | null = null;
   /** 試合のルールの版（ホストが送る。届くまでは待合室の設定） */
   rules: KdRules = 1;
@@ -79,6 +81,7 @@ export class KdGuestClient {
       this.conn = null;
       for (const f of this.pending.values()) f(null);
       this.pending.clear();
+      this.chunk = [];
       if (this.closed || this.status === 'denied' || this.status === 'closed') return;
       this.status = 'offline';
       if (!this.reason) this.reason = 'ホストとの接続が切れました。つなぎ直しています…';
@@ -105,17 +108,21 @@ export class KdGuestClient {
         const gid = msg.gid ?? '';
         if (this.gid !== null && gid !== this.gid) {
           // 新しい試合：前の試合の出来事・問い・取引を捨てて、最初から受け取り直す
-          this.events = []; this.prompt = null; this.wait = []; this.done = false; this.offer = null; this.note = null;
+          this.events = []; this.chunk = []; this.prompt = null; this.wait = []; this.done = false; this.offer = null; this.note = null;
           this.rematched = true;
         }
         this.gid = gid;
         this.seat = msg.seat; this.names = msg.names;
         if (msg.rules) this.rules = msg.rules;
-        const have = this.events.length;
-        if (msg.from > have) { this.conn?.send(JSON.stringify({ t: 'sync', have } satisfies KdToHost)); return; }
+        // 何回かに分けて届く出来事（再入室では最初から全部）は、最後の分が届くまでためておき、まとめて画面に渡す。
+        // 分けたまま渡すと、画面は最初の分を「いまの場面」と思って残りを演出つきで流してしまう
+        const have = this.events.length + this.chunk.length;
+        if (msg.from > have) { this.chunk = []; this.conn?.send(JSON.stringify({ t: 'sync', have: this.events.length } satisfies KdToHost)); return; }
         const add = msg.evs.slice(have - msg.from);
-        if (add.length) this.events = [...this.events, ...add];
-        if (msg.last) {
+        if (add.length) this.chunk.push(...add);
+        if (!msg.last) return;
+        if (this.chunk.length) { this.events = [...this.events, ...this.chunk]; this.chunk = []; }
+        {
           const p = msg.prompt ?? null;
           // 同じ問いなら同じものを使い続ける（開いているトレイを閉じない）
           if (!p || !this.prompt || p.id !== this.prompt.id) this.prompt = p;

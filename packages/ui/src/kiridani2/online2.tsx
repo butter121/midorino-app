@@ -27,6 +27,15 @@ export interface Online2GameProps {
   speed?: Speed;
 }
 
+/** 届いた出来事を演出せずに一気に当てるか。
+ *  - 画面を開いた最初の受け取りで、試合がもう進んでいる（準備の最初の問いより先）：再入室・再開
+ *  - 途中でも、2ラウンド以上をまとめて受け取った：長く離れていて追いつくところ */
+export function catchUp2(fed: number, add: { t: string }[]): boolean {
+  if (!add.length) return false;
+  if (fed === 0) return add.length > 12 || add.some((e) => e.t === 'round_start');
+  return add.filter((e) => e.t === 'round_start').length >= 2;
+}
+
 export function Kiridani2OnlineGame({ seat, events, prompt, waitFor, names, onAct, onJudge, offer = null, note = null, banner, away = [], extra, finalExtra, speed }: Online2GameProps) {
   const t = useTable2(seat, { speed });
   const fed = useRef(0);
@@ -39,12 +48,9 @@ export function Kiridani2OnlineGame({ seat, events, prompt, waitFor, names, onAc
     if (events.length < fed.current) { t.reset(seat); fed.current = 0; }
     if (events.length === fed.current) return;
     const add = events.slice(fed.current);
-    if (fed.current === 0 && add.length > 40) {
-      let cut = add.length;
-      for (let i = add.length - 1; i >= 0; i--) if (add[i].t === 'round_start' || add[i].t === 'leader_offer') { cut = i; break; }
-      t.load(add.slice(0, cut));
-      t.push(add.slice(cut));
-    } else t.push(add);
+    // 途中から入った（再入室・ホストの再開・長く離れていた）ときは、これまでの出来事を演出なしで一気に当てて、いまの場面をすぐ出す
+    if (catchUp2(fed.current, add)) t.load(add);
+    else t.push(add);
     fed.current = events.length;
   }, [events, seat, t]);
 

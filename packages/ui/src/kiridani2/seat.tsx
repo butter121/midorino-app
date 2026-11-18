@@ -11,7 +11,7 @@ import { InfoDot } from '../kiridani/ui/inspect';
 import { CostRow, Token } from '../kiridani/ui/parts';
 import { TradeButton, TradeTray } from '../kiridani/ui/tray';
 import type { SeatSession } from '@midorino/engine/src/kiridani';
-import { CardArt2, MonArt, rageText } from './parts2';
+import { CardArt2, MonArt } from './parts2';
 import { whyTitle, type Ask2 } from './table2';
 import { CARD2, cardName, placeName } from './view';
 
@@ -130,6 +130,34 @@ export function uiFor2(s: SeatSession2): { ask: Ask2 | null; sheet: (ChoiceSpec 
   }
 }
 
+/** 画面（盤面・準備の画面・シート）でいまの問いに答えられるか */
+export function actionable2(s: SeatSession2, ui: ReturnType<typeof uiFor2>): boolean {
+  const w = s.waiting;
+  if (!w) return true;
+  if (ui.sheet) return true;
+  const a = ui.ask;
+  if (!a) return false;
+  if (a.kind === 'place') return a.options.length > 0 || (w.k === 'choose' && w.opts.some((o) => o.s === '@spell'));
+  if (a.kind === 'card') return a.cards.length > 0;
+  return a.ratios.length > 0;
+}
+
+/** どの問いにも使える、選択肢を全部並べるだけのシート（答えられる場面が画面にないときの逃げ道） */
+export function fallbackSheet2(s: SeatSession2): (ChoiceSpec & { toAction: (id: string) => Action2 }) | null {
+  const w = s.waiting;
+  if (!w) return null;
+  const g = s.g, p = s.player;
+  const title = 'いま選べるもの';
+  switch (w.k) {
+    case 'card': return { title, items: w.cards.map((c) => ({ id: c, title: cardName(c), card: CARD2[c] ? c : undefined })), toAction: (id) => ({ t: 'card', id }) };
+    case 'ratio': return { title, items: w.options.map((r, i) => ({ id: String(i), title: `武具${r.weapon}・道具${r.tool}・秘術${r.spell}` })), toAction: (id) => ({ t: 'ratio', v: w.options[Number(id)] }) };
+    case 'kind': return { title, items: w.options.map((k) => ({ id: k, title: KIND_JP[k] ?? k })), toAction: (id) => ({ t: 'kind', v: id as 'weapon' | 'tool' | 'spell' }) };
+    case 'choose': return { title, items: w.opts.map((o, i) => { const l = optionLabel(g, p, o); return { id: String(i), title: o.s === '@spell' ? l.title : `${placeName(o.s)}：${l.title}`, detail: l.detail, cost: l.cost }; }), toAction: (id) => ({ t: 'opt', i: Number(id) }) };
+    case 'pick': return { title, items: w.options.map((x, i) => choiceItem2(g, p, x, String(i))), toAction: (id) => ({ t: 'pick', i: Number(id) }) };
+    case 'heal': case 'effect': return { title, items: [{ id: 'yes', title: 'はい', primary: true }, { id: 'no', title: 'いいえ' }], toAction: (id) => ({ t: 'yes', v: id === 'yes' }) };
+  }
+}
+
 function Sheet({ label, children }: { label: string; children: ReactNode }) {
   return <div className="kd-ovwrap kd-sheetwrap kd-traywrap"><div className="kd-tray" role="dialog" aria-label={label}>{children}</div></div>;
 }
@@ -222,7 +250,7 @@ export function FightTray2({ s, sid, onPick, onCancel }: { s: SeatSession2; sid:
           <strong>{title}</strong>
           {mon && (
             <span className="kd-tray-stats">
-              <span className="kd-stat is-str">強さ{mon.str - mon.wounds}{rageText(mon)}{mon.wounds ? <small>（傷{mon.wounds}）</small> : null}</span>
+              <span className="kd-stat is-str">強さ{mon.str - mon.wounds}{mon.wounds ? <small>（傷{mon.wounds}）</small> : null}</span>
               <span className="kd-stat is-ctr">反撃{mon.counter}</span>
               {mon.weak && <span className="kd-stat is-weak"><KIcon name={mon.weak} size={14} />弱点{EL_JP[mon.weak] ?? mon.weak}</span>}
             </span>
@@ -461,6 +489,10 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
   } else if (ui.sheet && opts.sheetReady) {
     const sh = ui.sheet;
     sheetNode = <ChoiceSheet spec={sh} onPick={(id) => go(sh.toAction(id))} />;
+  } else if (s && opts.sheetReady && !actionable2(s, ui)) {
+    // 画面が出し方を知らない問い（新しい種類の問い・選べるものが盤面に出ない）：何もできないまま止まらないよう、全部を並べて選ばせる
+    const fb = fallbackSheet2(s);
+    if (fb) sheetNode = <ChoiceSheet spec={fb} onPick={(id) => go(fb.toAction(id))} />;
   }
 
   const spells = w?.k === 'choose' ? w.opts.filter((o) => o.s === '@spell').length : 0;

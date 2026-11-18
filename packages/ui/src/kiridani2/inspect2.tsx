@@ -3,7 +3,7 @@ import { useEffect, type ReactNode } from 'react';
 import { DATA, type Monster, FLAVOR } from '@midorino/engine/src/kiridani2';
 import { KIcon } from '../kiridani/art-registry';
 import { CostRow, ResCount, Token } from '../kiridani/ui/parts';
-import { CardArt2, CardChip2, CardFace2, KIND2_JP, LeaderArt, MonArt, NestArt, SpaceArt, rageText } from './parts2';
+import { CardArt2, CardChip2, CardFace2, KIND2_JP, LeaderArt, MonArt, NestArt, SpaceArt } from './parts2';
 import { ANC2, CARD2, NEST_JP, QUEST2, RES_JP, cardName, placeName, type PV2, type Seat, type View2 } from './view';
 import { RES } from '@midorino/engine/src/kiridani2';
 
@@ -16,7 +16,7 @@ function monBlock(m: Monster): ReactNode {
   return <>
     <div className="kd-insp-art"><MonArt m={m} size={110} /></div>
     <Row k="強さ">{m.str}{m.wounds ? `（傷${m.wounds} → ${m.str - m.wounds}）` : ''}</Row>
-    {m.rage ? <Row k="荒ぶり">戦うときに強さが {rageText(m)} くらい上下する</Row> : null}
+    {m.boss && <Row k="参加しないと">名声−{DATA.BOSS_ABSENT}（主の巣に仲間を送らなかった人。勝ち負けによらない）</Row>}
     <Row k="反撃">{m.counter}（守りを超えた分だけ前衛が負傷）</Row>
     <Row k="種族・弱点"><span className="kd-insp-who"><KIcon name={m.race} size={18} />{RACE_JP[m.race]}</span>{m.weak && <span className="kd-insp-who"><KIcon name={m.weak} size={18} />弱点：{EL_JP[m.weak]}（突くと戦力+{DATA.WEAK_BONUS}）</span>}</Row>
     <Row k="戦利品"><CostRow cost={m.loot} size={18} /></Row>
@@ -67,7 +67,7 @@ function body(target: string, v: View2): { kind: string; title: string; node: Re
     case 'space2': {
       if (id.startsWith('nest') || id === 'lair') {
         const n = v.nests.find((x) => x.id === id);
-        return { kind: '巣', title: NEST_JP[id] ?? id, node: <><div className="kd-insp-art is-wide"><NestArt id={id} width={300} /></div><p className="kd-insp-p">1ラウンドに2組まで。1回に送れる仲間は{DATA.MAX_SEND}人まで。戦力（2＋攻めの熟練＋武器）と運命カードの合計が強さ以上で撃破。</p>{n?.mon ? monBlock(n.mon) : <p className="kd-insp-p">いまは魔物がいない。</p>}</> };
+        return { kind: '巣', title: NEST_JP[id] ?? id, node: <><div className="kd-insp-art is-wide"><NestArt id={id} width={300} /></div><p className="kd-insp-p">1ラウンドに2組まで。1回に送れる仲間は{DATA.MAX_SEND}人まで。戦力（2＋攻めの熟練＋武器）と運命カードの合計が強さ以上で撃破。</p>{id === 'lair' ? (v.lair.boss ? monBlock(v.lair.boss) : <p className="kd-insp-p">いまは主がいない。</p>) : n?.mon ? monBlock(n.mon) : <p className="kd-insp-p">いまは魔物がいない。</p>}</> };
       }
       const def = DATA.SPACE[id];
       const st = CARD2[id];

@@ -82,7 +82,7 @@ export function drive<T>(gen: Gen<T>): T {
 
 // ------------------------------------------------------------ プレイヤー
 export interface Comp { atk: number; def: number; weapon: string | null; armor: string | null; leader: boolean; injured: boolean; rest: boolean; used: boolean }
-export type FameSrc = 'trophy' | 'quest' | 'donate' | 'card' | 'effect' | 'dragon';
+export type FameSrc = 'trophy' | 'quest' | 'donate' | 'card' | 'effect' | 'dragon' | 'absent';
 
 export class Player {
   pid: number;
@@ -105,7 +105,7 @@ export class Player {
   secret: string | null = null;
   discontent = 0;
   raidLoss = 0;
-  fame: Record<FameSrc, number> = { trophy: 0, quest: 0, donate: 0, card: 0, effect: 0, dragon: 0 };
+  fame: Record<FameSrc, number> = { trophy: 0, quest: 0, donate: 0, card: 0, effect: 0, dragon: 0, absent: 0 };
   fate: number[] = [];
   limits: Record<string, number> = {};
   future: { round: number; gain: Cost }[] = [];
@@ -245,10 +245,8 @@ export class Game {
   errors: string[] = [];
   /** 先読み：運命カードを決め打ちする（AI の複製だけ） */
   forceFate: number | null = null;
-  /** 先読み：主・古竜の荒ぶりを決め打ちする（AI の複製だけ） */
-  forceRage: number | null = null;
   /** 先読み：最後の戦闘（運命を足す前の戦力と強さ） */
-  lastClash: { base: number; strength: number; win: boolean; rage: number } | null = null;
+  lastClash: { base: number; strength: number; win: boolean } | null = null;
   E: GameEvent[] | null = null;
   me = -1;
   names: string[] = [];
@@ -337,7 +335,7 @@ export class Game {
     g.quests = this.quests.map((q) => ({ id: q.id, done: [...q.done] }));
     g.first = this.first; g.nextFirst = this.nextFirst; g.round = this.round; g.uid = this.uid; g.over = this.over;
     g.errors = [];
-    g.forceFate = null; g.forceRage = null; g.lastClash = null;
+    g.forceFate = null; g.lastClash = null;
     g.E = null; g.me = this.me; g.names = this.names;
     g.fateLog = []; g.monLog = []; g.fightLog = [];
     return g;
@@ -501,8 +499,7 @@ export class Game {
     const counter = Math.round(s0 / R.counterDiv) + (kind === 'boss' ? R.boss.counter : kind === 'dragon' ? D.DRAGON.counter : 0);
     const trophy = kind === 'dragon' ? D.DRAGON.trophy : Math.max(1, Math.round((s0 / R.trophyDiv) * (boss ? R.boss.trophy : 1) + n));
     const raid = kind === 'dragon' ? 0 : Math.round(s0 / R.raidDiv) + (boss ? R.boss.raid : 0);
-    const rage = kind === 'nest' ? 0 : Math.round(str * (kind === 'dragon' ? D.DRAGON.rage : R.boss.rage) * 10) / 10;
-    return { uid: ++this.uid, type: type.id, name: type.name, race: type.race, weak: type.weak, str, counter, loot, trophy, raid, boss, year, wounds: 0, ...(rage ? { rage } : {}) };
+    return { uid: ++this.uid, type: type.id, name: type.name, race: type.race, weak: type.weak, str, counter, loot, trophy, raid, boss, year, wounds: 0 };
   }
   private refillForecast() {
     const nr = this.round + 1;
@@ -1394,7 +1391,8 @@ export class Game {
     if (p.ai) { this.autoEquip(p); return; }
     const sl = slotOf(this.card(id));
     if (!sl || !this.storage(p).includes(id)) return;
-    const to = this.equipTargets(p, id);
+    // 同じ装備（共通の装備は同じ id が何枚もある）をもう持っている仲間には持たせない（equip が「もう持っている」で弾く）
+    const to = this.equipTargets(p, id).filter((i) => p.comps[i][sl] !== id);
     if (!to.length) return;
     const x: string = yield* this.ask({ k: 'pick', g: this, p, what: `equip:${id}`, options: [...to.map((i) => `eq:${i}`), 'eq:-'] });
     const ci = typeof x === 'string' && /^eq:\d+$/.test(x) ? Number(x.slice(3)) : -1;
@@ -1484,7 +1482,7 @@ export class Game {
       }
     } else {
       let target: number | null = null;
-      if (mode === 'safe' || mode === 'wait') target = need - this.fateMin(p) + pl.str + Math.ceil(mon.rage ?? 0);
+      if (mode === 'safe' || mode === 'wait') target = need - this.fateMin(p) + pl.str;
       else if (mode === 'gamble') target = need - 1 + pl.str;
       if (target !== null && pl.power < target) {
         const cand = optional.map((o) => ({ o, g: gainOf(o) })).filter((x) => x.g > 0).sort((a, b) => costValue(a.o.cost) / a.g - costValue(b.o.cost) / b.g);
@@ -1568,7 +1566,9 @@ export class Game {
   *resolveLair(): Gen {
     const boss = this.bossOf[this.round];
     if (!boss) return;
-    if (!this.lairQ.length) { this.failBoss(boss); return; }
+    // 主・古竜に参加しなかった人（巣に仲間を送らなかった人）は名声 −BOSS_ABSENT（勝ち負けによらない）
+    const absent = this.players.filter((p) => !this.lairQ.some((e) => e.pid === p.pid));
+    if (!this.lairQ.length) { this.failBoss(boss); this.absentPenalty(boss, absent); return; }
     const plans: Plan[] = [];
     let acc = 0;
     const ps = this.lairQ.map((e) => this.players[e.pid]);
@@ -1580,6 +1580,11 @@ export class Game {
     const res = yield* this.resolve(boss, ps, plans, true);
     if (!res.win) this.failBoss(boss);
     this.lairQ = [];
+    this.absentPenalty(boss, absent);
+  }
+  private absentPenalty(boss: Monster, absent: Player[]) {
+    const reason = boss.type === D.ANCIENT_DRAGON.id ? '古竜に参加しなかった' : '主に参加しなかった';
+    for (const p of absent) { p.fame.absent -= D.BOSS_ABSENT; this.emit({ t: 'fame', seat: p.pid, amount: -D.BOSS_ABSENT, reason }); }
   }
   private failBoss(boss: Monster) {
     this.bossFailedYear.add(this.year());
@@ -1609,8 +1614,7 @@ export class Game {
     // 運命：主の巣は全員が1枚ずつ、巣は置いた人（共闘なら待っていた人）が1枚
     const flips = boss ? ps : [ps[0]];
     for (const p of flips) { const v = this.drawFate(p); total += v; this.emit({ t: 'fate_flip', seat: p.pid, value: v }); }
-    const rage = mon.rage ? this.forceRage ?? Math.round(this.rng.truncNormal(0, mon.rage, D.MON_ROLL.clip)) : 0;
-    const strength = mon.str - mon.wounds + strAdj + rage;
+    const strength = mon.str - mon.wounds + strAdj;
     const win = total >= strength;
     this.fightLog.push({
       round: this.round, t: this.t, kind: mon.type === D.ANCIENT_DRAGON.id ? 'dragon' : boss ? 'boss' : 'nest', str: strength,
@@ -1618,8 +1622,8 @@ export class Game {
       comps: plans.reduce((a, pl) => a + pl.idxs.length, 0), sides: ps.length, pids: ps.map((p) => p.pid), tro: ps.map(() => 0), mode: plans[0].mode,
     });
     const rec = this.fightLog[this.fightLog.length - 1];
-    this.lastClash = { base: plans.reduce((a, pl) => a + pl.power, 0), strength, win, rage };
-    this.emit({ t: 'clash', total, strength, result: win ? 'win' : 'lose', ...(mon.rage ? { rage } : {}) });
+    this.lastClash = { base: plans.reduce((a, pl) => a + pl.power, 0), strength, win };
+    this.emit({ t: 'clash', total, strength, result: win ? 'win' : 'lose' });
     let wounds = 0;
     const totPow = Math.max(1, plans.reduce((a, pl) => a + Math.max(0, pl.power), 0));
     for (let j = 0; j < ps.length; j++) {
@@ -1752,22 +1756,6 @@ export function sumPays(ops: Op[]): Cost {
   for (const o of ops) if (o.pay) c = addCost(c, o.pay);
   return c;
 }
-/** 荒ぶりの分布（round(N(0, sd²))、|N|≤clip·sd）：[値, 確率] */
-export function rageDist(sd: number | undefined): [number, number][] {
-  if (!sd) return [[0, 1]];
-  const clip = D.MON_ROLL.clip * sd;
-  const cdf = (x: number) => 0.5 * (1 + erf(Math.max(-clip, Math.min(clip, x)) / (sd * Math.SQRT2)));
-  const lo = Math.round(-clip), hi = Math.round(clip);
-  const out: [number, number][] = [];
-  let tot = 0;
-  for (let v = lo; v <= hi; v++) { const p = cdf(v + 0.5) - cdf(v - 0.5); if (p > 0) { out.push([v, p]); tot += p; } }
-  return out.map(([v, p]) => [v, p / tot]);
-}
-function erf(x: number) {
-  const t = 1 / (1 + 0.3275911 * Math.abs(x));
-  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
-  return x >= 0 ? y : -y;
-}
 
 function applyFightOps(pl: Plan, ops: Op[]) {
   for (const o of ops) {
@@ -1793,7 +1781,7 @@ export function optLabel(o: Option): string {
 
 // ------------------------------------------------------------ 名声（§9）
 export const SCORE_LABELS: Record<string, string> = {
-  trophy: '討伐の証', quest: '依頼', secret: '秘密依頼', donate: '寄進', ancient: '古代の品', card: 'カード', effect: '効果', dragon: '古竜',
+  trophy: '討伐の証', quest: '依頼', secret: '秘密依頼', donate: '寄進', ancient: '古代の品', card: 'カード', effect: '効果', dragon: '古竜', absent: '主・古竜に不参加',
   comps: '仲間', gold: '金貨', discontent: '不満', raid: '襲撃',
 };
 
@@ -1821,7 +1809,7 @@ export function tableScore(v: number, th: number[]): number {
 export function scoreBreakdown(g: Game, p: Player): Record<string, number> {
   const b: Record<string, number> = {
     trophy: p.fame.trophy, quest: p.fame.quest, secret: 0, donate: p.fame.donate, ancient: ancientScore(g, p), card: p.fame.card,
-    effect: p.fame.effect, dragon: p.fame.dragon,
+    effect: p.fame.effect, dragon: p.fame.dragon, absent: p.fame.absent,
   };
   if (p.secret) { const q = g.quest.get(p.secret); if (q && checkCond(q.need, g.env(p))) b.secret = Math.round((q.fame ?? D.SECRET_FAME) * (D.POINT_SCALE[g.years] ?? 1)); }
   const th = D.tableFor(g.years);

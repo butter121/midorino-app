@@ -5,7 +5,7 @@
 import * as D from './data';
 import { cardEffects } from './dsl';
 import {
-  ancientScore, costValue, drive, Game, Player, rageDist, score, type Brain, type Choice, type Option, type Ratio, type Req,
+  ancientScore, costValue, drive, Game, Player, score, type Brain, type Choice, type Option, type Ratio, type Req,
 } from './engine';
 import { Rng } from './rng';
 import type { CardDef, Cost, EngineTag, Op, Res } from './types';
@@ -279,10 +279,9 @@ export class AI implements Brain {
 
   valueOf(g: Game, p: Player, o: Option): number {
     const fight = (g.nest(o.s) || o.s === 'lair') && o.i >= 0;
-    const run = (fate: number | null, rage: number | null = null) => {
+    const run = (fate: number | null) => {
       const g2 = g.clone();
       g2.forceFate = fate;
-      g2.forceRage = rage;
       const p2 = g2.players[p.pid];
       // 主の巣：まだ置いていない人も（休んでいない仲間を2人まで）挑むと見込む。主は全員で挑む強さなので、先に置く人が損に見えないように
       if (o.s === 'lair') for (const q of g2.players) {
@@ -298,10 +297,11 @@ export class AI implements Brain {
         const dragon = boss.type === D.ANCIENT_DRAGON.id;
         drive(g2.resolveLair());
         // 主・古竜に負けたときの罰（古竜の −3、主の襲撃）は誰も挑まなくても受けるので、ほかの手と同じ土台で比べる：
-        // 負けの罰は打ち消し、勝てば避けられた罰を足す
+        // 負けの罰は打ち消し、勝てば避けられた罰を足す。参加しない人の −BOSS_ABSENT はほかの手の盤面にはまだ出ていないので、避けた分を足す
         const won = g2.lastClash?.win;
         if (dragon) adj = D.DRAGON.fail;
         else if (won) adj = Math.max(0, boss.raid - g.homeGuard(p)) * 0.8;
+        adj += D.BOSS_ABSENT;
       }
       if (o.mode === 'wait') {
         const nd = g2.nest(o.s)!;
@@ -312,14 +312,11 @@ export class AI implements Brain {
     if (!fight) return run(null).v;
     const deck = p.fate.length ? p.fate : D.FATE_DECK;
     if (o.s === 'lair') {
-      // 主の巣：全員の運命の合計と主の荒ぶりで勝つ確率を出し、勝った盤面と負けた盤面を混ぜる
-      const rd = rageDist(g.bossOf[g.round]?.rage);
-      const rMin = rd[0][0], rMax = rd[rd.length - 1][0];
-      const hi = run(Math.max(...deck), rMin), lo = run(Math.min(...deck), rMax);
+      // 主の巣：全員の運命の合計で勝つ確率を出し、勝った盤面と負けた盤面を混ぜる
+      const hi = run(Math.max(...deck)), lo = run(Math.min(...deck));
       if (!hi.clash || !lo.clash || hi.clash.win === lo.clash.win) return (hi.v + lo.v) / 2;
-      const need = hi.clash.strength - hi.clash.rage - hi.clash.base;
-      let pwin = 0;
-      for (const [r, pr] of rd) pwin += pr * sumAtLeast(hi.decks, need + r);
+      const need = hi.clash.strength - hi.clash.base;
+      const pwin = sumAtLeast(hi.decks, need);
       return pwin * hi.v + (1 - pwin) * lo.v;
     }
     const hi = run(Math.max(...deck)), lo = run(Math.min(...deck));

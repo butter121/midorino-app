@@ -7,6 +7,8 @@
 .kd2-setup .kd-offer { flex-wrap: wrap; justify-content: center; }
 .kd2-setup .kd-deal { flex: 0 1 200px; min-width: 150px; }
 .kd2-setup .kd2-wait { opacity: .55; }
+/* 自分に配られたカード（問いが届く直前・決めた直後）は薄くしない：同じ入れ物のまま選べるようになる */
+.kd2-setup .kd2-wait.is-mine { opacity: 1; }
 .kd2-ratio-rows { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; max-width: 520px; margin: 0 auto; width: 100%; box-sizing: border-box; }
 .kd2-ratio-row { display: grid; grid-template-columns: minmax(84px, 1fr) 44px 36px 44px minmax(0, 2fr); align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: var(--kd-card-bg); border: 2px solid var(--kd-line); }
 .kd2-ratio-row.is-weapon { border-color: #8a5a3a; } .kd2-ratio-row.is-tool { border-color: #5a7a3a; } .kd2-ratio-row.is-spell { border-color: #6a4a9a; }
@@ -183,7 +185,6 @@
 
 /* 候補カードの一覧では効果文を優先し、フレーバーは詳細（i）で見せる */
 .kd-offer .kd2-flavor { display: none; }
-.kd2-rage { font-size: .75em; opacity: .8; margin-left: 1px; }
 
 /* 行動マスを役割ごとにまとめる（資源・作る・取引・仲間・冒険）。マスの幅（列の数 --kd-sc）・中身は今まで通り。
    まとまりは縦に並べ、それぞれ小さな見出し＋同じ列数の格子。高さはマスの数に比例して分ける（はみ出すときは今まで通り縦にスクロール） */
