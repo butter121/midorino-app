@@ -611,18 +611,27 @@ export function Figure({ s, id, size = 96, label, frame = true, children }: { s:
     <svg viewBox="0 0 96 96" width={size} height={size} role={label ? 'img' : undefined} aria-label={label} aria-hidden={label ? undefined : true} style={{ display: 'block' }}>
       {frame && <MistBg id={id} c1={s.bg[0]} c2={s.bg[1]} />}
       <g clipPath={frame ? `url(#cl-${id})` : undefined}>
-        <Motes m={s.motes} />
-        <PropBack p={s.prop} />
-        <GearBack s={s} />
-        <HairBack s={s} />
-        <Body s={s} />
-        <Face s={s} />
-        <Beard s={s} />
-        <HairFront s={s} />
-        <GearFront s={s} />
-        <PropFront p={s.prop} />
+        <FigureLayers s={s} />
         {children}
       </g>
     </svg>
+  );
+}
+
+/** 胸像の中身だけ（背景も svg も付けない）。別の svg の中に描くとき用 */
+export function FigureLayers({ s }: { s: FigureSpec }) {
+  return (
+    <>
+      <Motes m={s.motes} />
+      <PropBack p={s.prop} />
+      <GearBack s={s} />
+      <HairBack s={s} />
+      <Body s={s} />
+      <Face s={s} />
+      <Beard s={s} />
+      <HairFront s={s} />
+      <GearFront s={s} />
+      <PropFront p={s.prop} />
+    </>
   );
 }
