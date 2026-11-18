@@ -196,6 +196,13 @@ export interface GameOptions {
   cards: CardSet;
   /** 画面向けの出来事を出す（me は手札などを見せる席。観戦は −1） */
   events?: { me: number; names: string[] };
+  /** 始めの先手（試しの試合だけ。省略すれば種からくじ：startSeat） */
+  first?: number;
+}
+
+/** 始めの先手（種から決まる。本体の乱数の流れとは別にして、ほかのくじは変えない） */
+export function startSeat(seed: number, n: number): number {
+  return new Rng(((seed >>> 0) ^ 0x9e3779b9) >>> 0).int(n);
 }
 
 /** カード一式を読み込む（全カードの DSL を確かめる。知らない op は例外） */
@@ -289,8 +296,16 @@ export class Game {
     this.monDeck = rng.shuffle(D.MONSTERS.map((m) => m.id));
     this.bossTypes = rng.sample(D.BOSS_TYPES, 4);
     this.scheduleStages();
+    this.first = opts.first !== undefined ? ((opts.first % n) + n) % n : startSeat(opts.seed ?? 0, n);
     if (opts.events) { this.E = []; this.me = opts.events.me; this.names = opts.events.names; }
   }
+
+  /** 手番の順（先手から） */
+  turnOrder(): Player[] { return Array.from({ length: this.n }, (_, i) => this.players[(this.first + i) % this.n]); }
+  /** 手番の順の何番目か（先手＝0） */
+  turnPos(pid: number): number { return (pid - this.first + this.n) % this.n; }
+  /** 次の冬に要る食料（仲間の数・カードの修正込み） */
+  upkeepNeed(p: Player): number { return Math.max(0, D.upkeepOf(p.comps.length) + this.mods(p).upkeep); }
 
   // ------------------------------------------------------------ 段階カードの予定（§4）
   private scheduleStages() {
@@ -532,9 +547,12 @@ export class Game {
       t: 'game_start', players: this.players.map((p) => ({ seat: p.pid, name: this.names[p.pid] ?? `P${p.pid + 1}` })), me: this.me,
       years: this.years, rounds: this.R, spaces: this.spaces.map((s) => s.id), nests: this.nests.map((n) => n.id), quests: this.quests.map((q) => q.id),
     });
+    // 始めの先手（くじ）。準備の順・食料の追加もこの順
+    this.emit({ t: 'first_player', seat: this.first });
+    const order = this.turnOrder();
     // 1. リーダー：最後の手番の人から
     for (let i = this.n - 1; i >= 0; i--) {
-      const p = this.players[i];
+      const p = order[i];
       const show = this.decks.leader.splice(0, Math.min(5, this.decks.leader.length));
       this.emit({ t: 'leader_offer', seat: p.pid, cards: [...show] });
       const c: string = yield* this.ask({ k: 'card', g: this, p, why: 'leader', cards: show });
@@ -546,17 +564,17 @@ export class Game {
     }
     // 2. 職能×3
     for (let lap = 0; lap < 3; lap++) {
-      for (const p of this.players) yield* this.draftOne(p, 'occ', 'occ');
+      for (const p of order) yield* this.draftOne(p, 'occ', 'occ');
     }
     // 3〜4. 割合と品物×5
     const ratios: Ratio[] = [];
     for (let w = 0; w <= 5; w++) for (let t = 0; t <= 5 - w; t++) ratios.push({ weapon: w, tool: t, spell: 5 - w - t });
-    for (const p of this.players) {
+    for (const p of order) {
       const ra: Ratio = yield* this.ask({ k: 'ratio', g: this, p, options: ratios });
       p.ratio = { ...ra };
       this.emit({ t: 'ratio', seat: p.pid, ratio: { ...ra } });
     }
-    for (const p of this.players) {
+    for (const p of order) {
       const left: Ratio = { ...p.ratio };
       for (let j = 0; j < 5; j++) {
         const kinds = ITEM_KINDS.filter((k) => left[k] > 0 && this.decks[k].length > 0);
@@ -567,7 +585,7 @@ export class Game {
       }
     }
     // 5. 始めの2枚（費用なし）
-    for (const p of this.players) {
+    for (const p of order) {
       const occs = p.hand.filter((c) => this.card(c).kind === 'occ');
       if (occs.length) {
         const c: string = yield* this.ask({ k: 'card', g: this, p, why: 'start_occ', cards: occs });
@@ -580,7 +598,7 @@ export class Game {
       }
     }
     // 6. 秘密依頼
-    for (const p of this.players) {
+    for (const p of order) {
       const show = this.decks.secret.splice(0, Math.min(2, this.decks.secret.length));
       if (!show.length) continue;
       const c: string = yield* this.ask({ k: 'card', g: this, p, why: 'quest', cards: show });
@@ -589,11 +607,11 @@ export class Game {
       this.emit({ t: 'secret_quest', seat: p.pid, quest: p.pid === this.me ? c : '?' });
     }
     // 始めの持ち物
-    for (const p of this.players) {
+    for (const p of order) {
       p.comps = [];
       for (let i = 0; i < D.START.comps; i++) p.comps.push(newComp(i === 0));
       p.beds = D.START.beds;
-      const g0: Cost = { food: D.START.food + (D.SEAT_FOOD[this.n][p.pid] ?? 0), gold: D.START.gold, wood: D.START.wood, iron: D.START.iron };
+      const g0: Cost = { food: D.START.food + (D.SEAT_FOOD[this.n][this.turnPos(p.pid)] ?? 0), gold: D.START.gold, wood: D.START.wood, iron: D.START.iron };
       gainRes(p, g0);
       this.emit({ t: 'grant', seat: p.pid, gain: g0, reason: '開始時' });
       if (p.ai) this.autoEquip(p);
@@ -638,7 +656,7 @@ export class Game {
         this.emit({ t: 'boss_reveal', boss: { ...this.bossOf[wr] }, round: wr });
       }
       if (D.REFILL_YEARS[this.years].includes(y)) {
-        for (const p of this.players) {
+        for (const p of this.turnOrder()) {
           yield* this.draftOne(p, 'occ', 'refill_occ');
           for (let j = 0; j < 2; j++) {
             const kinds = ITEM_KINDS.filter((k) => this.decks[k].length > 0);
@@ -754,7 +772,7 @@ export class Game {
     this.emit({ t: 'winter_start' });
     const y = this.year();
     for (const p of this.players) {
-      const need = Math.max(0, D.upkeepOf(p.comps.length) + this.mods(p).upkeep);
+      const need = this.upkeepNeed(p);
       const paid = Math.min(need, p.res.food);
       p.res.food -= paid;
       const short = need - paid;
@@ -1458,6 +1476,8 @@ export class Game {
     for (let j = 0; j < idxs.length; j++) optional.push({ name: 'morale', cost: D.MORALE[0], ops: [{ power: D.MORALE[1] }], card: '', e: -1, spell: false });
     optional.push({ name: 'potion', cost: D.POTION[0], ops: [{ power: D.POTION[1] }], card: '', e: -1, spell: false });
     for (const c of new Set(p.hand)) {
+      // 参加者の写しでは他の席の手札は伏せてある（'?'）。主の巣に先に送った人の見込みを出すときに通る
+      if (!this.byId.has(c)) continue;
       const cd = this.card(c);
       if (cd.kind !== 'spell') continue;
       cd.effects.forEach((e, ei) => {

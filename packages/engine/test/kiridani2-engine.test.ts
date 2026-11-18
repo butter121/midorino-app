@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AI, ancientScore, CARD_SET, DATA, drive, DslError, Game, Kiridani2Session, loadCards, Rng, score, tableScore, validateCard,
+  AI, ancientScore, CARD_SET, DATA, drive, DslError, Game, Kiridani2Session, loadCards, Rng, score, startSeat, tableScore, validateCard,
   type CardDef, type CardSet, type StageDef,
 } from '../src/kiridani2/index';
 
@@ -104,6 +104,34 @@ describe('kiridani2 試合', () => {
     expect(a.scores).toEqual(b.scores);
     expect(a.ev).toBe(b.ev);
     expect(a.scores.length).toBe(3);
+  });
+
+  it('始めの先手は種からくじ（同じ種なら同じ、席0とは限らない）。準備の順・食料の追加・手番もその順', () => {
+    for (const n of [2, 3, 4, 5, 6]) {
+      const firsts = new Set<number>();
+      for (let seed = 1; seed <= 40; seed++) {
+        const f = startSeat(seed, n);
+        expect(f).toBe(startSeat(seed, n));
+        expect(f).toBeGreaterThanOrEqual(0); expect(f).toBeLessThan(n);
+        firsts.add(f);
+      }
+      expect(firsts.size).toBe(n);
+    }
+    const seed = [...Array(50).keys()].find((s) => startSeat(s, 4) === 2)!;
+    const s = new Kiridani2Session({ n: 4, years: 5, seed, human: -1, levels: ['normal', 'normal', 'normal', 'normal'] });
+    const ev = s.start();
+    expect(ev[1]).toEqual({ t: 'first_player', seat: 2 });
+    // リーダーは手番の最後の人（先手の1つ前の席）から
+    expect(ev.filter((e) => e.t === 'leader_offer').map((e) => (e as { seat: number }).seat)).toEqual([1, 0, 3, 2]);
+    // 職能の1巡目は先手から
+    expect(ev.filter((e) => e.t === 'draft_offer').slice(0, 4).map((e) => (e as { seat: number }).seat)).toEqual([2, 3, 0, 1]);
+    // 食料の追加は手番の順（先手が 0）
+    const food = ev.filter((e) => e.t === 'grant' && (e as { reason: string }).reason === '開始時').map((e) => [(e as { seat: number }).seat, (e as { gain: { food: number } }).gain.food]);
+    expect(Object.fromEntries(food)).toEqual({ 2: DATA.START.food + 0, 3: DATA.START.food + 1, 0: DATA.START.food + 1, 1: DATA.START.food + 2 });
+    // 1ラウンド目の先手・最初の手番
+    const rs = ev.find((e) => e.t === 'round_start') as { first: number };
+    expect(rs.first).toBe(2);
+    expect((ev.find((e) => e.t === 'turn') as { seat: number }).seat).toBe(2);
   });
 
   for (const years of [5, 10, 15]) {

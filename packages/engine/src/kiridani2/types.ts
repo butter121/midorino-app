@@ -303,6 +303,7 @@ export interface ScoreRow { seat: Seat; items: ScoreItem[]; total: number; rank:
 
 export type GameEvent =
   | { t: 'game_start'; players: { seat: Seat; name: string }[]; me: Seat; years: number; rounds: number; spaces: string[]; nests: string[]; quests: string[] }
+  | { t: 'first_player'; seat: Seat }
   | { t: 'leader_offer'; seat: Seat; cards: string[] }
   | { t: 'leader_pick'; seat: Seat; card: string }
   | { t: 'draft_offer'; seat: Seat; kind: string; cards: string[] }

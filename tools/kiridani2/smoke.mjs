@@ -171,6 +171,8 @@ async function step(page, seen) {
     return null;
   }
   const conf = await page.$('.kd-confirm .kd-btn.is-primary');
+  // 割合の画面がちょうど出たところ（上の確かめのあと）なら次の回で割合として答える
+  if (conf && await page.$('.kd2-ratio')) return null;
   if (conf) {
     const title = ((await page.textContent('.kd-screen-h').catch(() => '')) ?? '').trim();
     if (seen) {
@@ -209,6 +211,11 @@ async function fightFlow(page, tag, shots = true) {
   await page.waitForSelector('.kd-tray[aria-label="戦闘"]', { timeout: 5000 });
   await sleep(300);
   if (shots) await both(page, '30-fight-tray', '戦闘のトレイ');
+  {
+    const fc = await page.$$eval('[data-kd="tray-fate"] .kd-fate i', (e) => ({ n: e.length, used: e.filter((x) => x.classList.contains('is-used')).length })).catch(() => ({ n: 0, used: 0 }));
+    check(fc.n === 6, `${tag}戦闘のトレイに運命の山の残りが出る（6枚中めくった札 ${fc.used}）`);
+    if (shots) await shot(page, '73-fate.png');
+  }
   const pw0 = Number(await page.textContent('[data-kd="fight-power"]'));
   const chip = await page.$('.kd2-fchips .kd-tchip:not([aria-disabled="true"]):not(.is-on)');
   if (chip) {
@@ -333,6 +340,56 @@ async function scrollCheck(page, vp, name) {
   return m.over.length > 0;
 }
 
+/** 拠点・依頼・みんなのタブ：はみ出す中身はタブの中だけ縦にスクロールして最後まで見える（ページははみ出さない・下の帯は画面内） */
+async function tabScrollChecks(page) {
+  const fateOnBoard = await page.$$eval('.kd2-board [data-kd="fate"] .kd-fate i', (e) => e.length).catch(() => 0);
+  check(fateOnBoard === 6, `盤面に自分の運命の山の残り（${fateOnBoard}枚の札）`);
+  if (fateOnBoard) await shot(page, '73-fate-board.png');
+  for (const vp of [{ width: 360, height: 640 }, { width: 740, height: 360 }, { width: 1280, height: 800 }]) {
+    await page.setViewportSize(vp); await sleep(350);
+    for (const tab of ['base', 'quests', 'all']) {
+      await page.click(`[data-kd="tab:${tab}"]`); await sleep(250);
+      const m = await page.evaluate(() => {
+        const se = document.scrollingElement, body = document.querySelector('.kd-tabbody');
+        const bar = document.querySelector('.kd-mybar')?.getBoundingClientRect();
+        const over = body.scrollHeight - body.clientHeight;
+        body.scrollTop = body.scrollHeight;
+        const kids = [...body.querySelectorAll('.kd-bsec, .kd-quest, .kd-ev-row')];
+        const lastEl = kids.sort((a, b) => b.getBoundingClientRect().bottom - a.getBoundingClientRect().bottom)[0];
+        const bb = body.getBoundingClientRect(), lb = lastEl?.getBoundingClientRect();
+        const clipped = [...body.querySelectorAll('.kd-base, .kd-base-grid, .kd-quests, .kd-everyone')].some((x) => getComputedStyle(x).overflowY === 'hidden' && x.scrollHeight > x.clientHeight + 1);
+        return { over, pageOk: se.scrollHeight <= innerHeight + 1 && se.scrollWidth <= innerWidth + 1, barOk: !bar || (bar.bottom <= innerHeight + 1 && bar.top >= 0), lastOk: !!lb && lb.bottom <= bb.bottom + 2, clipped, sy: getComputedStyle(body).overflowY };
+      });
+      if (tab === 'base') await shot(page, vp.width === 360 ? '71-base-scroll.png' : `71-base-scroll-${vp.width}x${vp.height}.png`);
+      if (tab === 'all' && vp.width === 360) await shot(page, '72-other-food-all.png');
+      check(m.pageOk && m.barOk && m.lastOk && !m.clipped && m.sy === 'auto', `${vp.width}×${vp.height}「${tab}」：中身はタブの中でスクロールして最後まで見える（はみ出し ${m.over}px・切れ ${m.clipped}）`);
+      await page.evaluate(() => { document.querySelector('.kd-tabbody').scrollTop = 0; });
+    }
+    if (vp.width === 360) {
+      // 拠点に運命の山・冬の食料の欄
+      await page.click('[data-kd="tab:base"]'); await sleep(200);
+      const b = await page.evaluate(() => ({ fate: document.querySelectorAll('.kd2-bsec-wf .kd-fate i').length, food: !!document.querySelector('.kd2-bsec-wf [data-kd^="wfood:"]') }));
+      check(b.fate === 6 && b.food, `拠点に冬の食料と運命の山の残りが出る（札 ${b.fate}）`);
+    }
+  }
+  await page.click('[data-kd="tab:board"]'); await sleep(200);
+  await page.setViewportSize(PORTRAIT); await sleep(300);
+}
+/** ほかの人の冬の食料（みんなのタブ・詳しく見る）と運命の山 */
+async function otherFoodCheck(page) {
+  await page.click('[data-kd="tab:all"]'); await sleep(250);
+  const rows = await page.$$eval('.kd2-ev-w', (e) => e.map((x) => ({ food: x.querySelector('[data-kd^="wfood:"] b')?.textContent ?? '', fate: x.querySelectorAll('.kd-fate i').length })));
+  check(rows.length === 4 && rows.every((r) => /^\d+\/\d+$/.test(r.food) && r.fate === 6), `みんなのタブに全員の冬の食料と運命の山（${rows.map((r) => r.food).join(' ')}）`);
+  await page.click('[data-kd="tab:board"]'); await sleep(200);
+  await page.click('.kd-pchip:not(.is-me)', { force: true });
+  const el = await page.waitForSelector('.kd-insp [data-kd^="insp-wfood:"]', { timeout: 4000 }).catch(() => null);
+  const txt = el ? ((await el.textContent()) ?? '') : '';
+  const fate = await page.$$eval('.kd-insp .kd-fate i', (e) => e.length).catch(() => 0);
+  check(/\d+\/\d+/.test(txt) && fate === 6, `ほかの人の詳しく見るに冬の食料（${txt}）と運命の山の残り`);
+  if (el) { await sleep(500); await shot(page, '72-other-food.png'); }
+  await page.keyboard.press('Escape'); await sleep(200);
+}
+
 /** タップで詳しく見るシートの絵（リーダー・行動マス〔ふつう・段階〕・巣・主の巣・シートからたどったカード） */
 async function inspectArts(page) {
   // 絵：カード札・リーダー・行動マス（ふつう・段階）・巣の魔物・主
@@ -367,6 +424,14 @@ async function solo() {
   await page.click('button:has-text("冒険をはじめる")');
   await page.waitForSelector('.kd-root.kd2', { timeout: 15000 });
   await watchDeals(page);
+  {
+    // 始めの先手はくじ：帯「先攻は○○」と、準備の見出し・できごとに出る
+    const ban = await page.waitForSelector('[data-kd="first-banner"]', { timeout: 8000 }).catch(() => null);
+    const txt = ban ? ((await ban.textContent()) ?? '') : '';
+    if (ban) await shot(page, '70-first-player.png');
+    const note = await page.waitForSelector('[data-kd="first-note"]', { timeout: 8000 }).then((e) => e.textContent()).catch(() => '');
+    check(/先攻は/.test(txt) && /先攻/.test(note ?? ''), `始めの先手（くじ）を帯と準備の見出しで知らせる（${txt.replace(/\s+/g, ' ').slice(0, 30)}／${note}）`);
+  }
   let stuckSince = 0, stuck = false;
   const seen = new Set();
   const counts = {};
@@ -476,6 +541,8 @@ async function solo() {
     // 小さい画面：盤面のスクロール
     await scrollCheck(page, { width: 360, height: 640 }, '25-board-360x640');
     await scrollCheck(page, { width: 740, height: 360 }, '26-board-740x360');
+    await tabScrollChecks(page);
+    await otherFoodCheck(page);
   } catch (e) { check(false, `ひとりの途中再開：${String(e).split('\n')[0]}`); }
   // ⚙ → 自分の席もAIに任せる → 最後まで（開いているトレイ・シートは先に答える）
   for (let i = 0; i < 50 && await page.$('.kd-tray, .kd-sheet'); i++) { await step(page).catch(() => null); await sleep(100); }
@@ -571,7 +638,15 @@ async function online() {
     if (!setupShot && await guest.$('.kd2-setup .kd-confirm .kd-btn.is-primary')) { setupShot = true; await sleep(300); await shot(guest, '51-setup-guest.png'); }
     if (!guestShot && (await roundOf(guest)) >= 2 && await guest.$('.kd-root.is-myturn') && !(await guest.$('.kd-ovwrap'))) {
       await idle(guest);
-      if (await guest.$('.kd-root.is-myturn')) { guestShot = true; await both(guest, '52-ingame-guest', '参加者の試合画面'); }
+      if (await guest.$('.kd-root.is-myturn')) {
+        guestShot = true; await both(guest, '52-ingame-guest', '参加者の試合画面');
+        const g = await guest.evaluate(() => ({ fate: document.querySelectorAll('.kd2-board [data-kd="fate"] .kd-fate i').length, first: [...document.querySelectorAll('.kd-log li, .kd-sr')].length }));
+        await guest.click('[data-kd="tab:all"]'); await sleep(250);
+        const foods = await guest.$$eval('.kd2-ev-w [data-kd^="wfood:"] b', (e) => e.map((x) => x.textContent));
+        const fates = await guest.$$eval('.kd2-ev-w .kd-fate', (e) => e.length);
+        check(g.fate === 6 && foods.length === 3 && fates === 3, `参加者にも運命の山と全員の冬の食料が届く（${foods.join(' ')}）`);
+        await guest.click('[data-kd="tab:board"]'); await sleep(150);
+      }
     }
     if (guestShot && !guestFight && await guest.$('.kd-root.is-myturn') && !(await guest.$('.kd-ovwrap, .kd-tray, .kd-sheet')) && await guest.$('[data-kd^="space:nest"].is-can, [data-kd="space:lair"].is-can')) {
       try { guestFight = await fightFlow(guest, '参加者：', false); } catch (e) { guestFight = true; check(false, `参加者の戦闘のトレイ：${firstLine(e)}`); }
