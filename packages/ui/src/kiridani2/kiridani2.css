@@ -179,3 +179,6 @@
 @media (prefers-reduced-motion: reduce) { .kd2-rematch-note { animation: none; } }
 .kd-root .kd2-fgraph-plot > svg:focus:not(:focus-visible) { outline: none; }
 .kd-root .kd2-fgraph-plot > svg:focus-visible { outline: 2px solid var(--kd-focus); outline-offset: -2px; }
+
+/* 候補カードの一覧では効果文を優先し、フレーバーは詳細（i）で見せる */
+.kd-offer .kd2-flavor { display: none; }
