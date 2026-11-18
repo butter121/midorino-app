@@ -162,6 +162,9 @@ export class Kiridani2Session {
   equip(companion: number, slot: 'weapon' | 'armor', id: string | null): GameEvent[] {
     const w = this.waiting;
     if (!w || w.k !== 'choose') throw new Error('装備は自分の番に持ち替えられる');
+    // 同じ操作が2度届いた（連打・再送）ときは何もしない
+    if (id !== null && w.p.comps[companion]?.[slot] === id) return [];
+    if (id === null && w.p.comps[companion] && !w.p.comps[companion][slot]) return [];
     this.g.equip(w.p, companion, slot, id);
     this.waiting = { ...w, opts: this.g.legal(w.p, w.opts.some((o) => o.s === '@spell')) };
     return this.g.E!.splice(0);

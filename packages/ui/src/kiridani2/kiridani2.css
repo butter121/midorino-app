@@ -20,7 +20,6 @@
 .kd2-forecast small { opacity: .75; white-space: nowrap; }
 .kd2-fc { display: inline-flex; align-items: center; gap: 2px; background: #00000033; border-radius: 8px; padding: 1px 5px 1px 1px; cursor: pointer; }
 .kd2-fc b { font-size: 12px; }
-.kd-space.kd2-stage { border-color: #b88a2e; background: linear-gradient(180deg, #3a3020, #261f15); }
 .kd-space.kd2-stage.is-new { animation: kd2-glow 1.2s ease 2; }
 .kd2-stageart { position: relative; display: block; line-height: 0; }
 .kd2-stageart > .kd2-stagebadge.is-mini { position: absolute; right: -1px; bottom: -1px; width: auto; height: auto; padding: 1px 3px; border-radius: 5px; font-size: 9px; line-height: 1.1; }

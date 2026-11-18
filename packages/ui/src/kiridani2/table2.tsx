@@ -241,6 +241,7 @@ export function Board2({ v, selectable, selected, onSelect, cur }: { v: View2; s
           );
         })}
         <button type="button" data-kd="space:lair" data-inspect={lair.boss ? `mon2:${lair.boss.uid}` : 'space2:lair'} className={`kd-nest kd-lair${selectable?.has('lair') ? ' is-can' : ''}${selected === 'lair' ? ' is-selected' : ''}${lair.defeated ? ' is-defeated' : ''}`} onClick={pick('lair')} aria-disabled={!selectable?.has('lair')}>
+          {selectable?.has('lair') && <InfoDot target={lair.boss ? `mon2:${lair.boss.uid}` : 'space2:lair'} />}
           <div className="kd-nest-bg"><NestArt id="lair" width={200} /></div>
           <div className="kd-nest-h"><span className="kd-nest-name">主の巣</span><span className="kd-cap">{lair.occupants.map((o, i) => <Token key={i} seat={o} size={16} />)}</span></div>
           {lair.boss ? <MonsterCard2 m={lair.boss} compact /> : <div className="kd-nest-empty">—</div>}
