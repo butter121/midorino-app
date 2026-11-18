@@ -100,7 +100,7 @@ describe('kiridani2 装備を自分で持たせる', () => {
     const evs = applyAction2(s, a); hist.push(a);
     expect(evs.some((e) => e.t === 'equip' && e.companion === ci && e.card === id)).toBe(true);
     expect(s.waiting!.k).toBe('choose');
-    expect(() => applyAction2(s, { t: 'equip', c: ci, slot, id })).toThrow();
+    expect(applyAction2(s, { t: 'equip', c: ci, slot, id })).toEqual([]); // 同じ操作の再送は何もしない
     // 記録を当て直すと同じ
     const again = new Kiridani2Session({ n: 3, seed: 4, years: 5, human: 0, names: NAMES.slice(0, 3) });
     again.start();
