@@ -1,7 +1,8 @@
 // 霧谷 v2 — 小さな部品（カード・魔物・リーダーの絵）。見た目は v1 の部品とクラスをそのまま使う。
-import { BossArt, CardBackArt, KIcon, MonsterArt } from '../kiridani/art-registry';
+import { BossArt, CardBackArt, KIcon, MonsterArt, NestScene, TerrainArt } from '../kiridani/art-registry';
 import { MONSTER_IDS, BOSS_IDS } from '../kiridani/art';
 import { CardPicture, kindOf } from './art2';
+import { RasterScene, RasterSquare } from './raster';
 import { InfoDot } from '../kiridani/ui/inspect';
 import { CostRow } from '../kiridani/ui/parts';
 import { DATA, FLAVOR, type Monster } from '@midorino/engine/src/kiridani2';
@@ -28,14 +29,14 @@ const pick = <T,>(xs: T[], id: string) => xs[hash(id) % xs.length];
 
 /** リーダーの絵（絵の画像があればそれ、無ければ v1 の団長の絵） */
 export function LeaderArt({ id, size = 40 }: { id?: string; size?: number }) {
-  if (!id) return <CardBackArt id="occ" size={size} />;
+  if (!id) return <CardBack2 id="occ" size={size} />;
   return <CardPicture id={id} kind="leader" size={size} />;
 }
 
 /** カードの絵（絵の画像 cards/<id>.webp があればそれ、無ければ種類の合う v1 の絵）。種類の縁取りを重ねる（強い動きは見せない） */
 export function CardArt2({ id, size }: { id: string; size: number }) {
   const k = kindOf(id);
-  if (!k) return <CardBackArt id="item" size={size} />;
+  if (!k) return <CardBack2 id="item" size={size} />;
   return <CardPicture id={id} kind={k} size={size} />;
 }
 
@@ -48,7 +49,7 @@ export function CardFace2({ id, size = 'm', selected, onClick, disabled, anchor 
   const c = CARD2[id];
   const q = QUEST2[id];
   const a = ANC2[id];
-  if (!c && !q && !a) return <div className={`kd-card is-${size} is-back`} data-kd={anchor}><CardBackArt id="item" size={size === 's' ? 44 : 72} /></div>;
+  if (!c && !q && !a) return <div className={`kd-card is-${size} is-back`} data-kd={anchor}><CardBack2 id="item" size={size === 's' ? 44 : 72} /></div>;
   const ins = `card2:${id}`;
   const name = c?.name ?? q?.name ?? a?.name;
   const kind = c?.kind ?? (q ? 'quest' : 'ancient');
@@ -79,7 +80,7 @@ export function CardFace2({ id, size = 'm', selected, onClick, disabled, anchor 
 /** 小さなカード札 */
 export function CardChip2({ id, highlight }: { id: string; highlight?: boolean }) {
   const c = CARD2[id] ?? ANC2[id] ?? QUEST2[id];
-  if (!c) return <span className="kd-cchip is-back"><CardBackArt id="item" size={20} /></span>;
+  if (!c) return <span className="kd-cchip is-back"><CardBack2 id="item" size={20} /></span>;
   const kind = (c as { kind: string }).kind;
   return (
     <span className={`kd-cchip is-${KIND_CLASS[kind] ?? 'tool'}${highlight ? ' is-hl' : ''}`} data-inspect={`card2:${id}`} role="button" tabIndex={0} aria-label={`${c.name}：タップで詳しく`}>
@@ -89,9 +90,29 @@ export function CardChip2({ id, highlight }: { id: string; highlight?: boolean }
 }
 
 const hasMonArt = (t: string) => MONSTER_IDS.includes(t);
-export function MonArt({ m, size }: { m: { type: string; boss?: boolean; race?: string }; size: number }) {
-  if (m.boss || m.type.startsWith('b_')) return BOSS_IDS.includes(m.type) ? <BossArt id={m.type} size={size} /> : <BossArt id={pick(BOSS_IDS, m.type)} size={size} />;
-  return hasMonArt(m.type) ? <MonsterArt id={m.type} size={size} /> : <MonsterArt id={pick(MONSTER_IDS.filter((x) => x.length > 3 || true), m.type)} size={size} />;
+/** 魔物・主・古竜の絵（画像 art/monsters/<type>.webp があればそれ、無ければ v1 の絵。主・古竜は金の縁） */
+export function MonArt({ m, size }: { m: { type: string; boss?: boolean; race?: string; name?: string }; size: number }) {
+  const boss = !!m.boss || m.type.startsWith('b_');
+  const fb = boss
+    ? <BossArt id={BOSS_IDS.includes(m.type) ? m.type : pick(BOSS_IDS, m.type)} size={size} />
+    : <MonsterArt id={hasMonArt(m.type) ? m.type : pick(MONSTER_IDS, m.type)} size={size} />;
+  return <RasterSquare folder="art/monsters" id={m.type} size={size} label={m.name} frame={boss ? 'gold' : 'ink'} fallback={fb} />;
+}
+
+/** 行動マスの v1 の地形の絵の id（集会所は酒場の絵） */
+const TERRAIN_OF: Record<string, string> = { hall: 'tavern' };
+/** 行動マス・巣の小さな正方形の絵（画像 art/spaces/<id>.webp の真ん中を切り抜く。無ければ v1 の地形の絵） */
+export function SpaceArt({ id, size }: { id: string; size: number }) {
+  return <RasterSquare folder="art/spaces" id={id} size={size} fallback={<TerrainArt id={TERRAIN_OF[id] ?? id} size={size} />} />;
+}
+/** 巣・主の巣の横長の絵（画像 art/spaces/<id>.webp。無ければ v1 の巣の絵） */
+export function NestArt({ id, width }: { id: string; width: number }) {
+  return <RasterScene id={id} width={width} fallback={<NestScene id={id} width={width} />} />;
+}
+
+/** カードの裏（画像 art/misc/back-occ.webp・back-item.webp があればそれ） */
+export function CardBack2({ id, size }: { id: 'occ' | 'item'; size: number }) {
+  return <RasterSquare folder="art/misc" id={`back-${id}`} size={size} label="カードの裏" frame="ink" fallback={<CardBackArt id={id} size={size} />} />;
 }
 
 /** 魔物カード（くじで決まった強さ・反撃・戦利品・証・襲撃） */

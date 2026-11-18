@@ -83,8 +83,8 @@ export function Kiridani2EngineGame({ n, seed, years = 5, level = 'normal', spee
 
   const send = useCallback((a: Action2) => {
     const s = sRef.current!;
-    if (a.t === 'trade') {
-      // 取引は置き場所の選択を続けたまま
+    if (a.t === 'trade' || a.t === 'equip') {
+      // 取引・装備の持ち替えは置き場所の選択を続けたまま
       try { const evs = apply(s, a); t.push(withSync(s, evs)); setSeat(seatOf(s)); } catch { /* 断られた */ }
       return;
     }
@@ -131,6 +131,6 @@ export function Kiridani2EngineGame({ n, seed, years = 5, level = 'normal', spee
   };
 
   const ctl = useSeat2(seat, send, { sheetReady, onTrade: (b: number, give: Cost, get: Cost) => send({ t: 'trade', b, give, get }) });
-  return <Kiridani2Table t={t} ask={auto ? null : ctl.ask} onAnswer={ctl.onAnswer} sheet={auto ? null : ctl.sheetNode} actions={ctl.actions}
+  return <Kiridani2Table t={t} ask={auto ? null : ctl.ask} onAnswer={ctl.onAnswer} sheet={auto ? null : ctl.sheetNode} actions={ctl.actions} picker={ctl.picker} onEquip={ctl.onEquip}
     extra={extra?.({ restart, auto, setAuto, session: sRef.current })} finalExtra={finalExtra} />;
 }

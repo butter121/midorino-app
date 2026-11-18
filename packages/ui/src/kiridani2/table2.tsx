@@ -2,17 +2,17 @@
 // 戦闘・冬・季節の帯は上に重ねる）。v2 で増えたもの：準備段階の画面、段階カードのマス、仲間ごとの装備、進み具合（％）、名声の内訳。
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DATA, RES, type Cost, type Res, type ScoreRow } from '@midorino/engine/src/kiridani2';
-import { EffectArt, KIcon, NestScene, TerrainArt } from '../kiridani/art-registry';
+import { EffectArt, KIcon } from '../kiridani/art-registry';
 import { SPEED_JP, SPEEDS } from '../kiridani/anim/timing';
 import { FxLayer, type FxApi } from '../kiridani/ui/fx';
 import { InfoDot, useInspect } from '../kiridani/ui/inspect';
 import { CostRow, Num, ResCount, SEAT_COLORS, SEAT_MARKS, Token } from '../kiridani/ui/parts';
-import { CardChip2, CardFace2, LeaderArt, MonArt, MonsterCard2, YearsCtx, rageText } from './parts2';
+import { CardArt2, CardChip2, CardFace2, LeaderArt, MonArt, MonsterCard2, NestArt, SpaceArt, YearsCtx, rageText } from './parts2';
 import { pointScale } from '@midorino/engine/src/kiridani2/uihelp';
 import { Inspect2 } from './inspect2';
 import { FameGraph } from './fameGraph';
 import type { Playing2, TablePlayer2 } from './useTable2';
-import { CARD2, NEST_JP, QUEST2, RES_JP, SEASON_JP, cardName, placeName, progressPct, type PV2, type Seat, type View2 } from './view';
+import { CARD2, NEST_JP, QUEST2, RES_JP, SEASON_JP, cardName, groupSpaces, placeName, progressPct, type PV2, type Seat, type View2 } from './view';
 
 export type Tab2 = 'board' | 'base' | 'quests' | 'all';
 const TABS: { id: Tab2; label: string }[] = [{ id: 'board', label: '盤面' }, { id: 'base', label: '拠点' }, { id: 'quests', label: '依頼' }, { id: 'all', label: 'みんな' }];
@@ -32,6 +32,10 @@ export interface Table2Props {
   extra?: ReactNode;
   sheet?: ReactNode;
   actions?: ReactNode;
+  /** 自分の番に出す「動かす仲間」の選び */
+  picker?: ReactNode;
+  /** 拠点の装備の枠をタップしたとき（自分の番だけ。持たせる・はずす） */
+  onEquip?: (companion: number, slot: 'weapon' | 'armor') => void;
   /** 最終画面の下に出すもの（「同じメンバーでもう一度」など） */
   finalExtra?: ReactNode;
 }
@@ -229,15 +233,15 @@ export function Board2({ v, selectable, selected, onSelect, cur }: { v: View2; s
             <button type="button" key={n.id} data-kd={`space:${n.id}`} data-inspect={n.mon ? `mon2:${n.mon.uid}` : `space2:${n.id}`} className={`kd-nest${can ? ' is-can' : ''}${selected === n.id ? ' is-selected' : ''}${spawn ? ' is-spawn' : ''}`}
               style={msVar(cur)} onClick={pick(n.id)} aria-disabled={!can} aria-label={`${NEST_JP[n.id]}${n.mon ? `：${n.mon.name}` : '：空'}`}>
               {can && n.mon && <InfoDot target={`mon2:${n.mon.uid}`} />}
-              <div className="kd-nest-bg"><NestScene id={n.id} width={200} /></div>
+              <div className="kd-nest-bg"><NestArt id={n.id} width={200} /></div>
               <div className="kd-nest-h"><span className="kd-nest-name">{NEST_JP[n.id]}</span><span className="kd-cap">{Array.from({ length: DATA.NEST_CAP }, (_, i) => n.occupants[i] !== undefined ? <Token key={i} seat={n.occupants[i]} size={16} /> : <i key={i} className="kd-slot" />)}</span></div>
               {n.mon ? <MonsterCard2 m={n.mon} compact /> : <div className="kd-nest-empty">静か</div>}
               {n.wait !== undefined && <div className="kd-next"><Token seat={n.wait} size={14} />待ち伏せ</div>}
             </button>
           );
         })}
-        <button type="button" data-kd="space:lair" data-inspect={lair.boss ? `mon2:${lair.boss.uid}` : undefined} className={`kd-nest kd-lair${selectable?.has('lair') ? ' is-can' : ''}${selected === 'lair' ? ' is-selected' : ''}${lair.defeated ? ' is-defeated' : ''}`} onClick={pick('lair')} aria-disabled={!selectable?.has('lair')}>
-          <div className="kd-nest-bg"><NestScene id="lair" width={200} /></div>
+        <button type="button" data-kd="space:lair" data-inspect={lair.boss ? `mon2:${lair.boss.uid}` : 'space2:lair'} className={`kd-nest kd-lair${selectable?.has('lair') ? ' is-can' : ''}${selected === 'lair' ? ' is-selected' : ''}${lair.defeated ? ' is-defeated' : ''}`} onClick={pick('lair')} aria-disabled={!selectable?.has('lair')}>
+          <div className="kd-nest-bg"><NestArt id="lair" width={200} /></div>
           <div className="kd-nest-h"><span className="kd-nest-name">主の巣</span><span className="kd-cap">{lair.occupants.map((o, i) => <Token key={i} seat={o} size={16} />)}</span></div>
           {lair.boss ? <MonsterCard2 m={lair.boss} compact /> : <div className="kd-nest-empty">—</div>}
           <small className="kd-lair-when">{lair.defeated ? '討伐済み' : lairNow ? '今が決戦！' : lair.round ? `R${lair.round}に決戦` : ''}</small>
@@ -249,8 +253,12 @@ export function Board2({ v, selectable, selected, onSelect, cur }: { v: View2; s
           {v.forecast.map((m) => <span key={m.uid} className="kd2-fc" data-inspect={`fc:${m.uid}`} role="button" tabIndex={0} aria-label={`${m.name} 強さ${m.str}`}><MonArt m={m} size={26} /><b>{m.str}</b></span>)}
         </div>
       )}
-      <div className="kd-spaces" role="group" aria-label="行動マス" data-kd-scroll="">
-        {v.spaceOrder.map((id) => {
+      <div className="kd-spaces kd2-spaces" role="group" aria-label="行動マス" data-kd-scroll="">
+        {groupSpaces(v.spaceOrder).map((g) => (
+        <section key={g.id} className={`kd2-sgroup is-${g.id}`} aria-label={g.jp} style={{ ['--kd2-gn' as string]: g.ids.length }}>
+        <h4 className="kd2-sgroup-h">{g.jp}</h4>
+        <div className="kd2-sgrid">
+        {g.ids.map((id) => {
           const s = v.spaces[id];
           const def = DATA.SPACE[id];
           const st = CARD2[id];
@@ -265,7 +273,7 @@ export function Board2({ v, selectable, selected, onSelect, cur }: { v: View2; s
               {can && <InfoDot target={`space2:${id}`} />}
               <strong className="kd-space-n">{placeName(id)}</strong>
               <span className="kd-space-m">
-                <span className="kd-space-art">{s.stage ? <span className="kd2-stagebadge">段{s.stage}</span> : <TerrainArt id={id === 'hall' ? 'tavern' : id === 'market2' ? 'market2' : id} size={44} />}</span>
+                <span className="kd-space-art">{s.stage ? <span className="kd2-stageart"><CardArt2 id={id} size={44} /><span className="kd2-stagebadge is-mini">段{s.stage}</span></span> : <SpaceArt id={id} size={44} />}</span>
                 <span className="kd-space-e">
                   {Object.keys(s.stock).length ? <CostRow cost={s.stock} size={14} /> : <small>{SPACE_SHORT[id] ?? (s.stage ? (st?.text ?? '').slice(0, 14) : '')}</small>}
                 </span>
@@ -274,6 +282,9 @@ export function Board2({ v, selectable, selected, onSelect, cur }: { v: View2; s
             </button>
           );
         })}
+        </div>
+        </section>
+        ))}
       </div>
     </div>
   );
@@ -284,7 +295,7 @@ function Pips({ n, max = DATA.MAX_SKILL, cls }: { n: number; max?: number; cls: 
   return <span className={`kd-skill ${cls}`}>{Array.from({ length: max }, (_, i) => <i key={i} className={i < n ? 'is-on' : ''} />)}</span>;
 }
 
-export function BaseView2({ p, v, cur }: { p: PV2; v: View2; cur: Playing2 | null }) {
+export function BaseView2({ p, v, cur, onEquip }: { p: PV2; v: View2; cur: Playing2 | null; onEquip?: (companion: number, slot: 'weapon' | 'armor') => void }) {
   const mine = p.seat === v.me;
   const equipped = new Set(p.comps.flatMap((c) => [c.weapon, c.armor]).filter(Boolean) as string[]);
   const storage = p.items.filter((x, i) => !equipped.has(x) || p.items.indexOf(x) !== i);
@@ -298,19 +309,20 @@ export function BaseView2({ p, v, cur }: { p: PV2; v: View2; cur: Playing2 | nul
       </div>
       <div className="kd-base-grid">
         <section className="kd-bsec kd-bsec-comps kd2-comps" aria-label="仲間と装備">
-          <h3>仲間 {p.comps.length}/{DATA.MAX_COMPS}<small>寝床{p.beds}・使い魔{p.pets}</small></h3>
+          <h3>仲間 {p.comps.length}/{DATA.MAX_COMPS}<small>寝床{p.beds}・使い魔{p.pets}</small>{onEquip && <small className="kd2-eqhint">装備の枠をタップで持ち替え</small>}</h3>
           <div className="kd2-complist">
             {p.comps.map((c, i) => (
               <div key={i} className={`kd2-comp${c.injured ? ' is-injured' : ''}${c.rest ? ' is-rest' : ''}${c.at ? ' is-out' : ''}`} data-kd={`comp:${p.seat}:${i}`}>
                 <span className="kd2-comp-who"><Token seat={p.seat} size={24} injured={c.injured} dim={!!c.at || c.rest} /><small>{c.leader ? 'リーダー' : `仲間${i + 1}`}</small><small className="kd-comp-st">{c.injured ? '負傷' : c.rest ? '休み' : c.at ? placeName(c.at).slice(0, 4) : '待機'}</small></span>
                 <span className="kd2-comp-sk"><span title="攻めの熟練"><KIcon name="power" size={14} /><Pips n={c.atk} cls="is-atk" /></span><span title="守りの熟練"><KIcon name="defense" size={14} /><Pips n={c.def} cls="is-def" /></span></span>
                 <span className="kd2-slots">
-                  <span className={`kd2-slot is-weapon${c.weapon ? ' is-on' : ''}`} data-inspect={c.weapon ? `card2:${c.weapon}` : undefined} role={c.weapon ? 'button' : undefined} tabIndex={c.weapon ? 0 : undefined}>
-                    <small>武器</small>{c.weapon ? <b>{cardName(c.weapon)}</b> : <i>なし</i>}
-                  </span>
-                  <span className={`kd2-slot is-armor${c.armor ? ' is-on' : ''}`} data-inspect={c.armor ? `card2:${c.armor}` : undefined} role={c.armor ? 'button' : undefined} tabIndex={c.armor ? 0 : undefined}>
-                    <small>防具</small>{c.armor ? <b>{cardName(c.armor)}</b> : <i>なし</i>}
-                  </span>
+                  {(['weapon', 'armor'] as const).map((sl) => {
+                    const id = c[sl];
+                    const body = <><small>{sl === 'weapon' ? '武器' : '防具'}</small>{id ? <b>{cardName(id)}</b> : <i>{onEquip ? '＋持たせる' : 'なし'}</i>}</>;
+                    return onEquip
+                      ? <button key={sl} type="button" className={`kd2-slot is-${sl} is-edit${id ? ' is-on' : ''}`} data-kd={`slot:${i}:${sl}`} onClick={() => onEquip(i, sl)} aria-label={`${c.leader ? 'リーダー' : `仲間${i + 1}`}の${sl === 'weapon' ? '武器' : '防具'}を持ち替える`}>{body}</button>
+                      : <span key={sl} className={`kd2-slot is-${sl}${id ? ' is-on' : ''}`} data-inspect={id ? `card2:${id}` : undefined} role={id ? 'button' : undefined} tabIndex={id ? 0 : undefined}>{body}</span>;
+                  })}
                 </span>
               </div>
             ))}
@@ -528,7 +540,7 @@ export function FinalScoring2({ v, rows, cur, after }: { v: View2; rows: ScoreRo
 }
 
 // ---------------------------------------------------------------- 全体
-export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions, finalExtra }: Table2Props) {
+export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions, picker, onEquip, finalExtra }: Table2Props) {
   const { view: v, cur } = t;
   const rootRef = useRef<HTMLDivElement>(null);
   const fxRef = useRef<FxApi>(null);
@@ -563,7 +575,9 @@ export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions, finalE
       if (!t.reduced) fx?.float(`res:${r}`, `${d > 0 ? '+' : ''}${d}`, { ms, tone: d > 0 ? 'good' : 'bad' });
     }
   }, [pulse?.key]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { setSel(null); setQueued(null); if (ask?.kind === 'place') { setTab('board'); setPeek(null); } }, [ask]);
+  // 置く番になったら盤面へ（装備を持ち替えて問いが新しくなっただけなら、拠点のまま）
+  const prevAsk = useRef<string | undefined>(undefined);
+  useEffect(() => { setSel(null); setQueued(null); if (ask?.kind === 'place' && prevAsk.current !== 'place') { setTab('board'); setPeek(null); } prevAsk.current = ask?.kind; }, [ask]);
   useEffect(() => {
     if (!cur) return;
     const e = cur.ev;
@@ -594,7 +608,7 @@ export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions, finalE
       </nav>
       <div className="kd-tabbody" data-kd-scroll="">
         {tab === 'board' && <Board2 v={v} cur={cur} selectable={selectable} selected={sel ?? queued} onSelect={setSel} />}
-        {tab === 'base' && me && <BaseView2 p={v.players[peek ?? v.me]} v={v} cur={cur} />}
+        {tab === 'base' && me && <BaseView2 p={v.players[peek ?? v.me]} v={v} cur={cur} onEquip={(peek ?? v.me) === v.me ? onEquip : undefined} />}
         {tab === 'quests' && <QuestsView2 v={v} cur={cur} />}
         {tab === 'all' && <Everyone2 v={v} onOpen={(s) => { setPeek(s); setTab('base'); }} />}
       </div>
@@ -680,6 +694,7 @@ export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions, finalE
         <main className="kd-main">{main}</main>
         {hasBar && me && (
           <footer className="kd-mybar" ref={barRef}>
+            {placeAsk && !queued && picker}
             <div className="kd-mybar-r">{RES.map((r) => <ResCount key={r} r={r} n={me.res[r]} size={22} anchor={`res:${r}`} />)}<span className="kd-upchip" data-inspect="upkeep2" role="button" tabIndex={0} aria-label="冬の食料"><KIcon name="upkeep" size={18} /><b>{me.res.food}/{me.comps.length * DATA.UPKEEP}</b></span></div>
             <div className="kd-mybar-a">
               {placeAsk ? (

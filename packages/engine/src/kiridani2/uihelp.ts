@@ -15,7 +15,8 @@ export function answerToAction(w: Req, raw: unknown): Action {
     case 'choose': {
       const i = w.opts.findIndex((o) => sameOpt(o, raw as never));
       if (i < 0) throw new Error('bad option');
-      return { t: 'opt', i };
+      const o = raw as { use?: string[]; who?: number[] };
+      return { t: 'opt', i, ...(o.use ? { use: o.use } : {}), ...(o.who ? { who: o.who } : {}) };
     }
     case 'pick': {
       const i = w.options.findIndex((x) => x === raw || same(x, raw));

@@ -1,7 +1,7 @@
 // インストールできるようにするための最小のサービスワーカー。
 // いつもネットから最新を取り、つながらないときだけ前回の画面を使う（古い版が残らないように）。
-// ただしカードの絵（cards/*.webp）は重くて変わらないので「手元にあれば手元から」。差し替えは cards/index.json の v を
-// 変えると URL（?v=）が変わって取り直す。古い v の絵はそのとき消す。
+// ただし絵の画像（cards/*.webp・art/<種類>/*.webp）は重くて変わらないので「手元にあれば手元から」。差し替えは各フォルダの
+// index.json の v を変えると URL（?v=）が変わって取り直す。古い v の絵はそのとき消す。
 const CACHE = 'kiridani-v2';
 const CARDS = 'kiridani-cards-v1';
 self.addEventListener('install', () => self.skipWaiting());
@@ -9,7 +9,7 @@ self.addEventListener('activate', (e) => e.waitUntil(
   caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE && k !== CARDS).map((k) => caches.delete(k)))).then(() => self.clients.claim())
 ));
 
-const isCardArt = (url) => /\/cards\/[^/]+\.webp$/.test(url.pathname);
+const isCardArt = (url) => /\/(cards|art\/[a-z0-9_-]+)\/[^/]+\.webp$/.test(url.pathname);
 
 async function cardArt(req) {
   const c = await caches.open(CARDS);

@@ -33,6 +33,12 @@ export function cleanUse(u: unknown): string[] | undefined {
   return [...u];
 }
 
+/** 動かす仲間の選び（仲間の番号の並び・多すぎない）。形が違えば undefined */
+export function cleanWho(u: unknown): number[] | undefined {
+  if (!Array.isArray(u) || !u.length || u.length > 8 || !u.every((x) => Number.isInteger(x) && x >= 0 && x < 16)) return undefined;
+  return [...u];
+}
+
 export class Kiridani2Session {
   readonly g: Game;
   readonly human: number;
@@ -85,7 +91,14 @@ export class Kiridani2Session {
         if (!m) throw new Error('bad option');
         // 戦闘の後押しを自分で選んだとき（巣・主の巣だけ。待ち伏せは戦うときに決める）
         const use = cleanUse((a as Option).use);
+        const raw = (a as Option).who;
         a = use && m.k && m.mode !== 'wait' && m.i >= 0 ? { ...m, use } : m;
+        // 動かす仲間を選んだとき（使えない仲間なら答えにしない）
+        if (raw !== undefined) {
+          const who = cleanWho(raw);
+          if (!who || !this.g.whoFor(w.p, { ...(a as Option), who })) throw new Error('その仲間は動かせない');
+          a = { ...(a as Option), who };
+        }
         break;
       }
       case 'heal': case 'effect': a = !!a; break;
@@ -140,6 +153,16 @@ export class Kiridani2Session {
   private applyTrade(b: number, give: Cost, get: Cost): GameEvent[] {
     const w = this.waiting as Extract<Req, { k: 'choose' }>;
     this.g.trade(w.p, this.g.players[b], give, get);
+    this.waiting = { ...w, opts: this.g.legal(w.p, w.opts.some((o) => o.s === '@spell')) };
+    return this.g.E!.splice(0);
+  }
+
+  // ---------------------------------------------------------- 装備（自分の手番に無料で持たせる・はずす・持ち替える）
+  /** 装備を持たせる（id＝null ではずす）。置き場所の選択は続く */
+  equip(companion: number, slot: 'weapon' | 'armor', id: string | null): GameEvent[] {
+    const w = this.waiting;
+    if (!w || w.k !== 'choose') throw new Error('装備は自分の番に持ち替えられる');
+    this.g.equip(w.p, companion, slot, id);
     this.waiting = { ...w, opts: this.g.legal(w.p, w.opts.some((o) => o.s === '@spell')) };
     return this.g.E!.splice(0);
   }

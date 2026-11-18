@@ -57,6 +57,8 @@ export function Kiridani2OnlineGame({ seat, events, prompt, waitFor, names, onAc
   const send = useCallback((a: Action2) => {
     if (!prompt) return;
     const id = prompt.id;
+    // 装備の持ち替えは置く番を続けたまま（問いを閉じない。次の問いが届けば新しくなる）
+    if (a.t === 'equip') { setErr(''); onAct(id, a).then((r) => { if (!r.ok) setErr(r.error); }); return; }
     setSent(id); setErr('');
     t.submit(() => {
       onAct(id, a).then((r) => { if (!r.ok) { setErr(r.error); setSent(null); } });
@@ -102,7 +104,7 @@ export function Kiridani2OnlineGame({ seat, events, prompt, waitFor, names, onAc
   const waitNote = !shadow && others.length && !t.busy ? `${others.map((x) => names[x] ?? `席${x + 1}`).join('・')}が選んでいます…` : '';
   return (
     <>
-      <Kiridani2Table t={t} ask={waitingOffer ? null : ctl.ask} onAnswer={ctl.onAnswer} sheet={<>{sheetNode}{offerNode}</>} actions={ctl.actions} extra={extra} finalExtra={finalExtra} />
+      <Kiridani2Table t={t} ask={waitingOffer ? null : ctl.ask} onAnswer={ctl.onAnswer} sheet={<>{sheetNode}{offerNode}</>} actions={ctl.actions} picker={waitingOffer ? null : ctl.picker} onEquip={waitingOffer ? undefined : ctl.onEquip} extra={extra} finalExtra={finalExtra} />
       {(banner || waitNote || err || shownNote || away.length > 0) && (
         <div className="kd-netnote" role="status">
           {banner}
