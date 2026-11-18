@@ -13,7 +13,7 @@ import { CHAT_KEEP, CHAT_STAMPS, ChatLimiter, sanitizeChat, type ChatMsg } from 
 
 interface Member extends LobbyMember { token: string; conn: Conn | null; sent: number }
 /** 試合（rules が無い古い保存は旧ルール） */
-export interface KdGame { seed: number; n: number; seats: string[]; names: string[]; level: KdLevel; rules?: KdRules; years?: number }
+export interface KdGame { seed: number; n: number; seats: string[]; names: string[]; level: KdLevel; rules?: KdRules; years?: number; /** 試合の番号（「同じメンバーでもう一度」で変わる。古い保存には無い＝''） */ gid?: string }
 interface Saved { roomId: string; members: Omit<Member, 'conn' | 'online' | 'sent'>[]; seats: number; level: KdLevel; rules?: KdRules; years?: number; game: KdGame | null; actions: [number, string, AnyAction][] }
 
 /** 旧ルール・新ルールの審判の共通の形（ホストが使うところだけ） */
@@ -66,6 +66,7 @@ export class KdHostRoom {
   /** 接続が切れてから AI に代わるまで（テスト用。既定 KD_AWAY_GRACE_MS） */
   private graceMs: number;
   private graceTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private unsubRef: (() => void) | null = null;
 
   constructor(private net: Net, hostName: string, opts: { saved?: Saved; store?: Store; seed?: number; offerTimeoutMs?: number; awayGraceMs?: number; now?: () => number; rules?: KdRules; years?: number } = {}) {
     if (opts.rules) this.rules = opts.rules;
@@ -276,6 +277,7 @@ export class KdHostRoom {
     const game: KdGame = {
       seed: seed ?? (crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000) + 1,
       n, level: this.level, ...(this.rules === 2 ? { rules: 2 as const, years: this.years } : {}),
+      gid: randomHex(8),
       seats: Array.from({ length: n }, (_, i) => humans[i]?.id ?? ''),
       names: Array.from({ length: n }, (_, i) => humans[i]?.name ?? ai[i - humans.length] ?? `AI${i + 1}`),
     };
@@ -285,7 +287,23 @@ export class KdHostRoom {
     return null;
   }
 
+  /** 終わった試合のあと、同じ席・同じ人（AI の席もそのまま）・同じ設定で、新しい種の試合を始める。
+   *  参加者はつないだまま新しい試合に移る（試合の番号 gid が変わるので、参加者は前の試合の出来事を捨てて受け取り直す）。チャットはそのまま */
+  rematch(seed?: number): boolean {
+    const old = this.game;
+    if (!old || !this.referee?.done) return false;
+    for (const t of this.graceTimers.values()) clearTimeout(t);
+    this.graceTimers.clear();
+    const game: KdGame = { ...old, seed: seed ?? (crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000) + 1, gid: randomHex(8) };
+    for (const m of this.members) m.sent = 0;
+    this.begin(game, []);
+    this.broadcast();
+    this.changed();
+    return true;
+  }
+
   private begin(game: KdGame, actions: [number, string, AnyAction][]) {
+    this.unsubRef?.();
     this.game = game;
     const humans = game.seats.map((id, i) => (id ? i : -1)).filter((i) => i >= 0);
     const opts = { n: game.n, seed: game.seed, humans, offerTimeoutMs: this.offerMs, levels: Array(game.n).fill(game.level), names: game.names };
@@ -296,7 +314,7 @@ export class KdHostRoom {
     // 読み込み直し：同じ答えを同じ順に渡して、同じところまで進める
     ref.replay(actions);
     this.referee = ref;
-    ref.subscribe(() => { this.pushAll(); this.changed(); });
+    this.unsubRef = ref.subscribe(() => { if (this.referee === ref) { this.pushAll(); this.changed(); } });
     // 始めた時・読み込み直した時に来ていない人も、猶予のあとは AI に任せる
     for (const m of this.members) this.watchAway(m);
   }
@@ -342,7 +360,7 @@ export class KdHostRoom {
     do {
       const evs = log.slice(from, from + EV_CHUNK);
       const last = from + evs.length >= log.length;
-      this.send(m.conn, { t: 'game', seat, names: g.names, from, evs, last, rules: g.rules ?? 1, ...(last ? { prompt: ref.prompt(seat), wait: ref.waitingSeats(), done: ref.done, offer: ref.offerFor(seat), note: ref.noteFor(seat) } : {}) });
+      this.send(m.conn, { t: 'game', gid: g.gid ?? '', seat, names: g.names, from, evs, last, rules: g.rules ?? 1, ...(last ? { prompt: ref.prompt(seat), wait: ref.waitingSeats(), done: ref.done, offer: ref.offerFor(seat), note: ref.noteFor(seat) } : {}) });
       from += evs.length;
     } while (from < log.length);
     m.sent = log.length;

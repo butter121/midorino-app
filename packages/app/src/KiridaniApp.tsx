@@ -132,6 +132,14 @@ function Solo({ rules, resume, onBack }: { rules: KdRules; resume?: boolean; onB
     if (rules === 2) save(SOLO2, { v: 1, n: g.n, seed: g.seed, years: g.years, level: g.level, hist: [], at: Date.now() } satisfies Solo2Save);
     setGame(g);
   };
+  /** 同じメンバー（人数・年数・AIの強さ）で、新しい種でもう一度 */
+  const rematch = () => {
+    if (!game) return;
+    const g = { seed: Math.floor(Math.random() * 1e6), key: Date.now(), n: game.n, years: game.years, level: game.level };
+    if (rules === 2) save(SOLO2, { v: 1, n: g.n, seed: g.seed, years: g.years, level: g.level, hist: [], at: Date.now() } satisfies Solo2Save);
+    setGame(g);
+  };
+  const again = <button type="button" className="kd-btn is-primary" data-kd="rematch" onClick={rematch}>同じメンバーでもう一度</button>;
   const g2 = game && rules === 2 ? game : null;
   const onProgress = useCallback((p: { hist: Action2[]; auto: boolean; done: boolean }) => {
     if (!g2) return;
@@ -142,7 +150,7 @@ function Solo({ rules, resume, onBack }: { rules: KdRules; resume?: boolean; onB
   if (g2) {
     return (
       <Kiridani2EngineGame key={g2.key} n={g2.n} seed={g2.seed} years={g2.years} level={LEVEL2[g2.level] ?? 'normal'} speed={SPEED}
-        resume={g2.resume ? { hist: g2.resume.hist, auto: g2.resume.auto } : undefined} onProgress={onProgress}
+        resume={g2.resume ? { hist: g2.resume.hist, auto: g2.resume.auto } : undefined} onProgress={onProgress} finalExtra={again}
         extra={({ auto, setAuto }) => (
           <details className="kd-cat-menu">
             <summary aria-label="メニュー">⚙</summary>
@@ -157,7 +165,7 @@ function Solo({ rules, resume, onBack }: { rules: KdRules; resume?: boolean; onB
   }
   if (game) {
     return (
-      <KiridaniEngineGame key={game.key} n={n} seed={game.seed} level={level} speed={SPEED}
+      <KiridaniEngineGame key={game.key} n={game.n} seed={game.seed} level={game.level} speed={SPEED} finalExtra={again}
         extra={() => (
           <details className="kd-cat-menu">
             <summary aria-label="メニュー">⚙</summary>
@@ -227,13 +235,14 @@ function Friends({ rules, onBack, onHost }: { rules: KdRules; onBack: () => void
 function GuestScreen({ roomId, onLeave }: { roomId: string; onLeave: () => void }) {
   const [client] = useState(() => new KdGuestClient(peerNet(), roomId, load('kd.name', '')));
   useRoom(client);
+  const [, setTick] = useState(0);
   const [joining, setJoining] = useState(client.known);
   useEffect(() => { if (joining) client.connect(); }, [client, joining]);
   const leave = () => { client.close(); onLeave(); };
   const lobbyRules = client.lobby?.rules ?? client.rules;
   useEffect(() => { if (lobbyRules === 1 || lobbyRules === 2) preload(lobbyRules); }, [lobbyRules]);
   const quit = () => { forgetRoom(); leave(); };
-  const prompt = useStablePrompt(client.prompt);
+  const prompt = useStablePrompt(client.prompt, client.gid ?? '');
   // 途中の試合を覚えておく（終わった・閉じた・断られたら忘れる）
   useEffect(() => {
     if (client.status === 'denied' || client.status === 'closed' || client.done) forgetRoom();
@@ -257,13 +266,26 @@ function GuestScreen({ roomId, onLeave }: { roomId: string; onLeave: () => void 
     const banner = client.status === 'offline' ? (client.reason || 'ホストとの接続が切れました。つなぎ直しています…')
       : notAway.length ? <><b>{notAway.join('・')}</b>の接続が切れました（戻らなければ、少ししてAIが代わりに動かします）</> : undefined;
     const menu = <Menu chat={chat} items={client.done ? [['タイトルへ', quit]] : [['いったん退室する（AIが代わりに動かします）', leave]]} />;
+    const gameKey = client.gid ?? '';
+    const waitNext = <small>ホストが「同じメンバーでもう一度」を押すと、このまま次の試合が始まります</small>;
+    // ホストが同じメンバーで次の試合を始めた：お知らせ（続ける／抜ける。抜けた席は AI が代わる）
+    const rematchNote = client.rematched && (
+      <div className="kd2-rematch-note" role="dialog" aria-label="次の試合">
+        <p><b>ホストが同じメンバーでもう一度始めました</b><small>このまま次の試合に参加します。抜けると、あなたの席は AI が代わりに動かします。チャットはそのままです。</small></p>
+        <div>
+          <button type="button" className="kd-btn" data-kd="rematch-leave" onClick={quit}>抜ける</button>
+          <button type="button" className="kd-btn is-primary" data-kd="rematch-ok" onClick={() => { client.rematched = false; setTick((x) => x + 1); }}>続ける</button>
+        </div>
+      </div>
+    );
     return (
       <>
       {client.rules === 2
-        ? <Kiridani2OnlineGame seat={client.seat} events={client.events as Ev[]} prompt={prompt as Prompt2 | null} waitFor={client.wait} names={client.names} onAct={onAct as (id: string, a: Action2) => Promise<{ ok: true } | { ok: false; error: string }>}
+        ? <Kiridani2OnlineGame key={gameKey} finalExtra={waitNext} seat={client.seat} events={client.events as Ev[]} prompt={prompt as Prompt2 | null} waitFor={client.wait} names={client.names} onAct={onAct as (id: string, a: Action2) => Promise<{ ok: true } | { ok: false; error: string }>}
           onJudge={onJudge as (b: number, give: Cost, get: Cost) => Promise<TradeJudge2>} banner={banner} away={awayNames} speed={SPEED} offer={client.offer as OfferView2 | null} note={client.note as OfferNote2 | null} extra={menu} />
-        : <KiridaniOnlineGame seat={client.seat} events={client.events as GameEvent[]} prompt={prompt as Prompt | null} waitFor={client.wait} names={client.names} onAct={onAct as (id: string, a: Action) => Promise<{ ok: true } | { ok: false; error: string }>}
+        : <KiridaniOnlineGame key={gameKey} finalExtra={waitNext} seat={client.seat} events={client.events as GameEvent[]} prompt={prompt as Prompt | null} waitFor={client.wait} names={client.names} onAct={onAct as (id: string, a: Action) => Promise<{ ok: true } | { ok: false; error: string }>}
           onJudge={onJudge as (b: number, give: Cost, get: Cost) => Promise<TradeJudge>} banner={banner} away={awayNames} speed={SPEED} offer={client.offer as OfferView | null} note={client.note as OfferNote | null} extra={menu} />}
+      {rematchNote}
       {chat.node}
       </>
     );

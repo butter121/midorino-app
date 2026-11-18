@@ -10,6 +10,7 @@ import { CostRow, Num, ResCount, SEAT_COLORS, SEAT_MARKS, Token } from '../kirid
 import { CardChip2, CardFace2, LeaderArt, MonArt, MonsterCard2, YearsCtx } from './parts2';
 import { pointScale } from '@midorino/engine/src/kiridani2/uihelp';
 import { Inspect2 } from './inspect2';
+import { FameGraph } from './fameGraph';
 import type { Playing2, TablePlayer2 } from './useTable2';
 import { CARD2, NEST_JP, QUEST2, RES_JP, SEASON_JP, cardName, placeName, progressPct, type PV2, type Seat, type View2 } from './view';
 
@@ -31,6 +32,8 @@ export interface Table2Props {
   extra?: ReactNode;
   sheet?: ReactNode;
   actions?: ReactNode;
+  /** 最終画面の下に出すもの（「同じメンバーでもう一度」など） */
+  finalExtra?: ReactNode;
 }
 
 const nameOf = (v: View2, s: Seat) => (s === v.me ? 'あなた' : v.players[s]?.name ?? '');
@@ -467,10 +470,10 @@ export function WinterPanel2({ v, cur }: { v: View2; cur: Playing2 | null }) {
 }
 
 // ---------------------------------------------------------------- 最終集計（名声の内訳）
-export function FinalScoring2({ v, rows, cur }: { v: View2; rows: ScoreRow[]; cur: Playing2 | null }) {
+export function FinalScoring2({ v, rows, cur, after }: { v: View2; rows: ScoreRow[]; cur: Playing2 | null; after?: ReactNode }) {
   const animMs = cur?.ev.t === 'score' ? cur.ms : 0;
   const [p, setP] = useState(animMs ? 0 : 1);
-  const [mode, setMode] = useState<'rank' | 'table'>('rank');
+  const [mode, setMode] = useState<'rank' | 'graph' | 'table'>('rank');
   useEffect(() => {
     if (!animMs) { setP(1); return; }
     const t0 = performance.now(); let raf = 0;
@@ -493,6 +496,7 @@ export function FinalScoring2({ v, rows, cur }: { v: View2; rows: ScoreRow[]; cu
         <div><small>{v.years}年間の冒険の終わり</small><h2>{done ? '最終結果' : '名声の集計'}</h2></div>
         <div className="kd-seg" role="tablist" aria-label="表示">
           <button type="button" role="tab" aria-selected={mode === 'rank'} className={mode === 'rank' ? 'is-on' : ''} onClick={() => setMode('rank')}>順位</button>
+          <button type="button" role="tab" aria-selected={mode === 'graph'} className={mode === 'graph' ? 'is-on' : ''} onClick={() => setMode('graph')}>推移</button>
           <button type="button" role="tab" aria-selected={mode === 'table'} className={mode === 'table' ? 'is-on' : ''} onClick={() => setMode('table')}>内訳</button>
         </div>
       </header>
@@ -517,12 +521,14 @@ export function FinalScoring2({ v, rows, cur }: { v: View2; rows: ScoreRow[]; cu
           <tr className="is-total"><th>合計</th>{rows.map((r) => <td key={r.seat}>{done ? r.total : ''}</td>)}</tr>
         </tbody>
       </table>
+      {mode !== 'table' && <FameGraph v={v} rows={done ? rows : undefined} nameOf={(s) => nameOf(v, s)} />}
+      {done && after && <div className="kd2-final-after">{after}</div>}
     </div>
   );
 }
 
 // ---------------------------------------------------------------- 全体
-export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions }: Table2Props) {
+export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions, finalExtra }: Table2Props) {
   const { view: v, cur } = t;
   const rootRef = useRef<HTMLDivElement>(null);
   const fxRef = useRef<FxApi>(null);
@@ -578,7 +584,7 @@ export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions }: Tabl
 
   let main: ReactNode;
   if (v.phase === 'title') main = <div className="kd-screen kd-title"><h1>霧谷の冒険者団</h1><p>霧の谷に拠点を構え、{v.years}年間で名声を競う</p></div>;
-  else if (v.phase === 'final' && v.final) main = <FinalScoring2 v={v} rows={v.final} cur={cur} />;
+  else if (v.phase === 'final' && v.final) main = <FinalScoring2 v={v} rows={v.final} cur={cur} after={finalExtra} />;
   else if (ask?.kind === 'ratio') main = <RatioScreen v={v} onPick={answer} />;
   else if (setupPhase) main = <CardPickScreen v={v} ask={ask?.kind === 'card' && !queued ? ask : null} onPick={ask?.kind === 'card' ? answer : undefined} />;
   else main = (

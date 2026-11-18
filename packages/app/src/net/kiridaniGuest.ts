@@ -28,6 +28,10 @@ export class KdGuestClient {
   note: AnyOfferNote | null = null;
   /** チャット（ホストが配った分） */
   chat: ChatMsg[] = [];
+  /** いまの試合の番号（ホストが「同じメンバーでもう一度」を押すと変わる）。まだ試合を受け取っていなければ null */
+  gid: string | null = null;
+  /** ホストが同じメンバーで次の試合を始めた（画面でお知らせを出す。見たら false に） */
+  rematched = false;
   private token: string | null = null;
   private conn: Conn | null = null;
   private reqId = 0;
@@ -98,6 +102,13 @@ export class KdGuestClient {
         break;
       case 'lobby': this.lobby = msg.lobby; if (!this.started) this.rules = msg.lobby.rules ?? 1; break;
       case 'game': {
+        const gid = msg.gid ?? '';
+        if (this.gid !== null && gid !== this.gid) {
+          // 新しい試合：前の試合の出来事・問い・取引を捨てて、最初から受け取り直す
+          this.events = []; this.prompt = null; this.wait = []; this.done = false; this.offer = null; this.note = null;
+          this.rematched = true;
+        }
+        this.gid = gid;
         this.seat = msg.seat; this.names = msg.names;
         if (msg.rules) this.rules = msg.rules;
         const have = this.events.length;

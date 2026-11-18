@@ -23,10 +23,6 @@ export function endFameNote(id: string, years: number | undefined): string | nul
 
 export const KIND2_JP: Record<string, string> = { leader: 'リーダー', occ: '職能', weapon: '武具', armor: '防具', tool: '道具', spell: '秘術', gear: '共通の装備', stage: '段階', ancient: '古代の品', quest: '依頼' };
 const KIND_CLASS: Record<string, string> = { leader: 'occ', occ: 'occ', weapon: 'weapon', armor: 'weapon', gear: 'weapon', tool: 'tool', spell: 'spell', stage: 'tool' };
-export const ENGINE_JP: Record<string, string> = {
-  hunt: '狩り', gather: '採集', trade: '交易', fort: '守り', smith: '鍛冶', family: '家族', arcane: '秘術', beast: '獣使い', quest: '依頼', ally: '共闘', ruins: '遺跡', boss: '主狩り', bridge: '橋渡し',
-};
-
 const hash = (s: string) => { let h = 7; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
 const pick = <T,>(xs: T[], id: string) => xs[hash(id) % xs.length];
 
@@ -36,7 +32,7 @@ export function LeaderArt({ id, size = 40 }: { id?: string; size?: number }) {
   return <CardPicture id={id} kind="leader" size={size} />;
 }
 
-/** カードの絵（絵の画像 cards/<id>.webp があればそれ、無ければ種類の合う v1 の絵）。種類の縁取りと強い動きの札を重ねる */
+/** カードの絵（絵の画像 cards/<id>.webp があればそれ、無ければ種類の合う v1 の絵）。種類の縁取りを重ねる（強い動きは見せない） */
 export function CardArt2({ id, size }: { id: string; size: number }) {
   const k = kindOf(id);
   if (!k) return <CardBackArt id="item" size={size} />;
@@ -59,7 +55,7 @@ export function CardFace2({ id, size = 'm', selected, onClick, disabled, anchor 
     <>
       <div className="kd-card-art"><CardArt2 id={id} size={size === 's' ? 44 : size === 'm' ? 76 : 104} /></div>
       <div className="kd-card-body">
-        <div className="kd-card-kind">{KIND2_JP[kind]}{c?.engine?.length ? <span className="kd-quirk">{c.engine.map((e) => ENGINE_JP[e] ?? e).join('・')}</span> : null}</div>
+        <div className="kd-card-kind">{KIND2_JP[kind]}</div>
         <div className="kd-card-name">{name}</div>
         {size !== 's' && <>
           {(c?.cost || c?.fame || stats.length > 0) && <div className="kd-card-cost">{c?.cost && <CostRow cost={c.cost} size={14} />}{c?.fame ? <span className="kd-fame-s">名声{c.fame}</span> : null}{stats.map((s) => <span key={s} className="kd-fame-s">{s}</span>)}</div>}

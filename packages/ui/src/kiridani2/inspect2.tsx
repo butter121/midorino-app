@@ -3,7 +3,7 @@ import { useEffect, type ReactNode } from 'react';
 import { DATA, type Monster, FLAVOR } from '@midorino/engine/src/kiridani2';
 import { KIcon, NestScene, TerrainArt } from '../kiridani/art-registry';
 import { CostRow, ResCount, Token } from '../kiridani/ui/parts';
-import { CardChip2, CardFace2, ENGINE_JP, KIND2_JP, LeaderArt, MonArt } from './parts2';
+import { CardChip2, CardFace2, KIND2_JP, LeaderArt, MonArt } from './parts2';
 import { ANC2, CARD2, NEST_JP, QUEST2, RES_JP, cardName, placeName, type PV2, type Seat, type View2 } from './view';
 import { RES } from '@midorino/engine/src/kiridani2';
 
@@ -47,7 +47,6 @@ function body(target: string, v: View2): { kind: string; title: string; node: Re
       return {
         kind: c ? KIND2_JP[c.kind] : q ? (q.secret ? '秘密依頼' : '依頼') : '古代の品', title: name, node: <>
           <div className="kd-insp-card"><CardFace2 id={id} size="l" /></div>
-          {c?.engine?.length ? <Row k="強い動き"><span className="kd-tags">{c.engine.map((e) => <i key={e}>{ENGINE_JP[e] ?? e}</i>)}</span></Row> : null}
           {c?.cost && <Row k="費用"><CostRow cost={c.cost} size={18} /></Row>}
           {c?.prereq && <Row k="条件">{Object.entries(c.prereq).map(([kk, n]) => `${kk === 'occs' ? '職能' : kk === 'comps' ? '仲間' : kk === 'walls' ? '防壁' : kk === 'facilities' ? '施設' : kk === 'kills' ? '討伐' : kk}${typeof n === 'number' ? `${n}以上` : `：${cardName(String(n))}`}`).join('・')}</Row>}
           {c && (c.kind === 'weapon' || c.kind === 'armor' || c.kind === 'gear') && <Row k="装備">{c.slot === 'armor' ? '防具の枠' : '武器の枠'}{c.power ? `・戦力+${c.power}` : ''}{c.guard ? `・守り+${c.guard}` : ''}{c.rear ? '・後衛（反撃を受けない）' : ''}{c.two_hand ? '・両手（防具なし）' : ''}</Row>}

@@ -15,9 +15,11 @@ export function useRoom<T extends { subscribe(f: () => void): () => void }>(x: T
   useEffect(() => x.subscribe(() => setV((v) => v + 1)), [x]);
 }
 
-/** 同じ問い（番号が同じ）なら同じものを返す（開いているトレイを閉じない） */
-export function useStablePrompt(p: AnyPrompt | null): AnyPrompt | null {
+/** 同じ問い（番号が同じ）なら同じものを返す（開いているトレイを閉じない）。game は試合の番号（次の試合では同じ番号の問いも別物） */
+export function useStablePrompt(p: AnyPrompt | null, game = ''): AnyPrompt | null {
   const ref = useRef<AnyPrompt | null>(null);
+  const gref = useRef(game);
+  if (gref.current !== game) { gref.current = game; ref.current = null; }
   if (!p) ref.current = null;
   else if (!ref.current || ref.current.id !== p.id || ref.current.seat !== p.seat) ref.current = p;
   return ref.current;
