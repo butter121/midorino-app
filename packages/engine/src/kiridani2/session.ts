@@ -27,6 +27,11 @@ export interface SessionOptions {
 export interface TradeJudge { ok: boolean; accept: boolean; error?: string; human?: boolean }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+/** 戦闘の後押しの選び（文字列の並び・多すぎない）。形が違えば undefined */
+export function cleanUse(u: unknown): string[] | undefined {
+  if (!Array.isArray(u) || u.length > 16 || !u.every((x) => typeof x === 'string' && x.length <= 40)) return undefined;
+  return [...u];
+}
 
 export class Kiridani2Session {
   readonly g: Game;
@@ -75,7 +80,14 @@ export class Kiridani2Session {
       case 'ratio': { const m = w.options.find((x) => same(x, a)); if (!m) throw new Error('bad ratio'); a = m; break; }
       case 'kind': if (!w.options.includes(a as never)) throw new Error('bad kind'); break;
       case 'pick': { const m = w.options.find((x) => same(x, a)); if (m === undefined) throw new Error('bad pick'); a = m; break; }
-      case 'choose': { const m = w.opts.find((x) => sameOpt(x, a as Option)); if (!m) throw new Error('bad option'); a = m; break; }
+      case 'choose': {
+        const m = w.opts.find((x) => sameOpt(x, a as Option));
+        if (!m) throw new Error('bad option');
+        // 戦闘の後押しを自分で選んだとき（巣・主の巣だけ。待ち伏せは戦うときに決める）
+        const use = cleanUse((a as Option).use);
+        a = use && m.k && m.mode !== 'wait' && m.i >= 0 ? { ...m, use } : m;
+        break;
+      }
       case 'heal': case 'effect': a = !!a; break;
     }
     return this.run(a);
