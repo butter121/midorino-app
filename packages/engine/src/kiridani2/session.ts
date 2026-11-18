@@ -3,7 +3,7 @@
 // 画面は出来事を順に再生し、waiting（いま人間に聞いていること）を見て選択肢を出す。
 import { AI, type Level } from './ai';
 import { CARD_SET } from './cards';
-import { canPay, Game, sameOpt, type Gen, type Option, type Player, type Req } from './engine';
+import { canPay, Game, sameOpt, slotOf, type Gen, type Option, type Player, type Req } from './engine';
 import type { CardSet, Cost, GameEvent, Res } from './types';
 import { RES } from './types';
 import * as D from './data';
@@ -39,8 +39,16 @@ export function cleanWho(u: unknown): number[] | undefined {
   return [...u];
 }
 
+/** 試合に渡したもの（止まったときに最初から当て直すための記録） */
+type Input =
+  | { k: 'answer'; a: unknown }
+  | { k: 'trade'; b: number; give: Cost; get: Cost }
+  | { k: 'equip'; c: number; slot: 'weapon' | 'armor'; id: string | null }
+  | { k: 'auto'; seat: number; on: boolean; level: Level };
+
 export class Kiridani2Session {
-  readonly g: Game;
+  /** 盤面（エンジンが例外を出したときは、最後の正しい場面まで当て直した新しい盤面に入れ替わる） */
+  g: Game;
   readonly human: number;
   readonly humans: number[];
   readonly seed: number;
@@ -49,8 +57,11 @@ export class Kiridani2Session {
   done = false;
   scores: number[] = [];
   private started = false;
+  private readonly o: SessionOptions;
+  private readonly inputs: Input[] = [];
 
   constructor(o: SessionOptions) {
+    this.o = o;
     this.seed = o.seed ?? 1;
     this.humans = o.humans ? [...o.humans] : (o.human ?? 0) >= 0 ? [o.human ?? 0] : [];
     this.human = this.humans[0] ?? -1;
@@ -66,12 +77,57 @@ export class Kiridani2Session {
   /** いま選ぶ番の席（−1 なら誰も選んでいない） */
   get seat(): number { return this.waiting?.p.pid ?? -1; }
 
+  /** エンジンが途中で例外を出して止まったとき、その理由（止まった試合は進められない） */
+  fault: string | null = null;
+
   private run(answer?: unknown): GameEvent[] {
     if (this.done) return [];
-    const r = this.started ? this.gen.next(answer) : this.gen.next();
+    if (this.fault) throw new Error(`試合が止まっています：${this.fault}`);
+    let r: IteratorResult<Req, number[]>;
+    try {
+      r = this.started ? this.gen.next(answer) : this.gen.next();
+    } catch (e) {
+      // 例外を出したジェネレーターはもう進まない（次の next は「終わり」を返してしまい、問いが消えたまま止まる）。
+      // ここまでの記録を最初から当て直して、答える前の場面に戻す（その答えは受け付けなかったことにする）
+      this.g.E?.splice(0);
+      this.rollback(e instanceof Error ? e.message : String(e));
+      throw e;
+    }
     this.started = true;
-    if (r.done) { this.done = true; this.waiting = null; this.scores = r.value; } else this.waiting = r.value;
+    if (r.done) { this.done = true; this.waiting = null; this.scores = r.value; } else this.waiting = this.sane(r.value);
     return this.g.E!.splice(0);
+  }
+
+  /** 記録（inputs）を最初から当て直した新しい試合に入れ替える。当て直せなければ fault を残す */
+  private rollback(why: string) {
+    try {
+      const f = new Kiridani2Session(this.o);
+      f.g.me = this.g.me;
+      if (this.started) f.start();
+      for (const x of this.inputs) f.input(x);
+      f.g.E?.splice(0);
+      this.g = f.g; this.gen = f.gen; this.waiting = f.waiting; this.done = f.done; this.scores = f.scores; this.started = f.started; this.fault = null;
+    } catch {
+      this.fault = why;
+    }
+  }
+  private input(x: Input): GameEvent[] {
+    switch (x.k) {
+      case 'answer': return this.answer(x.a);
+      case 'trade': return this.applyTrade(x.b, x.give, x.get);
+      case 'equip': return this.equip(x.c, x.slot, x.id);
+      case 'auto': return this.setAuto(x.seat, x.on, x.level);
+    }
+  }
+
+  /** 装備を手に入れたときの「誰に持たせる？」（pick equip:<id>）から、持たせると例外になる仲間を外す。
+   *  同じ品をもう持っている仲間を選ぶと、エンジンの equip が「もう持っている」を投げて試合が止まっていた */
+  private sane(w: Req): Req {
+    if (w.k !== 'pick' || !w.what.startsWith('equip:')) return w;
+    const id = w.what.slice(6), sl = slotOf(this.g.card(id));
+    if (!sl) return w;
+    const ok = w.options.filter((x) => { const m = /^eq:(\d+)$/.exec(String(x)); return !m || !this.g.equipError(w.p, Number(m[1]), sl, id); });
+    return ok.length === w.options.length ? w : { ...w, options: ok };
   }
 
   /** 最初の選択まで進める */
@@ -79,6 +135,12 @@ export class Kiridani2Session {
 
   /** 人間の答えを渡し、次の選択まで進める。答えは waiting の選択肢の中のもの（同じ形の値でもよい） */
   answer(a: unknown): GameEvent[] {
+    const raw = a;
+    const out = this.answer1(a);
+    this.inputs.push({ k: 'answer', a: raw });
+    return out;
+  }
+  private answer1(a: unknown): GameEvent[] {
     const w = this.waiting;
     if (!w) throw new Error('nothing to answer');
     switch (w.k) {
@@ -153,7 +215,8 @@ export class Kiridani2Session {
   private applyTrade(b: number, give: Cost, get: Cost): GameEvent[] {
     const w = this.waiting as Extract<Req, { k: 'choose' }>;
     this.g.trade(w.p, this.g.players[b], give, get);
-    this.waiting = { ...w, opts: this.g.legal(w.p, w.opts.some((o) => o.s === '@spell')) };
+    this.inputs.push({ k: 'trade', b, give, get });
+    this.refreshOpts();
     return this.g.E!.splice(0);
   }
 
@@ -166,19 +229,33 @@ export class Kiridani2Session {
     if (id !== null && w.p.comps[companion]?.[slot] === id) return [];
     if (id === null && w.p.comps[companion] && !w.p.comps[companion][slot]) return [];
     this.g.equip(w.p, companion, slot, id);
-    this.waiting = { ...w, opts: this.g.legal(w.p, w.opts.some((o) => o.s === '@spell')) };
+    this.inputs.push({ k: 'equip', c: companion, slot, id });
+    this.refreshOpts();
     return this.g.E!.splice(0);
+  }
+
+  /** 置き場所の選択の途中で持ち物・装備が変わったとき、選べるものを今の盤面で作り直す。
+   *  エンジンは ask に渡した配列（Req.opts）で答えを確かめるので、新しい配列にせず「同じ配列の中身」を入れ替える。
+   *  （以前は新しい配列にしていたため、取引で払えるようになったマスを選ぶとエンジンが古い選択肢で弾いて
+   *  "illegal option" を投げ、試合の進み役が止まっていた：盤面の選択が消えたまま何も選べず、再開もできない） */
+  private refreshOpts() {
+    const w = this.waiting as Extract<Req, { k: 'choose' }>;
+    const fresh = this.g.legal(w.p, w.opts.some((o) => o.s === '@spell'));
+    w.opts.splice(0, w.opts.length, ...fresh);
+    // 画面が「問いが変わった」と分かるように、問いの入れ物は新しくする（opts は同じ配列）
+    this.waiting = { ...w };
   }
 
   /** 人間の席を AI に任せる／人に戻す（退室中の代行）。いま聞いている途中なら AI がすぐ答えて次へ進める */
   setAuto(seat: number, on: boolean, level: Level = 'novice'): GameEvent[] {
     const p = this.g.players[seat];
     if (!p || !this.humans.includes(seat) || on === !!p.ai) return [];
-    if (!on) { p.ai = null; return []; }
+    if (!on) { p.ai = null; this.inputs.push({ k: 'auto', seat, on, level }); return []; }
     const ai = new AI(level, { seed: (this.seed * 100 + seat) * 7 + 3 });
     p.ai = ai;
-    if (this.done || !this.waiting || this.waiting.p.pid !== seat) return [];
-    return this.run(ai.respond(this.waiting));
+    const evs = this.done || !this.waiting || this.waiting.p.pid !== seat ? [] : this.run(ai.respond(this.waiting));
+    this.inputs.push({ k: 'auto', seat, on, level });
+    return evs;
   }
   isAuto(seat: number): boolean { return this.humans.includes(seat) && !!this.g.players[seat]?.ai; }
 

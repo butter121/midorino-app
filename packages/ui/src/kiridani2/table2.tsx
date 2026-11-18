@@ -7,7 +7,7 @@ import { SPEED_JP, SPEEDS } from '../kiridani/anim/timing';
 import { FxLayer, type FxApi } from '../kiridani/ui/fx';
 import { InfoDot, useInspect } from '../kiridani/ui/inspect';
 import { CostRow, Num, ResCount, SEAT_COLORS, SEAT_MARKS, Token } from '../kiridani/ui/parts';
-import { CardArt2, CardChip2, CardFace2, LeaderArt, MonArt, MonsterCard2, NestArt, SpaceArt, YearsCtx, rageText } from './parts2';
+import { CardArt2, CardChip2, CardFace2, LeaderArt, MonArt, MonsterCard2, NestArt, SpaceArt, YearsCtx } from './parts2';
 import { pointScale } from '@midorino/engine/src/kiridani2/uihelp';
 import { Inspect2 } from './inspect2';
 import { FameGraph } from './fameGraph';
@@ -105,7 +105,7 @@ function Overlay({ cur, v }: { cur: Playing2 | null; v: View2 }) {
   if (ev.t === 'boss_reveal') return (
     <div className="kd-ov kd-bossintro" style={st} key={cur.key} aria-live="assertive">
       <MonArt m={ev.boss} size={200} />
-      <div><small>{ev.boss.type === 'b_ancient' ? '最後の冬の決戦' : `${Math.ceil(ev.round / 4)}年目の冬に現れる主`}</small><strong>{ev.boss.name}</strong><span>強さ {ev.boss.str}{rageText(ev.boss)}・ラウンド{ev.round}</span></div>
+      <div><small>{ev.boss.type === 'b_ancient' ? '最後の冬の決戦' : `${Math.ceil(ev.round / 4)}年目の冬に現れる主`}</small><strong>{ev.boss.name}</strong><span>強さ {ev.boss.str}・ラウンド{ev.round}・参加しないと名声−{DATA.BOSS_ABSENT}</span></div>
     </div>
   );
   if (ev.t === 'quest_done') return <div className="kd-ov kd-toast is-gold" style={st} key={cur.key}>{nameOf(v, ev.seat)}が依頼を達成！ 名声+{ev.fame}</div>;
@@ -138,13 +138,25 @@ function setupStep(v: View2, ask: Ask2 | null | undefined): string {
   return s.step;
 }
 
+/** 準備のカード選び。配られたカードは1回だけ配る演出をして、出たらすぐ選べる。
+ *  - 自分に配られたカード（出来事の draft_offer／leader_offer）と、問い（ask）のカードは同じ入れ物（同じ key）で出す。
+ *    以前は「待っている間の表示」と「選ぶ表示」が別の入れ物で、問いが届いた瞬間に同じカードを配り直していた（選べない→もう一度配る→選べる）
+ *  - 決めたあと（taken）は、次の問いが届くまで同じカードを選んだ印つきで残す（消して配り直さない） */
 export function CardPickScreen({ v, ask, onPick }: { v: View2; ask: Extract<Ask2, { kind: 'card' }> | null; onPick?: (id: string) => void }) {
   const [sel, setSel] = useState<string | null>(null);
-  useEffect(() => setSel(null), [ask?.cards.join(',')]);
+  const [took, setTook] = useState<{ id: string; cards: string[]; ask: object } | null>(null);
+  const askKey = ask?.cards.join(',');
+  const viewKey = v.setup?.cards?.join(',');
+  useEffect(() => setSel(null), [askKey]);
+  // 新しい問い（答えを受け付けなかったときの出し直しも）が届いたら、決めた印を外す
+  useEffect(() => { if (ask && took && ask !== took.ask) setTook(null); }, [ask]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!ask && took && viewKey !== took.cards.join(',')) setTook(null); }, [viewKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const taken = took?.id ?? null;
+  const pick = (id: string) => { if (!ask) return; setTook({ id, cards: ask.cards, ask }); onPick?.(id); };
   const me = v.players[v.me];
   const step = setupStep(v, ask);
   const at = SETUP_STEPS.findIndex(([k]) => k === step);
-  const waiting = !ask;
+  const waiting = !ask && !taken;
   const other = v.setup?.seat !== undefined && v.setup.seat !== v.me ? v.setup.seat : undefined;
   const occN = me?.hand.filter((c) => CARD2[c]?.kind === 'occ').length ?? 0;
   const itemN = me ? me.hand.filter((c) => CARD2[c] && CARD2[c].kind !== 'occ').length + me.items.length + me.tools.length : 0;
@@ -155,17 +167,20 @@ export function CardPickScreen({ v, ask, onPick }: { v: View2; ask: Extract<Ask2
         <div><small>{v.round ? `${v.year}年目の春・補充` : '準備'}{ask?.sub ? `・${ask.sub}` : ''}</small><h2>{ask ? `${ask.title}${count}` : other !== undefined ? `${nameOf(v, other)}が選んでいます…` : '準備しています…'}</h2></div>
         {!v.round && <ol className="kd-laps" aria-label="準備の流れ">{SETUP_STEPS.map(([k, l], i) => <li key={k} className={i < at ? 'is-done' : i === at ? 'is-now' : ''}>{l}</li>)}</ol>}
       </header>
-      {ask ? (
-        <div className="kd-offer" key={ask.cards.join(',')}>
-          {ask.cards.map((id, i) => (
-            <div key={id + i} className="kd-deal" style={{ animationDelay: `${i * 90}ms` }}>
-              <CardFace2 id={id} size="l" selected={sel === id} onClick={onPick ? () => setSel(id) : undefined} />
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="kd-offer kd2-wait">{v.setup?.cards?.map((c, i) => <div key={i} className="kd-deal"><CardFace2 id={c} size="m" /></div>)}</div>
-      )}
+      {(() => {
+        const mine = !!took || !!ask || v.setup?.seat === v.me;
+        const cards = took ? took.cards : ask ? ask.cards : v.setup?.cards ?? [];
+        const live = !!ask && !taken && !!onPick;
+        return (
+          <div className={`kd-offer${live ? '' : ' kd2-wait'}${mine ? ' is-mine' : ''}`} key={`${mine ? 'me' : 'other'}:${cards.join(',')}`} data-kd="offer" data-cards={`${mine ? 'me' : 'other'}:${cards.join(',')}`}>
+            {cards.map((id, i) => (
+              <div key={id + i} className={`kd-deal${taken === id ? ' is-taken' : taken ? ' is-gone' : ''}`} style={{ animationDelay: `${i * 90}ms` }}>
+                <CardFace2 id={id} size={mine ? 'l' : 'm'} selected={sel === id || taken === id} onClick={live ? () => setSel(id) : undefined} />
+              </div>
+            ))}
+          </div>
+        );
+      })()}
       <div className="kd-draft-foot">
         <div className="kd-hand-mini" data-kd="hand" aria-label={`あなたの手札 ${me?.hand.length ?? 0}`}>
           <small>{me?.leader ? <>リーダー：<b>{cardName(me.leader)}</b>・</> : null}手札 {me?.hand.length ?? 0}</small>
@@ -177,8 +192,8 @@ export function CardPickScreen({ v, ask, onPick }: { v: View2; ask: Extract<Ask2
           ))}
         </div>
       </div>
-      {ask && onPick && <div className="kd-confirm"><button type="button" className="kd-btn is-primary" disabled={!sel} onClick={() => sel && onPick(sel)}>{sel ? `「${cardName(sel)}」に決める` : 'カードを選んでください'}</button></div>}
-      {waiting && <div className="kd-confirm"><span className="kd-queued" role="status">{waiting && other !== undefined ? `${nameOf(v, other)}の番` : '少し待ってください'}</span></div>}
+      {ask && onPick && !taken && <div className="kd-confirm"><button type="button" className="kd-btn is-primary" disabled={!sel} onClick={() => sel && pick(sel)}>{sel ? `「${cardName(sel)}」に決める` : 'カードを選んでください'}</button></div>}
+      {(waiting || taken) && <div className="kd-confirm"><span className="kd-queued" role="status">{taken ? `「${cardName(taken)}」に決めました` : other !== undefined ? `${nameOf(v, other)}の番` : '少し待ってください'}</span></div>}
     </div>
   );
 }
@@ -433,7 +448,7 @@ export function CombatPanel2({ v, cur }: { v: View2; cur: Playing2 | null }) {
         <div className="kd-foe-info">
           <strong>{m.name}</strong>
           <span className="kd-mon-stats">
-            <span className="kd-stat is-str">強さ{m.wounds ? <><s>{m.str}</s>→{m.str - m.wounds}</> : m.str}{rageText(m)}</span>
+            <span className="kd-stat is-str">強さ{m.wounds ? <><s>{m.str}</s>→{m.str - m.wounds}</> : m.str}</span>
             <span className="kd-stat is-ctr">反撃{m.counter}</span>
             {m.weak && <span className="kd-stat is-weak"><KIcon name={m.weak} size={14} />弱点</span>}
           </span>
@@ -601,7 +616,7 @@ export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions, picker
   if (v.phase === 'title') main = <div className="kd-screen kd-title"><h1>霧谷の冒険者団</h1><p>霧の谷に拠点を構え、{v.years}年間で名声を競う</p></div>;
   else if (v.phase === 'final' && v.final) main = <FinalScoring2 v={v} rows={v.final} cur={cur} after={finalExtra} />;
   else if (ask?.kind === 'ratio') main = <RatioScreen v={v} onPick={answer} />;
-  else if (setupPhase) main = <CardPickScreen v={v} ask={ask?.kind === 'card' && !queued ? ask : null} onPick={ask?.kind === 'card' ? answer : undefined} />;
+  else if (setupPhase) main = <CardPickScreen v={v} ask={ask?.kind === 'card' ? ask : null} onPick={ask?.kind === 'card' ? answer : undefined} />;
   else main = (
     <>
       <nav className="kd-tabs" role="tablist">

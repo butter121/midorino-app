@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AI, Kiridani2Session, applyAction2, syncEvent, type Action2, type Cost, type GameEvent, type Level, type SeatSession2 } from '@midorino/engine/src/kiridani2';
 import type { Speed } from '../kiridani/anim/timing';
+import '../kiridani/ui/room.css';
 import { useTable2 } from './useTable2';
 import { Kiridani2Table } from './table2';
 import { useSeat2 } from './seat';
@@ -39,6 +40,8 @@ export function Kiridani2EngineGame({ n, seed, years = 5, level = 'normal', spee
   const helper = useRef(new AI('normal', { seed: 99 }));
   const [seat, setSeat] = useState<SeatSession2 | null>(null);
   const [sheetReady, setSheetReady] = useState(false);
+  /** 答えを受け付けなかった・記録を当て直せなかったときのお知らせ */
+  const [note, setNote] = useState('');
   const [auto, setAutoState] = useState(!!resume?.auto);
   const autoRef = useRef(!!resume?.auto);
   const hist = useRef<Action2[]>([]);
@@ -81,15 +84,28 @@ export function Kiridani2EngineGame({ n, seed, years = 5, level = 'normal', spee
     proceed(s);
   }, [t, proceed]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  /** 答えが受け付けられなかったとき：理由を出し、同じ問いを出し直す（問いを閉じたままにしない） */
+  const refused = (s: Kiridani2Session, e: unknown) => {
+    setNote(`選べませんでした：${e instanceof Error ? e.message : String(e)}`);
+    if (s.fault) { replay(hist.current); return; }
+    proceed(s, true);
+  };
+
   const send = useCallback((a: Action2) => {
     const s = sRef.current!;
     if (a.t === 'trade' || a.t === 'equip') {
       // 取引・装備の持ち替えは置き場所の選択を続けたまま
-      try { const evs = apply(s, a); t.push(withSync(s, evs)); setSeat(seatOf(s)); } catch { /* 断られた */ }
+      try { const evs = apply(s, a); t.push(withSync(s, evs)); setSeat(seatOf(s)); } catch (e) { if (a.t === 'equip') refused(s, e); }
       return;
     }
     setSeat(null);
-    t.submit(() => { if (sRef.current === s) feed(apply(s, a)); });
+    setNote('');
+    t.submit(() => {
+      if (sRef.current !== s) return;
+      let evs: GameEvent[];
+      try { evs = apply(s, a); } catch (e) { refused(s, e); return; }
+      feed(evs);
+    });
   }, [feed, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fresh = () => new Kiridani2Session({ n, seed, years, human: me, levels: Array(n).fill(level), names: ENGINE2_NAMES.slice(0, n) });
@@ -104,20 +120,28 @@ export function Kiridani2EngineGame({ n, seed, years = 5, level = 'normal', spee
     feed(s.start());
   }, [feed, level, n, seed, years, t]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  /** 保存した答えを最初から当て直して、演出なしでいまの場面まで進める */
+  /** 保存した答えを最初から当て直して、演出なしでいまの場面まで一気に進める。
+   *  途中の答えが当てはまらなければ、そこで止めて「最後に当てはまった場面」から続ける（最初からやり直さない） */
   const replay = (h: Action2[]): boolean => {
-    try {
-      const s = fresh();
-      const evs: GameEvent[] = [...s.start()];
-      for (const a of h) evs.push(...applyAction2(s, a));
-      sRef.current = s;
-      hist.current = [...h];
-      t.reset(me);
-      t.load([...evs, syncEvent(s.g)]);
-      setSeat(null);
-      proceed(s, true);
-      return true;
-    } catch { return false; }
+    let s: Kiridani2Session;
+    const evs: GameEvent[] = [];
+    try { s = fresh(); evs.push(...s.start()); } catch { return false; }
+    let ok = 0;
+    for (const a of h) {
+      try { evs.push(...applyAction2(s, a)); ok++; } catch {
+        if (s.fault) return replay(h.slice(0, ok));
+        break;
+      }
+    }
+    if (ok < h.length) setNote(`保存した記録の ${ok + 1} 手目から先を当て直せませんでした。${ok} 手目までの場面から続けます。`);
+    sRef.current = s;
+    hist.current = h.slice(0, ok);
+    t.reset(me);
+    t.load([...evs, syncEvent(s.g)]);
+    setSeat(null);
+    report(s);
+    proceed(s, true);
+    return true;
   };
 
   useEffect(() => { if (!(resume?.hist.length && replay(resume.hist))) restart(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -131,6 +155,11 @@ export function Kiridani2EngineGame({ n, seed, years = 5, level = 'normal', spee
   };
 
   const ctl = useSeat2(seat, send, { sheetReady, onTrade: (b: number, give: Cost, get: Cost) => send({ t: 'trade', b, give, get }) });
-  return <Kiridani2Table t={t} ask={auto ? null : ctl.ask} onAnswer={ctl.onAnswer} sheet={auto ? null : ctl.sheetNode} actions={ctl.actions} picker={ctl.picker} onEquip={ctl.onEquip}
-    extra={extra?.({ restart, auto, setAuto, session: sRef.current })} finalExtra={finalExtra} />;
+  return (
+    <>
+      <Kiridani2Table t={t} ask={auto ? null : ctl.ask} onAnswer={ctl.onAnswer} sheet={auto ? null : ctl.sheetNode} actions={ctl.actions} picker={ctl.picker} onEquip={ctl.onEquip}
+        extra={extra?.({ restart, auto, setAuto, session: sRef.current })} finalExtra={finalExtra} />
+      {note && <div className="kd-netnote" role="alert" data-kd="play-note"><span className="is-bad" onClick={() => setNote('')}>{note}</span></div>}
+    </>
+  );
 }

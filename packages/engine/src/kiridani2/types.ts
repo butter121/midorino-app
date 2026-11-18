@@ -276,8 +276,6 @@ export interface Monster {
   trophy: number;
   raid: number;
   boss: boolean;
-  /** 主・古竜の荒ぶり：戦うときに強さへ round(N(0, rage²))（|N|≤2.5·rage）を足す。表示は「強さ ± 2·rage」くらいが目安 */
-  rage?: number;
   /** 出た年（冬の襲撃の対象） */
   year: number;
   wounds: number;
@@ -339,7 +337,7 @@ export type GameEvent =
   | { t: 'combat_start'; nest: string; monster: Monster; seats: Seat[]; mode: FightMode }
   | { t: 'power'; parts: PowerPart[]; total: number }
   | { t: 'fate_flip'; seat: Seat; value: number }
-  | { t: 'clash'; total: number; strength: number; result: 'win' | 'lose'; /** 主・古竜の荒ぶり（strength に含まれる） */ rage?: number }
+  | { t: 'clash'; total: number; strength: number; result: 'win' | 'lose' }
   | { t: 'counter'; amount: number; defense: number }
   | { t: 'injury'; seat: Seat; companion: number }
   | { t: 'heal'; seat: Seat; companion: number; cost: Cost }

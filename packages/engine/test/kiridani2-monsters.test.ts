@@ -1,6 +1,6 @@
-// 霧谷 v2：魔物・主・古竜の強さ（data.ts の MON_ROLL・DRAGON）と荒ぶり、主の巣の勝つ見込み
+// 霧谷 v2：魔物・主・古竜の強さ（data.ts の MON_ROLL・DRAGON）、主・古竜に参加しなかった人の罰
 import { describe, expect, it } from 'vitest';
-import { AI, CARD_SET, DATA, drive, Game, rageDist } from '../src/kiridani2/index';
+import { AI, CARD_SET, DATA, drive, Game, type GameEvent } from '../src/kiridani2/index';
 
 const game = (n: number, years: number, seed = 1) => new Game(n, Array.from({ length: n }, (_, i) => new AI('normal', { seed: i })), { seed, years, cards: CARD_SET });
 const avg = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -10,39 +10,64 @@ const rolls = (g: Game, kind: 'nest' | 'boss' | 'dragon', t: number, N = 400) =>
 };
 
 describe('kiridani2 魔物の強さ', () => {
-  it('巣の魔物は t とともに強くなり、長い試合ほど傾きが大きい。荒ぶりはない', () => {
+  it('巣の魔物は t とともに強くなり、長い試合ほど傾きが大きい', () => {
     const g5 = game(4, 5), g15 = game(4, 15);
     const e = avg(rolls(g5, 'nest', 0.1).map((m) => m.str)), l5 = avg(rolls(g5, 'nest', 0.9).map((m) => m.str)), l15 = avg(rolls(g15, 'nest', 0.9).map((m) => m.str));
     expect(e).toBeCloseTo(DATA.MON_ROLL.base + DATA.MON_ROLL.slope[5] * 0.1, 0);
     expect(l5).toBeGreaterThan(e + 8);
     expect(l15).toBeGreaterThan(l5 + 3);
-    expect(rolls(g5, 'nest', 0.5).every((m) => !m.rage && !m.boss)).toBe(true);
+    expect(rolls(g5, 'nest', 0.5).every((m) => !m.boss)).toBe(true);
   });
 
-  it('主は人数に比例して強く、巣の魔物の数倍。荒ぶりを持つ', () => {
+  it('主は人数に比例して強く、巣の魔物の数倍', () => {
     const b2 = avg(rolls(game(2, 10), 'boss', 0.5).map((m) => m.str)), b4 = avg(rolls(game(4, 10), 'boss', 0.5).map((m) => m.str));
     const nest = avg(rolls(game(4, 10), 'nest', 0.5).map((m) => m.str));
     expect(b4).toBeGreaterThan(3 * nest);
     expect(b4 - 3).toBeCloseTo(2 * (b2 - 3), -1);
     const m = rolls(game(4, 10), 'boss', 0.5, 1)[0];
     expect(m.boss).toBe(true);
-    expect(m.rage).toBeCloseTo(m.str * DATA.MON_ROLL.boss.rage, 0);
+    expect('rage' in m).toBe(false);
   });
 
   it('古竜は主より強く（20 固定ではない）、証は DRAGON.trophy', () => {
     const g = game(4, 10);
     const d = rolls(g, 'dragon', 1);
     expect(avg(d.map((m) => m.str))).toBeGreaterThan(avg(rolls(g, 'boss', 0.8).map((m) => m.str)));
-    expect(d.every((m) => m.trophy === DATA.DRAGON.trophy && m.raid === 0 && (m.rage ?? 0) > 0)).toBe(true);
+    expect(d.every((m) => m.trophy === DATA.DRAGON.trophy && m.raid === 0 && !('rage' in m))).toBe(true);
   });
 
-  it('荒ぶりの分布は確率の合計が1で、0 を中心に対称', () => {
-    for (const sd of [0, 1.5, 4, 8.3]) {
-      const d = rageDist(sd);
-      expect(d.reduce((a, [, p]) => a + p, 0)).toBeCloseTo(1, 9);
-      expect(d.reduce((a, [v, p]) => a + v * p, 0)).toBeCloseTo(0, 6);
-      if (sd) expect(Math.max(...d.map(([v]) => Math.abs(v)))).toBeLessThanOrEqual(Math.round(DATA.MON_ROLL.clip * sd));
-    }
+  it('荒ぶりはない：clash に rage は出ず、同じ種なら同じ試合になる', () => {
+    const run = () => { const g = game(4, 5, 7); g.E = []; drive(g.play()); return g; };
+    const a = run(), b = run();
+    expect((a.E as GameEvent[]).some((e) => e.t === 'clash' && 'rage' in e)).toBe(false);
+    expect(JSON.stringify(a.fightLog)).toBe(JSON.stringify(b.fightLog));
+    expect(a.players.map((p) => p.fame.absent)).toEqual(b.players.map((p) => p.fame.absent));
+  });
+
+  for (const kind of ['boss', 'dragon'] as const) {
+    it(`${kind === 'boss' ? '主' : '古竜'}に参加しなかった人は名声 −${DATA.BOSS_ABSENT}（参加した人は減らない）`, () => {
+      const g = game(4, 5, 2);
+      const r = 4;
+      g.round = r;
+      g.bossOf[r] = g.rollMonster(kind === 'boss' ? DATA.BOSS_TYPES[0] : DATA.ANCIENT_DRAGON, 0.5, 1, kind);
+      g.E = [];
+      g.lairQ = [{ pid: 1, idxs: [], mode: 'normal' }];
+      drive(g.resolveLair());
+      const reason = kind === 'boss' ? '主に参加しなかった' : '古竜に参加しなかった';
+      const evs = (g.E as GameEvent[]).filter((e): e is Extract<GameEvent, { t: 'fame' }> => e.t === 'fame' && e.reason === reason);
+      expect(evs.map((e) => e.seat).sort()).toEqual([0, 2, 3]);
+      expect(evs.every((e) => e.amount === -DATA.BOSS_ABSENT)).toBe(true);
+      for (const p of g.players) expect(p.fame.absent).toBe(p.pid === 1 ? 0 : -DATA.BOSS_ABSENT);
+      expect(g.scoreRows()[0].items.find((x) => x.key === 'absent')?.fame).toBe(-DATA.BOSS_ABSENT);
+    });
+  }
+
+  it('誰も主の巣に送らなければ全員 −BOSS_ABSENT（古竜はさらに −DRAGON.fail）', () => {
+    const g = game(3, 5, 4);
+    g.round = 20;
+    g.bossOf[20] = g.rollMonster(DATA.ANCIENT_DRAGON, 1, 5, 'dragon');
+    drive(g.resolveLair());
+    for (const p of g.players) { expect(p.fame.absent).toBe(-DATA.BOSS_ABSENT); expect(p.fame.dragon).toBe(-DATA.DRAGON.fail); }
   });
 
   it('戦闘は fightLog に残る（主・古竜に誰も挑まなければ skip）。古竜は最後の冬に出る', () => {

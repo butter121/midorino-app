@@ -93,7 +93,7 @@ export function ChatFloat({ msgs, me, hidden }: { msgs: ChatLine[]; me: number; 
   const [bottom, setBottom] = useState(96);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => {
-    const add = msgs.filter((m) => m.id > last.current && m.seat !== me);
+    const add = msgs.filter((m) => m.id > last.current);
     last.current = Math.max(last.current, msgs.at(-1)?.id ?? 0);
     if (!add.length || hidden) return;
     // 下の欄（置く場所のボタン）より上に出す
@@ -108,8 +108,8 @@ export function ChatFloat({ msgs, me, hidden }: { msgs: ChatLine[]; me: number; 
   return (
     <div className="kd-chatfloat" style={{ bottom }} aria-hidden>
       {lines.map((m) => (
-        <div key={m.id} className={`kd-chatfloat-l${m.stamp ? ' is-stamp' : ''}`} style={{ ['--seat' as string]: SEAT_COLORS[m.seat] ?? '#999' }}>
-          <b>{m.name}</b>{m.text}
+        <div key={m.id} className={`kd-chatfloat-l${m.stamp ? ' is-stamp' : ''}${m.seat === me ? ' is-me' : ''}`} style={{ ['--seat' as string]: SEAT_COLORS[m.seat] ?? '#999' }}>
+          <b>{m.seat === me ? 'あなた' : m.name}</b>{m.text}
         </div>
       ))}
     </div>
