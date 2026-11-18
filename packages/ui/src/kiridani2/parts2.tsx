@@ -40,6 +40,9 @@ export function CardArt2({ id, size }: { id: string; size: number }) {
 }
 
 /** カードの表（職能・品物・リーダー・共通の装備・段階カード） */
+/** 主・古竜の荒ぶりの目安（強さ±2σ） */
+export const rageText = (m: { rage?: number }) => (m.rage ? `±${Math.round(2 * m.rage)}` : '');
+
 export function CardFace2({ id, size = 'm', selected, onClick, disabled, anchor }: { id: string; size?: 's' | 'm' | 'l'; selected?: boolean; onClick?: () => void; disabled?: boolean; anchor?: string }) {
   const years = useContext(YearsCtx);
   const c = CARD2[id];
@@ -99,7 +102,7 @@ export function MonsterCard2({ m, compact, shadow, anchor }: { m: Monster; compa
       <div className="kd-mon-art"><MonArt m={m} size={compact ? 56 : 88} /></div>
       <div className="kd-mon-name">{m.name}</div>
       <div className="kd-mon-stats">
-        <span className="kd-stat is-str" title="強さ">⚔{m.wounds ? <><s>{m.str}</s>{left}</> : m.str}</span>
+        <span className="kd-stat is-str" title="強さ">⚔{m.wounds ? <><s>{m.str}</s>{left}</> : m.str}{m.rage ? <small className="kd2-rage">±{Math.round(2 * m.rage)}</small> : null}</span>
         <span className="kd-stat is-ctr" title="反撃">↩{m.counter}</span>
         {m.weak && <span className="kd-stat is-weak" title="弱点"><KIcon name={m.weak} size={14} /></span>}
         {!compact && <span className="kd-stat"><KIcon name={m.race} size={14} /></span>}

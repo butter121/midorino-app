@@ -7,7 +7,7 @@ import { SPEED_JP, SPEEDS } from '../kiridani/anim/timing';
 import { FxLayer, type FxApi } from '../kiridani/ui/fx';
 import { InfoDot, useInspect } from '../kiridani/ui/inspect';
 import { CostRow, Num, ResCount, SEAT_COLORS, SEAT_MARKS, Token } from '../kiridani/ui/parts';
-import { CardChip2, CardFace2, LeaderArt, MonArt, MonsterCard2, YearsCtx } from './parts2';
+import { CardChip2, CardFace2, LeaderArt, MonArt, MonsterCard2, YearsCtx, rageText } from './parts2';
 import { pointScale } from '@midorino/engine/src/kiridani2/uihelp';
 import { Inspect2 } from './inspect2';
 import { FameGraph } from './fameGraph';
@@ -101,7 +101,7 @@ function Overlay({ cur, v }: { cur: Playing2 | null; v: View2 }) {
   if (ev.t === 'boss_reveal') return (
     <div className="kd-ov kd-bossintro" style={st} key={cur.key} aria-live="assertive">
       <MonArt m={ev.boss} size={200} />
-      <div><small>{ev.boss.type === 'b_ancient' ? '最後の冬の決戦' : `${Math.ceil(ev.round / 4)}年目の冬に現れる主`}</small><strong>{ev.boss.name}</strong><span>強さ {ev.boss.str}・ラウンド{ev.round}</span></div>
+      <div><small>{ev.boss.type === 'b_ancient' ? '最後の冬の決戦' : `${Math.ceil(ev.round / 4)}年目の冬に現れる主`}</small><strong>{ev.boss.name}</strong><span>強さ {ev.boss.str}{rageText(ev.boss)}・ラウンド{ev.round}</span></div>
     </div>
   );
   if (ev.t === 'quest_done') return <div className="kd-ov kd-toast is-gold" style={st} key={cur.key}>{nameOf(v, ev.seat)}が依頼を達成！ 名声+{ev.fame}</div>;
@@ -420,7 +420,7 @@ export function CombatPanel2({ v, cur }: { v: View2; cur: Playing2 | null }) {
         <div className="kd-foe-info">
           <strong>{m.name}</strong>
           <span className="kd-mon-stats">
-            <span className="kd-stat is-str">強さ{m.wounds ? <><s>{m.str}</s>→{m.str - m.wounds}</> : m.str}</span>
+            <span className="kd-stat is-str">強さ{m.wounds ? <><s>{m.str}</s>→{m.str - m.wounds}</> : m.str}{rageText(m)}</span>
             <span className="kd-stat is-ctr">反撃{m.counter}</span>
             {m.weak && <span className="kd-stat is-weak"><KIcon name={m.weak} size={14} />弱点</span>}
           </span>

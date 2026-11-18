@@ -3,7 +3,7 @@ import { useEffect, type ReactNode } from 'react';
 import { DATA, type Monster, FLAVOR } from '@midorino/engine/src/kiridani2';
 import { KIcon, NestScene, TerrainArt } from '../kiridani/art-registry';
 import { CostRow, ResCount, Token } from '../kiridani/ui/parts';
-import { CardChip2, CardFace2, KIND2_JP, LeaderArt, MonArt } from './parts2';
+import { CardChip2, CardFace2, KIND2_JP, LeaderArt, MonArt, rageText } from './parts2';
 import { ANC2, CARD2, NEST_JP, QUEST2, RES_JP, cardName, placeName, type PV2, type Seat, type View2 } from './view';
 import { RES } from '@midorino/engine/src/kiridani2';
 
@@ -16,6 +16,7 @@ function monBlock(m: Monster): ReactNode {
   return <>
     <div className="kd-insp-art"><MonArt m={m} size={110} /></div>
     <Row k="強さ">{m.str}{m.wounds ? `（傷${m.wounds} → ${m.str - m.wounds}）` : ''}</Row>
+    {m.rage ? <Row k="荒ぶり">戦うときに強さが {rageText(m)} くらい上下する</Row> : null}
     <Row k="反撃">{m.counter}（守りを超えた分だけ前衛が負傷）</Row>
     <Row k="種族・弱点"><span className="kd-insp-who"><KIcon name={m.race} size={18} />{RACE_JP[m.race]}</span>{m.weak && <span className="kd-insp-who"><KIcon name={m.weak} size={18} />弱点：{EL_JP[m.weak]}（突くと戦力+{DATA.WEAK_BONUS}）</span>}</Row>
     <Row k="戦利品"><CostRow cost={m.loot} size={18} /></Row>

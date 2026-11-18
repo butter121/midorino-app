@@ -182,3 +182,4 @@
 
 /* 候補カードの一覧では効果文を優先し、フレーバーは詳細（i）で見せる */
 .kd-offer .kd2-flavor { display: none; }
+.kd2-rage { font-size: .75em; opacity: .8; margin-left: 1px; }
