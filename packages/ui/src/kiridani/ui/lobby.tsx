@@ -1,6 +1,7 @@
 // 霧谷：オンライン対戦の部屋（ホストの待合室・参加者の入口）。ミドリノの Lobby / JoinScreen と同じ流れを霧谷の見た目で。
 import { useState, type ReactNode } from 'react';
 import { HeroArt } from '../art-registry';
+import { TitleKeyArt } from '../../kiridani2/raster';
 import { SEAT_COLORS, Token } from './parts';
 import './room.css';
 
@@ -115,7 +116,7 @@ export function RoomJoin({ waiting, error, status, onJoin, onBack, defaultName =
   const ok = name.trim().length >= 1 && name.trim().length <= 8;
   return (
     <div className="kd-root kd-room kd-join">
-      <div className="kd-room-heroes" aria-hidden><HeroArt id="mina" size={64} /><HeroArt id="goro" size={64} /></div>
+      <TitleKeyArt><div className="kd-room-heroes" aria-hidden><HeroArt id="mina" size={64} /><HeroArt id="goro" size={64} /></div></TitleKeyArt>
       <h1>霧谷の冒険者団</h1>
       <p>友だちの部屋に参加します</p>
       {waiting ? (

@@ -13,6 +13,8 @@ export interface ChoiceItem {
   card?: string;
   /** 払うもの */
   cost?: Cost;
+  /** 得るもの（払うもの → 得るもの のアイコンで出す） */
+  gain?: Cost;
   /** 戦闘の見込み（戦力・必要・勝つ確率） */
   meter?: ChoiceMeter;
   /** 使う札（矢・ポーション・秘術など） */
@@ -36,8 +38,8 @@ export function ChoiceSheet({ spec, onPick, onCancel }: { spec: ChoiceSpec; onPi
               <span className="kd-choice-b">
                 <strong>{it.title}</strong>
                 {it.detail && <small>{it.detail}</small>}
-                {(it.cost && Object.values(it.cost).some((n) => n)) || it.uses?.length ? (
-                  <span className="kd-choice-uses">{it.uses?.map((u, i) => <i key={i}>{u}</i>)}{it.cost && <CostRow cost={it.cost} size={14} />}</span>
+                {(it.cost && Object.values(it.cost).some((n) => n)) || it.uses?.length || it.gain ? (
+                  <span className="kd-choice-uses">{it.uses?.map((u, i) => <i key={i}>{u}</i>)}{it.cost && Object.values(it.cost).some((n) => n) && <CostRow cost={it.cost} size={14} />}{it.gain && <><span className="kd-choice-to" aria-label="で得る">→</span><CostRow cost={it.gain} size={14} /></>}</span>
                 ) : null}
               </span>
               {it.meter && <Meter m={it.meter} />}

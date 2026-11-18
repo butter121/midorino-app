@@ -22,6 +22,8 @@
 .kd2-fc b { font-size: 12px; }
 .kd-space.kd2-stage { border-color: #b88a2e; background: linear-gradient(180deg, #3a3020, #261f15); }
 .kd-space.kd2-stage.is-new { animation: kd2-glow 1.2s ease 2; }
+.kd2-stageart { position: relative; display: block; line-height: 0; }
+.kd2-stageart > .kd2-stagebadge.is-mini { position: absolute; right: -1px; bottom: -1px; width: auto; height: auto; padding: 1px 3px; border-radius: 5px; font-size: 9px; line-height: 1.1; }
 .kd2-stagebadge { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #e3b22b, #a8761c); color: #1b140a; font-weight: 900; font-size: 13px; }
 @keyframes kd2-glow { 50% { box-shadow: 0 0 0 3px #e3b22b88, 0 0 18px #e3b22b; } }
 
@@ -183,3 +185,38 @@
 /* 候補カードの一覧では効果文を優先し、フレーバーは詳細（i）で見せる */
 .kd-offer .kd2-flavor { display: none; }
 .kd2-rage { font-size: .75em; opacity: .8; margin-left: 1px; }
+
+/* 行動マスを役割ごとにまとめる（資源・作る・取引・仲間・冒険）。マスの幅（列の数 --kd-sc）・中身は今まで通り。
+   まとまりは縦に並べ、それぞれ小さな見出し＋同じ列数の格子。高さはマスの数に比例して分ける（はみ出すときは今まで通り縦にスクロール） */
+.kd2-board > .kd-spaces.kd2-spaces { display: flex; flex-direction: column; gap: 3px; }
+.kd2-sgroup { flex: var(--kd2-gn, 1) 1 auto; min-height: min-content; display: flex; flex-direction: column; gap: 1px; }
+.kd2-sgroup-h { margin: 0; padding: 0 4px; font-size: 10px; line-height: 1.3; font-weight: 900; letter-spacing: .06em; color: var(--kd-ink2); display: flex; align-items: center; gap: 6px; }
+.kd2-sgroup-h::after { content: ''; flex: 1; height: 1px; background: var(--kd-line); opacity: .7; }
+.kd2-sgrid { flex: 1 1 auto; display: grid; grid-template-columns: repeat(var(--kd-sc, 4), minmax(0, 1fr)); grid-auto-rows: minmax(min-content, 1fr); gap: 4px; }
+.kd2-sgroup.is-gather .kd2-sgroup-h { color: #9fc79a; } .kd2-sgroup.is-craft .kd2-sgroup-h { color: #d9a27f; }
+.kd2-sgroup.is-trade .kd2-sgroup-h { color: #e3c56e; } .kd2-sgroup.is-people .kd2-sgroup-h { color: #9fb6e0; }
+.kd2-sgroup.is-adventure .kd2-sgroup-h { color: #c3a4dc; }
+
+/* タイトル・入口の背景の絵（art/title/key-*.webp）。あるときだけ出る。文字が読めるように下に向けて暗くする */
+.kd-root:has(> .kda-keyart) { isolation: isolate; }
+.kda-keyart { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+.kda-keyart img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 30%; }
+.kda-keyart::after { content: ''; position: absolute; inset: 0; background: linear-gradient(180deg, rgb(12 10 18 / .15) 0%, rgb(12 10 18 / .45) 45%, rgb(12 10 18 / .8) 100%); }
+
+/* 動かす仲間を選ぶ（自分の番、下の帯の上）・戦闘のトレイで送る仲間を選ぶ・拠点で装備を持ち替える */
+.kd2-who { display: flex; align-items: stretch; gap: 4px; width: 100%; overflow-x: auto; scrollbar-width: none; padding: 1px 0; }
+.kd2-who > small { flex: none; align-self: center; font-size: 10px; line-height: 1.2; opacity: .75; text-align: center; }
+.kd2-whochip { flex: 1 0 74px; max-width: 120px; min-height: 44px; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 3px 6px; border-radius: 9px; border: 1px solid var(--kd-line, #ffffff22); background: #00000030; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.kd2-whochip.is-on { border-color: var(--kd-gold, #e8c66a); background: #e8c66a26; box-shadow: 0 0 0 1px var(--kd-gold, #e8c66a) inset; }
+.kd2-whochip:disabled { opacity: .4; cursor: default; }
+.kd2-whochip-h { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; white-space: nowrap; }
+.kd2-whochip-st { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; font-weight: 700; }
+.kd2-whochip-eq { max-width: 100%; font-size: 9px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.kd2-fcomp { width: 100%; color: inherit; font: inherit; text-align: left; cursor: pointer; min-height: 40px; }
+.kd2-fcomp.is-on { border-color: var(--kd-gold, #e8c66a); background: #e8c66a1f; }
+.kd2-fcomp.is-off { opacity: .55; }
+button.kd2-slot { color: inherit; font: inherit; text-align: left; background: transparent; cursor: pointer; min-height: 36px; }
+.kd2-slot.is-edit { border-color: #e8c66a88; }
+.kd2-slot.is-edit i { opacity: .8; color: var(--kd-gold, #e8c66a); }
+.kd2-eqhint { margin-left: 6px; color: var(--kd-gold, #e8c66a); }
+.kd-choice-to { margin: 0 3px; opacity: .7; }

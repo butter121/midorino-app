@@ -3,7 +3,8 @@
 //     無ければ今の SVG の絵（v1 の絵を id の hash で割り当て）を描く。
 //  2) その上に「種類の縁取り（左上の三角＋印）」を重ねる。強い動き（engine タグ）はプレイヤーが見つけるものなので、絵にも文字にも出さない。
 // 画像の置き方は packages/app/public/cards/README.md。
-import { useEffect, useId, useReducer, useRef, type ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
+import { useRaster } from './raster';
 import { INK, K, MistBg, Spark } from '../kiridani/art/common';
 import { FigureLayers } from '../kiridani/art/figure';
 import { HERO_LOOKS } from '../kiridani/art/heroes';
@@ -99,59 +100,8 @@ function KindFrame({ kind, clip }: { kind: ArtKind; clip: string }) {
   );
 }
 
-// ------------------------------------------------------------------ 絵の画像（cards/<id>.webp）
-type Manifest = { ids: Set<string>; v: string };
-let manifestP: Promise<Manifest | null> | null = null;
-const status = new Map<string, 'loading' | 'ok' | 'bad'>();
-const hrefOf = new Map<string, string>();
-const subs = new Set<() => void>();
-const notify = () => subs.forEach((f) => f());
-
-/** 画像の一覧（cards/index.json）。無い・読めないときは画像を使わない（存在しない画像を1枚ずつ取りに行かない） */
-function manifest(): Promise<Manifest | null> {
-  if (!manifestP) {
-    manifestP = fetch('cards/index.json', { cache: 'no-cache' })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j: { ids?: unknown; v?: unknown } | null) => (j && Array.isArray(j.ids) ? { ids: new Set(j.ids.map(String)), v: j.v == null ? '' : String(j.v) } : null))
-      .catch(() => null);
-  }
-  return manifestP;
-}
-
-function request(id: string, file: string) {
-  if (status.has(file)) return;
-  status.set(file, 'loading');
-  manifest().then((m) => {
-    if (!m || !m.ids.has(id)) { status.set(file, 'bad'); return; }
-    const href = `cards/${file}${m.v ? `?v=${encodeURIComponent(m.v)}` : ''}`;
-    const img = new Image();
-    img.decoding = 'async';
-    img.onload = () => { hrefOf.set(file, href); status.set(file, 'ok'); notify(); };
-    img.onerror = () => { status.set(file, 'bad'); notify(); };
-    img.src = href;
-  });
-}
-
-/** 見えたら画像を読み込み、読めたら href を返す（読めるまで・無いときは null） */
-function useCardImage(id: string, small: boolean, enabled: boolean) {
-  const ref = useRef<SVGSVGElement>(null);
-  const [, bump] = useReducer((x: number) => x + 1, 0);
-  const file = `${id}${small ? '-s' : ''}.webp`;
-  const st = status.get(file);
-  useEffect(() => {
-    if (!enabled || typeof window === 'undefined' || typeof fetch === 'undefined' || typeof Image === 'undefined') return;
-    if (st === 'ok' || st === 'bad') return;
-    subs.add(bump);
-    const el = ref.current;
-    let io: IntersectionObserver | undefined;
-    if (el && typeof IntersectionObserver !== 'undefined') {
-      io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { io?.disconnect(); request(id, file); } }, { rootMargin: '200px' });
-      io.observe(el);
-    } else request(id, file);
-    return () => { subs.delete(bump); io?.disconnect(); };
-  }, [id, file, st, enabled]);
-  return { ref, href: st === 'ok' ? hrefOf.get(file) ?? null : null, onError: () => { status.set(file, 'bad'); bump(); } };
-}
+// 絵の画像の読み込みは ./raster（カード以外の絵と共通）
+const useCardImage = (id: string, small: boolean, enabled: boolean) => useRaster('cards', id, small, enabled);
 
 // ------------------------------------------------------------------ 今の SVG の絵（画像が無いときの代わり）
 const hash = (s: string) => { let h = 7; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
@@ -235,3 +185,4 @@ export function CardPicture({ id, kind, size, overlay = true, label }: { id: str
     </svg>
   );
 }
+

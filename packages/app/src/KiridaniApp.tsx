@@ -6,6 +6,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 // 試合の画面（v1・v2）は使うときに読み込む（kdLazy）。ここではタイトル・待合室・チャットの軽い部品だけを直に読む
 import { HeroArt } from '@midorino/ui/src/kiridani/art-registry';
+import { TitleKeyArt } from '@midorino/ui/src/kiridani2/raster';
 import { RoomJoin, RoomLobby, RoomMessage } from '@midorino/ui/src/kiridani/ui/lobby';
 import type { Ev } from '@midorino/ui/src/kiridani2/view';
 import { KiridaniEngineGame, KiridaniOnlineGame, Kiridani2EngineGame, Kiridani2OnlineGame, preload } from './kdLazy';
@@ -100,9 +101,11 @@ export default function KiridaniApp() {
 
   return (
     <div className="kd-root kda-title">
-      <div className="kda-heroes" aria-hidden="true">
-        {HEROES.map((id) => <HeroArt key={id} id={id} size={72} />)}
-      </div>
+      <TitleKeyArt>
+        <div className="kda-heroes" aria-hidden="true">
+          {HEROES.map((id) => <HeroArt key={id} id={id} size={72} />)}
+        </div>
+      </TitleKeyArt>
       <h1 className="kda-name">霧谷の冒険者団</h1>
       <p className="kda-sub">霧の谷で仲間を集め、魔物を討ち、名声を競う。</p>
       <RulesPick rules={rules} onRules={setRules} />
@@ -179,9 +182,11 @@ function Solo({ rules, resume, onBack }: { rules: KdRules; resume?: boolean; onB
   }
   return (
     <div className="kd-root kda-title">
-      <div className="kda-heroes" aria-hidden="true">
-        {HEROES.map((id) => <HeroArt key={id} id={id} size={72} />)}
-      </div>
+      <TitleKeyArt>
+        <div className="kda-heroes" aria-hidden="true">
+          {HEROES.map((id) => <HeroArt key={id} id={id} size={72} />)}
+        </div>
+      </TitleKeyArt>
       <h1 className="kda-name">ひとりで遊ぶ</h1>
       <small className="kda-hint">{rules === 2 ? '新ルール' : '旧ルール'}（タイトルで切り替え）</small>
       {rules === 2 && <YearsPick years={years} onYears={setYears} />}
@@ -216,7 +221,7 @@ function Friends({ rules, onBack, onHost }: { rules: KdRules; onBack: () => void
   const ok = name.trim().length >= 1 && name.trim().length <= 8;
   return (
     <div className="kd-root kd-room kd-join">
-      <div className="kd-room-heroes" aria-hidden><HeroArt id="toma" size={64} /><HeroArt id="nana" size={64} /></div>
+      <TitleKeyArt><div className="kd-room-heroes" aria-hidden><HeroArt id="toma" size={64} /><HeroArt id="nana" size={64} /></div></TitleKeyArt>
       <h1>友だちと遊ぶ</h1>
       <p>部屋をつくり、招待リンクか QR コードで呼びます。空いた席は AI が入ります。（{rules === 2 ? '新ルール' : '旧ルール'}。部屋の中でも変えられます）</p>
       <form onSubmit={(e) => { e.preventDefault(); if (ok) { save('kd.name', name.trim()); onHost(false); } }}>

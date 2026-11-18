@@ -2,10 +2,11 @@
 // 答えはオンラインの答え（Action2）の形で返す。ひとり遊びは applyAction2 でそのまま手元の試合に渡す。
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  choiceLabel, DATA, optionLabel, previewFight, type Action2, type Cost, type FightChip, type FightMode, type Option, type SeatSession2,
+  choiceLabel, DATA, optionLabel, previewFight, RES, slotOf, type Action2, type Choice, type Cost, type FightChip, type FightMode, type Game, type Option,
+  type Player, type SeatSession2,
 } from '@midorino/engine/src/kiridani2';
 import { KIcon } from '../kiridani/art-registry';
-import { ChoiceSheet, type ChoiceSpec } from '../kiridani/ui/choice';
+import { ChoiceSheet, type ChoiceItem, type ChoiceSpec } from '../kiridani/ui/choice';
 import { InfoDot } from '../kiridani/ui/inspect';
 import { CostRow, Token } from '../kiridani/ui/parts';
 import { TradeButton, TradeTray } from '../kiridani/ui/tray';
@@ -16,6 +17,50 @@ import { CARD2, cardName, placeName } from './view';
 
 const KIND_JP: Record<string, string> = { weapon: '武具', tool: '道具', spell: '秘術' };
 const isFight = (sid: string) => sid.startsWith('nest') || sid === 'lair';
+const SLOT_JP = { weapon: '武器', armor: '防具' } as const;
+
+// ---------------------------------------------------------------- 仲間（戦力・守り・装備）
+export const compName = (p: Player, i: number) => (p.comps[i]?.leader ? 'リーダー' : `仲間${i + 1}`);
+/** 仲間1人の戦力と守り（エンジンの計算と同じ：基本＋熟練＋装備） */
+export function compStats(g: Game, p: Player, i: number): { power: number; guard: number } {
+  const c = p.comps[i];
+  const gd = (id: string | null) => (id ? g.card(id).guard ?? 0 : 0);
+  return { power: g.compPower(p, i), guard: DATA.GUARD_PER + c.def + gd(c.armor) + gd(c.weapon) };
+}
+
+// ---------------------------------------------------------------- 細かい選択を短く（見出し＋払う→得るのアイコン。説明は要るときだけ）
+const one = (r: string, n: number) => ({ [r]: n }) as Cost;
+const addOps = (ops: { gain?: Cost; pay?: Cost }[], k: 'gain' | 'pay') => ops.reduce<Cost>((a, op) => (op[k] ? addC(a, op[k]!) : a), {});
+const resNames = (c: Cost) => RES.filter((r) => c[r]).map((r) => `${DATA.RES_JP[r]}${c[r]! > 1 ? `×${c[r]}` : ''}`).join('＋');
+export function choiceItem2(g: Game, p: Player | null, x: Choice, id: string): ChoiceItem {
+  if (typeof x === 'object') {
+    if (x.m === 'sell') return { id, title: `${DATA.RES_JP[x.r]}を売る`, cost: one(x.r, x.q), gain: { gold: (p ? g.sellPrice(p, x.r) : DATA.sellPrice(x.r)) * x.q } };
+    if (x.m === 'buy') return { id, title: `${DATA.RES_JP[x.r]}を買う`, cost: { gold: DATA.BUY[x.r] * x.q }, gain: one(x.r, x.q) };
+    if (x.m === 'item') return { id, title: `${cardName(x.id)}を売る`, card: CARD2[x.id] ? x.id : undefined, gain: { gold: g.itemSell(x.id) } };
+    if (x.m === 'both') return { id, title: `${DATA.RES_JP[x.sell.r]}を売って${DATA.RES_JP[x.buy.r]}を買う`, cost: one(x.sell.r, x.sell.q), gain: one(x.buy.r, x.buy.q) };
+  }
+  const l = choiceLabel(g, p, x);
+  return { id, title: l.title, detail: l.detail, card: l.card && CARD2[l.card] ? l.card : undefined, cost: l.cost };
+}
+/** 置き場所の選択肢1つ（資源を払う・得るだけなら、見出しは得るもの、アイコンで 払う→得る） */
+function spaceItem2(g: Game, p: Player | null, o: Option, id: string): ChoiceItem {
+  if (o.x !== undefined && o.i >= 0) return choiceItem2(g, p, o.x, id);
+  const l = optionLabel(g, p, o);
+  const sp = g.space(o.s);
+  const ops = o.i >= 0 && sp && !sp.def.accum ? sp.def.options[o.i] ?? [] : [];
+  if (ops.length && ops.every((op) => op.gain || op.pay)) {
+    const gain = addOps(ops, 'gain'), cost = addOps(ops, 'pay');
+    if (sumCost(gain)) return { id, title: resNames(gain), cost, gain };
+  }
+  return { id, title: l.title, detail: l.detail, card: l.card && CARD2[l.card] ? l.card : undefined, cost: l.cost };
+}
+/** 選択肢に同じ説明がくり返されるときは、見出しの下（sub）に1回だけ出す */
+function hoist(items: ChoiceItem[], sub?: string): { items: ChoiceItem[]; sub?: string } {
+  const ds = items.map((it) => it.detail);
+  const same = items.length > 1 && ds[0] && ds.every((d) => d === ds[0]) ? ds[0] : undefined;
+  const top = sub ?? same;
+  return { items: top ? items.map((it) => (it.detail === top ? { ...it, detail: undefined } : it)) : items, sub: top };
+}
 
 /** 画面で答える選択（ask）か、シートで答える選択（sheet）か */
 export function uiFor2(s: SeatSession2): { ask: Ask2 | null; sheet: (ChoiceSpec & { toAction: (id: string) => Action2 }) | null } {
@@ -57,11 +102,27 @@ export function uiFor2(s: SeatSession2): { ask: Ask2 | null; sheet: (ChoiceSpec 
       };
     }
     case 'pick': {
+      if (w.what.startsWith('equip:') && p) {
+        const id = w.what.slice(6), cd = g.card(id), sl = slotOf(cd) ?? 'weapon';
+        return {
+          ask: null, sheet: {
+            title: `${cd.name}を誰に持たせる？`, sub: `${SLOT_JP[sl]}・${cd.text}`,
+            items: w.options.map((x, i) => {
+              const ci = String(x) === 'eq:-' ? -1 : Number(String(x).slice(3));
+              if (ci < 0) return { id: String(i), title: '倉庫に置く', detail: '自分の番に「拠点」でいつでも持たせられる' };
+              const c = p.comps[ci], st = compStats(g, p, ci);
+              const out = [c[sl], sl === 'weapon' && cd.two_hand ? c.armor : null].filter(Boolean).map((y) => cardName(y!));
+              return { id: String(i), title: compName(p, ci), detail: `戦力${st.power}・守り${st.guard}${out.length ? `／${out.join('・')}は倉庫へ` : ''}`, primary: i === 0 };
+            }),
+            toAction: (id) => ({ t: 'pick', i: Number(id) }),
+          },
+        };
+      }
       const what = w.what === 'craft' ? '作る装備' : w.what === 'build' ? '建てるもの' : w.what === 'occ' ? '出す職能' : w.what === 'exchange' ? '交換所で' : w.what === 'train' ? '鍛える熟練' : w.what === 'tame' ? '使い魔にする魔物' : w.what === 'again' ? 'もう一度' : cardName(w.what);
       return {
         ask: null, sheet: {
           title: `${what}を選ぶ`,
-          items: w.options.map((x, i) => { const l = choiceLabel(g, p, x); return { id: String(i), title: l.title, detail: l.detail, card: l.card && CARD2[l.card] ? l.card : undefined, cost: l.cost }; }),
+          ...hoist(w.options.map((x, i) => choiceItem2(g, p, x, String(i)))),
           toAction: (id) => ({ t: 'pick', i: Number(id) }),
         },
       };
@@ -91,7 +152,7 @@ function ChipIcon2({ c, size }: { c: FightChip; size: number }) {
   return <KIcon name="power" size={size} />;
 }
 
-export function FightTray2({ s, sid, onPick, onCancel }: { s: SeatSession2; sid: string; onPick: (i: number, use?: string[]) => void; onCancel: () => void }) {
+export function FightTray2({ s, sid, onPick, onCancel }: { s: SeatSession2; sid: string; onPick: (i: number, use?: string[], who?: number[]) => void; onCancel: () => void }) {
   const w = s.waiting;
   const all = w?.k === 'choose' ? w.opts : [];
   const p = s.player;
@@ -104,11 +165,13 @@ export function FightTray2({ s, sid, onPick, onCancel }: { s: SeatSession2; sid:
   const [style, setStyle] = useState<FightMode>('normal');
   const [wait, setWait] = useState(false);
   const [use, setUse] = useState<string[]>([]);
+  /** 送る仲間を自分で選んだとき（null＝戦力の高い順） */
+  const [who, setWho] = useState<number[] | null>(null);
   const mode: FightMode = wait ? 'wait' : style;
   const find = (kk: number, m: FightMode) => fights.find((x) => (x.k ?? 1) === kk && x.mode === m);
   const base = find(k, mode) ?? find(k, 'normal');
-  const opt: Option | undefined = base && (mode === 'wait' ? base : { ...base, use });
-  const pv = useMemo(() => (opt && p ? previewFight(s.g, p, opt) : null), [s, p, k, mode, use.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
+  const opt: Option | undefined = base && { ...base, ...(mode === 'wait' ? {} : { use }), ...(who ? { who } : {}) };
+  const pv = useMemo(() => (opt && p ? previewFight(s.g, p, opt) : null), [s, p, k, mode, use.join(','), who?.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
   /** おまかせ（確実に・運命+1まで）で選ばれる後押し */
   const preset = (m: FightMode) => { const o = find(k, m); return o && p ? previewFight(s.g, p, o)?.keys ?? null : null; };
   const others = opts.filter((x) => x.i < 0);
@@ -134,7 +197,21 @@ export function FightTray2({ s, sid, onPick, onCancel }: { s: SeatSession2; sid:
   const boss = sid === 'lair';
   const title = mon ? (boss ? `主「${mon.name}」に挑む` : `${placeName(sid)}の${mon.name}に挑む`) : '挑む';
   const comps = p?.comps ?? [];
-  const pick = (x: Option, u?: string[]) => onPick(all.indexOf(x), u);
+  const pick = (x: Option, u?: string[], wh?: number[]) => onPick(all.indexOf(x), u, wh);
+  // 送れる仲間（休み・負傷でない。もう使った仲間は「もう1人置ける」があるときだけ）
+  const cands = p ? comps.map((_, i) => i).filter((i) => !comps[i].rest && !comps[i].injured && (!comps[i].used || p.extra > 0)) : [];
+  const sel = pv?.idxs ?? [];
+  const toggleComp = (i: number) => {
+    const nx = sel.includes(i) ? sel.filter((x) => x !== i) : [...sel, i];
+    if (!p || !ks.includes(nx.length)) {
+      // 人数の上限なら入れ替える（最後に選んだ仲間と）
+      if (!sel.includes(i) && sel.length && ks.includes(sel.length)) { const r = [...sel.slice(0, -1), i]; if (s.g.whoFor(p!, { ...(find(sel.length, mode) ?? base)!, who: r })) setWho(r); }
+      return;
+    }
+    const o2 = find(nx.length, mode) ?? find(nx.length, 'normal');
+    if (!o2 || !s.g.whoFor(p, { ...o2, who: nx })) return;
+    setK(nx.length); setWho(nx);
+  };
   const presets = !wait ? ([['safe', '確実に勝てるまで'], ['gamble', '運命+1まで']] as const).map(([m, l]) => [m, l, find(k, m) ? preset(m) : null] as const).filter(([, , u]) => u && u.length) : [];
   return (
     <Sheet label="戦闘">
@@ -199,7 +276,7 @@ export function FightTray2({ s, sid, onPick, onCancel }: { s: SeatSession2; sid:
         <h4>送る仲間</h4>
         <div className="kd-chips">
           {ks.map((n) => (
-            <button key={n} type="button" className={`kd-tchip is-k${k === n ? ' is-on' : ''}`} aria-pressed={k === n} onClick={() => setK(n)}>
+            <button key={n} type="button" className={`kd-tchip is-k${k === n ? ' is-on' : ''}`} aria-pressed={k === n} onClick={() => { setK(n); setWho(null); }}>
               <span className="kd-tchip-ic">{Array.from({ length: n }, (_, i) => <Token key={i} seat={p?.pid ?? 0} size={18} />)}</span>
               <span className="kd-tchip-l">{n}人</span>
               <small>守り+{n}</small>
@@ -211,16 +288,16 @@ export function FightTray2({ s, sid, onPick, onCancel }: { s: SeatSession2; sid:
             </button>
           )}
         </div>
-        {pv && pv.idxs.length > 0 && (
-          <div className="kd2-fcomps" aria-label="行く仲間と装備">
-            {pv.idxs.map((i) => { const c = comps[i]; const wv = c?.weapon ? CARD2[c.weapon] as { power?: number } | undefined : undefined; return c ? (
-              <div key={i} className="kd2-fcomp">
-                <span className="kd2-comp-who"><Token seat={p!.pid} size={20} /><small>{c.leader ? 'リーダー' : `仲間${i + 1}`}</small></span>
-                <span className="kd2-fcomp-st"><KIcon name="power" size={13} />{DATA.POWER_PER + c.atk + (wv?.power ?? 0)}<KIcon name="defense" size={13} />{DATA.GUARD_PER + c.def}</span>
-                <span className={`kd2-slot is-weapon${c.weapon ? ' is-on' : ''}`} data-inspect={c.weapon ? `card2:${c.weapon}` : undefined}><small>武器</small>{c.weapon ? <b>{cardName(c.weapon)}</b> : <i>なし</i>}</span>
-                <span className={`kd2-slot is-armor${c.armor ? ' is-on' : ''}`} data-inspect={c.armor ? `card2:${c.armor}` : undefined}><small>防具</small>{c.armor ? <b>{cardName(c.armor)}</b> : <i>なし</i>}</span>
-              </div>
-            ) : null; })}
+        {pv && cands.length > 0 && (
+          <div className="kd2-fcomps" role="group" aria-label="行く仲間（タップで選ぶ）">
+            {cands.map((i) => { const c = comps[i]; const st = compStats(s.g, p!, i); const on = sel.includes(i); return (
+              <button key={i} type="button" className={`kd2-fcomp${on ? ' is-on' : ' is-off'}`} aria-pressed={on} onClick={() => toggleComp(i)} data-kd={`fcomp:${i}`}>
+                <span className="kd2-comp-who"><Token seat={p!.pid} size={20} dim={!on} /><small>{compName(p!, i)}</small></span>
+                <span className="kd2-fcomp-st"><KIcon name="power" size={13} />{st.power}<KIcon name="defense" size={13} />{st.guard}</span>
+                <span className={`kd2-slot is-weapon${c.weapon ? ' is-on' : ''}`}><small>武器</small>{c.weapon ? <b>{cardName(c.weapon)}</b> : <i>なし</i>}</span>
+                <span className={`kd2-slot is-armor${c.armor ? ' is-on' : ''}`}><small>防具</small>{c.armor ? <b>{cardName(c.armor)}</b> : <i>なし</i>}</span>
+              </button>
+            ); })}
           </div>
         )}
         {wait && <p className="kd-tray-note">この巣で待つ。ほかの人が来れば一緒に戦い、来なければラウンドの終わりに単独で戦う（使うものはそのとき「運命+1まで」で自動で選ぶ）。</p>}
@@ -279,7 +356,7 @@ export function FightTray2({ s, sid, onPick, onCancel }: { s: SeatSession2; sid:
       {pv?.short && <p className="kd-tray-err" role="alert">払うものが足りない</p>}
       <div className="kd-tray-act">
         <button type="button" className="kd-btn" onClick={onCancel} aria-label="やめて置き場所を選び直す">選び直す</button>
-        <button type="button" className="kd-btn is-primary" disabled={!base || !!pv?.short} onClick={() => base && pick(base, mode === 'wait' ? undefined : on)}>
+        <button type="button" className="kd-btn is-primary" disabled={!base || !!pv?.short} onClick={() => base && pick(base, mode === 'wait' ? undefined : on, pv && p && s.g.whoFor(p, { ...base, who: pv.idxs }) ? pv.idxs : undefined)}>
           {wait ? '待ち伏せする' : boss ? `主の巣に置く（${pct}%）` : `${k}人で挑む（${pct}%）`}
         </button>
       </div>
@@ -289,9 +366,11 @@ export function FightTray2({ s, sid, onPick, onCancel }: { s: SeatSession2; sid:
 
 /** 置き場所を選んだあとの細かい選択 */
 export function optionSheet2(s: SeatSession2, sid: string, opts: Option[]): ChoiceSpec {
-  const items = opts.map((o, i) => { const l = optionLabel(s.g, s.player, o); return { id: String(i), title: l.title, detail: l.detail, card: l.card && CARD2[l.card] ? l.card : undefined, cost: l.cost }; });
+  const stage = s.g.space(sid)?.stage;
+  const sub = stage ? CARD2[stage]?.text : sid.startsWith('market') ? '1種類を、1回で動かせる数まで（払う→得る）' : undefined;
+  const h = hoist(opts.map((o, i) => spaceItem2(s.g, s.player, o, String(i))), sub);
   const title = sid === 'guild' ? '出す職能を選ぶ' : sid === 'forge' ? '作る武器を選ぶ（武具カードか共通の武器）' : sid === 'workshop' ? '工房で建てるもの' : sid.startsWith('market') ? '交換所で売り買い' : `${placeName(sid)}でできること`;
-  return { title, items, cancel: '置き場所を選び直す' };
+  return { title, ...h, cancel: '置き場所を選び直す' };
 }
 
 /** AI の取引の返事（v1 のトレイは「喜び具合」を見るので、受ける／断るから作る） */
@@ -329,12 +408,21 @@ export function routeAnswer2(w: NonNullable<SeatSession2['waiting']>, c: string)
 /** 席の操作（盤面の答え・シート・トレイ・取引・秘術）をまとめて持つ */
 export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opts: { sheetReady: boolean; onTrade: (b: number, give: Cost, get: Cost) => void }) {
   const [sub, setSub] = useState<{ sid: string; opts: Option[] } | null>(null);
-  const [tray, setTray] = useState<{ kind: 'fight'; sid: string } | { kind: 'trade' } | { kind: 'spell' } | null>(null);
+  const [tray, setTray] = useState<{ kind: 'fight'; sid: string } | { kind: 'trade' } | { kind: 'spell' } | { kind: 'equip'; c: number; slot: 'weapon' | 'armor' } | null>(null);
   const ui = useMemo(() => (s ? uiFor2(s) : { ask: null, sheet: null }), [s]);
   const w = s?.waiting ?? null;
+  const p = s?.player ?? null;
+  // 動かす仲間（置き場所を選ぶ番。最初は空いている最初の仲間＝これまでどおり）
+  const [who, setWho] = useState<number | null>(null);
   const reset = () => { setSub(null); setTray(null); };
-  useEffect(reset, [s]);
-  const go = (a: Action2) => { reset(); send(a); };
+  useEffect(() => { reset(); setWho((x) => (w?.k === 'choose' && p ? (x !== null && p.comps[x] && !p.comps[x].used && !p.comps[x].rest ? x : p.free()[0] ?? null) : null)); }, [s]); // eslint-disable-line react-hooks/exhaustive-deps
+  /** マスに置く答えには、選んだ仲間を付ける */
+  const withWho = (a: Action2): Action2 => {
+    if (a.t !== 'opt' || w?.k !== 'choose' || who === null || !s || !p) return a;
+    const o = w.opts[a.i];
+    return o && !isFight(o.s) && o.s !== '@spell' && s.g.whoFor(p, { ...o, who: [who] }) ? { ...a, who: [who] } : a;
+  };
+  const go = (a: Action2) => { reset(); send(withWho(a)); };
 
   /** 盤面の答え。トレイ・シートを開いただけ（まだ決まっていない）なら false */
   const onAnswer = (c: string): boolean => {
@@ -349,11 +437,25 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
   };
 
   let sheetNode: ReactNode = null;
-  if (s && w?.k === 'choose' && tray?.kind === 'fight') sheetNode = <FightTray2 key={tray.sid} s={s} sid={tray.sid} onPick={(i, use) => go(use ? { t: 'opt', i, use } : { t: 'opt', i })} onCancel={reset} />;
+  if (s && w?.k === 'choose' && tray?.kind === 'fight') sheetNode = <FightTray2 key={tray.sid} s={s} sid={tray.sid} onPick={(i, use, wh) => go({ t: 'opt', i, ...(use ? { use } : {}), ...(wh ? { who: wh } : {}) })} onCancel={reset} />;
+  else if (s && p && w?.k === 'choose' && tray?.kind === 'equip') {
+    const { c: ci, slot } = tray;
+    const cur = p.comps[ci]?.[slot] ?? null;
+    const cand = [...new Set([...s.g.storage(p), ...p.comps.map((c) => c[slot]).filter((x): x is string => !!x)])].filter((id) => !s.g.equipError(p, ci, slot, id));
+    const from = (id: string) => (s.g.storage(p).includes(id) ? '倉庫' : compName(p, p.comps.findIndex((c) => c[slot] === id)));
+    const items: ChoiceItem[] = cand.map((id) => {
+      const cd = s.g.card(id);
+      const stat = slot === 'weapon' ? `戦力+${cd.power ?? 0}${cd.two_hand ? '・両手' : ''}${cd.rear ? '・後衛' : ''}` : `守り+${cd.guard ?? 0}`;
+      return { id, title: cd.name, detail: `${stat}（${from(id)}から）`, card: CARD2[id] ? id : undefined };
+    });
+    if (cur) items.push({ id: '-', title: 'はずす', detail: `${cardName(cur)}を倉庫へ` });
+    sheetNode = <ChoiceSheet spec={{ title: `${compName(p, ci)}の${SLOT_JP[slot]}`, sub: cur ? `いま：${cardName(cur)}` : items.length ? '持たせる装備を選ぶ（無料）' : '持たせられる装備がない', items, cancel: '閉じる' }}
+      onPick={(id) => go({ t: 'equip', c: ci, slot, id: id === '-' ? null : id })} onCancel={reset} />;
+  }
   else if (s && w?.k === 'choose' && tray?.kind === 'trade') sheetNode = <TradeTray s={tradeAdapter(s)} onTrade={(b, give, get) => { reset(); opts.onTrade(b, give, get); }} onCancel={reset} />;
   else if (s && w?.k === 'choose' && tray?.kind === 'spell') {
     const sp = w.opts.filter((o) => o.s === '@spell');
-    sheetNode = <ChoiceSheet spec={{ title: '秘術を使う（置く前に1枚）', items: sp.map((o, i) => { const l = optionLabel(s.g, s.player, o); return { id: String(i), title: l.title, detail: l.detail, card: l.card, cost: l.cost }; }), cancel: '使わない' }} onPick={(id) => go({ t: 'opt', i: w.opts.indexOf(sp[Number(id)]) })} onCancel={reset} />;
+    sheetNode = <ChoiceSheet spec={{ title: '秘術を使う', sub: '置く前に1枚。使うと手札から捨てる', items: sp.map((o, i) => { const l = optionLabel(s.g, s.player, o); return { id: String(i), title: l.title.replace(/を使う$/, ''), detail: l.detail, card: l.card, cost: l.cost }; }), cancel: '使わない' }} onPick={(id) => go({ t: 'opt', i: w.opts.indexOf(sp[Number(id)]) })} onCancel={reset} />;
   } else if (s && w?.k === 'choose' && sub) {
     sheetNode = <ChoiceSheet spec={optionSheet2(s, sub.sid, sub.opts)} onPick={(id) => go({ t: 'opt', i: w.opts.indexOf(sub.opts[Number(id)]) })} onCancel={reset} />;
   } else if (ui.sheet && opts.sheetReady) {
@@ -368,5 +470,24 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
       <TradeButton s={tradeAdapter(s)} onOpen={() => setTray({ kind: 'trade' })} />
     </>
   ) : null;
-  return { ask: ui.ask, hasSheet: !!ui.sheet, sheetNode, actions, onAnswer, reset };
+  // 動かす仲間を選ぶチップ（自分の番。空いている仲間だけ選べる）
+  const picker = ui.ask?.kind === 'place' && s && p && p.comps.length > 1 && p.free().length > 0 ? (
+    <div className="kd2-who" role="radiogroup" aria-label="動かす仲間">
+      <small>動かす<br />仲間</small>
+      {p.comps.map((c, i) => {
+        const ok = !c.used && !c.rest;
+        const st = compStats(s.g, p, i);
+        return (
+          <button key={i} type="button" role="radio" aria-checked={who === i} disabled={!ok} className={`kd2-whochip${who === i ? ' is-on' : ''}`} onClick={() => setWho(i)} data-kd={`who:${i}`}>
+            <span className="kd2-whochip-h"><Token seat={p.pid} size={14} dim={!ok} injured={c.injured} /><b>{compName(p, i)}</b></span>
+            <span className="kd2-whochip-st"><KIcon name="power" size={11} />{st.power}<KIcon name="defense" size={11} />{st.guard}</span>
+            <small className="kd2-whochip-eq">{c.weapon ? cardName(c.weapon) : '素手'}{c.armor ? `・${cardName(c.armor)}` : ''}</small>
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
+  /** 拠点の装備の枠をタップ（自分の番だけ） */
+  const onEquip = w?.k === 'choose' && ui.ask?.kind === 'place' ? (c: number, slot: 'weapon' | 'armor') => { setSub(null); setTray({ kind: 'equip', c, slot }); } : undefined;
+  return { ask: ui.ask, hasSheet: !!ui.sheet, sheetNode, actions, onAnswer, reset, picker, onEquip };
 }

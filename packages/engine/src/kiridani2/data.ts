@@ -122,7 +122,7 @@ export const NESTS: Record<number, string[]> = {
 };
 export const NEST_JP: Record<string, string> = { nest_forest: '森の巣', nest_cave: '洞窟', nest_swamp: '沼の巣', nest_mount: '山の巣', lair: '主の巣' };
 
-// ---- 魔物の型（v1 の30種。格は v1 の年ごとの強さの順で −1/0/+1）
+// ---- 魔物の型（v1 の30種＋追加18種。格は v1 の年ごとの強さの順で −1/0/+1）
 const M = (id: string, name: string, race: MonsterType['race'], weak: MonsterType['weak'], loot: Res[], grade: number): MonsterType => ({ id, name, race, weak, loot, grade });
 export const MONSTERS: MonsterType[] = [
   M('rat', '畑荒らしの大ネズミ', 'beast', 'fire', ['food'], -1),
@@ -155,10 +155,29 @@ export const MONSTERS: MonsterType[] = [
   M('witch', '霧の魔女', 'humanoid', 'thunder', ['mana', 'herb'], -1),
   M('hydra', '沼の多頭蛇', 'dragon', 'fire', ['mat'], 1),
   M('shade', '影の獣', 'spirit', 'light', ['mat', 'mana'], -1),
+  // 追加の18種（格・種族・弱点・戦利品の割合は上の30種に近づけた：格 −1×5・0×7・+1×6）
+  M('mole', '鉄喰いの大土竜', 'beast', 'thunder', ['iron', 'food'], -1),
+  M('owl', '霧梟', 'beast', 'fire', ['mat'], -1),
+  M('mushroom', '胞子の茸人', 'spirit', 'fire', ['herb', 'mana'], -1),
+  M('scarecrow', '彷徨う案山子', 'undead', 'fire', ['wood', 'food'], -1),
+  M('kobold', '坑道のコボルド', 'humanoid', 'light', ['iron', 'gold'], -1),
+  M('stag', '霧角の大鹿', 'beast', 'ice', ['food', 'mat'], 0),
+  M('crab', '岩甲羅の大蟹', 'beast', 'thunder', ['mat', 'food'], 0),
+  M('mimic', '宝箱もどき', 'spirit', 'light', ['gold'], 0),
+  M('banshee', '泣き女の霊', 'undead', 'light', ['mana'], 0),
+  M('lizardman', '沼の蜥蜴人', 'humanoid', 'ice', ['herb', 'gold'], 0),
+  M('drake', '火吹きの竜仔', 'dragon', 'ice', ['mat', 'mana'], 0),
+  M('wasp', '刺し蜂の群れ', 'beast', 'fire', ['herb', 'mat'], 0),
+  M('bear', '月牙の熊', 'beast', 'fire', ['food', 'mat'], 1),
+  M('scorpion', '砂岩の大蠍', 'beast', 'ice', ['mat', 'iron'], 1),
+  M('gargoyle', '石像鬼', 'spirit', 'thunder', ['iron', 'mana'], 1),
+  M('mummy', '眠らぬ木乃伊', 'undead', 'fire', ['mat', 'gold'], 1),
+  M('orcchief', '牙の戦頭', 'humanoid', 'fire', ['iron', 'food'], 1),
+  M('wyrmling', '雷鱗の小竜', 'dragon', 'dark', ['mana', 'mat'], 1),
 ];
 export const MON: Record<string, MonsterType> = Object.fromEntries(MONSTERS.map((m) => [m.id, m]));
 
-/** 主の型（v1 の4種＋追加2種。格+3） */
+/** 主の型（v1 の4種＋追加6種。格+3） */
 export const BOSS_TYPES: MonsterType[] = [
   M('b_bear', '森の大熊', 'beast', 'fire', ['mat', 'food'], 3),
   M('b_queen', '蜘蛛の女王', 'beast', 'fire', ['mat'], 3),
@@ -166,6 +185,11 @@ export const BOSS_TYPES: MonsterType[] = [
   M('b_dullahan', '首無し騎士', 'undead', 'light', ['iron', 'mana'], 3),
   M('b_lichking', '霧の死霊王', 'undead', 'light', ['mana', 'gold'], 3),
   M('b_giant', '谷の大巨人', 'humanoid', 'thunder', ['iron', 'food'], 3),
+  // 追加の4種（どれも格+3。1試合に出る主は4種のくじなので強さの釣り合いは変わらない）
+  M('b_elder', '千年樹の守り主', 'spirit', 'fire', ['wood', 'herb'], 3),
+  M('b_storm', '嵐を呼ぶ雷鳥', 'beast', 'ice', ['mat', 'mana'], 3),
+  M('b_warlord', '鬼の大将', 'humanoid', 'thunder', ['iron', 'gold'], 3),
+  M('b_mire', '底なし沼の大蛇竜', 'dragon', 'fire', ['mat', 'herb'], 3),
 ];
 export const ANCIENT_DRAGON: MonsterType = M('b_ancient', '谷底の古竜', 'dragon', null, ['mana', 'gold'], 3);
 export const BOSS: Record<string, MonsterType> = Object.fromEntries([...BOSS_TYPES, ANCIENT_DRAGON].map((m) => [m.id, m]));

@@ -38,6 +38,8 @@ export interface Option {
   e?: number;
   /** 戦闘で使う後押しを自分で選ぶ（FightChip の key の並び。士気は仲間の数まで重ねられる）。ないときは mode の決め方（safe・gamble）で選ぶ */
   use?: string[];
+  /** 動かす仲間を自分で選ぶ（仲間の番号。マスは1人、戦闘は k 人）。ないとき・使えないときはこれまでどおり（マスは空いている最初の仲間、戦闘は戦力の高い順） */
+  who?: number[];
 }
 
 /** 戦闘で足せる後押し1つ（士気・ポーション・払うカードの効果・手札の秘術） */
@@ -597,7 +599,8 @@ export class Game {
       const g0: Cost = { food: D.START.food + (D.SEAT_FOOD[this.n][p.pid] ?? 0), gold: D.START.gold, wood: D.START.wood, iron: D.START.iron };
       gainRes(p, g0);
       this.emit({ t: 'grant', seat: p.pid, gain: g0, reason: '開始時' });
-      this.autoEquip(p);
+      if (p.ai) this.autoEquip(p);
+      else for (const id of this.storage(p)) if (slotOf(this.card(id))) yield* this.gotGear(p, id);
       yield* this.fire(p, 'setup', {});
     }
     this.round = 0;
@@ -924,11 +927,11 @@ export class Game {
     if (nd || o.s === 'lair') { yield* this.placeFight(p, o); return; }
     const sp = this.space(o.s);
     if (!sp) throw new Error(`unknown space ${o.s}`);
-    this.useWorker(p, 1);
+    const used = this.useWorker(p, 1, this.whoFor(p, o) ?? undefined);
     sp.occ.push(p.pid);
     const cap = sp.def.cap ?? 1;
     if (cap > 0 && sp.occ.length > cap) p.ignoreFull = false;
-    this.emit({ t: 'place', seat: p.pid, space: sp.id, companions: [], option: optLabel(o) });
+    this.emit({ t: 'place', seat: p.pid, space: sp.id, companions: used, option: optLabel(o) });
     p.acts.push(`sp:${sp.id}`);
     if (o.i >= 0) p.lastSpace = { s: sp.id, i: o.i };
     if (sp.id === 'board') p.acts.push('board');
@@ -958,8 +961,10 @@ export class Game {
     for (const q of this.players) if (q !== p) yield* this.fire(q, `other:${sp.id}`, { space: sp.id });
   }
 
-  useWorker(p: Player, k: number): number[] {
+  /** k 人置く（prefer＝選んだ仲間。空いていれば先に使う） */
+  useWorker(p: Player, k: number, prefer?: number[]): number[] {
     const fr = p.free();
+    for (const i of [...(prefer ?? [])].reverse()) { const j = fr.indexOf(i); if (j >= 0) { fr.splice(j, 1); fr.unshift(i); } }
     const idxs: number[] = [];
     for (let j = 0; j < k; j++) {
       if (fr.length) { const i = fr.shift()!; p.comps[i].used = true; idxs.push(i); } else if (p.extra > 0) p.extra -= 1;
@@ -977,6 +982,23 @@ export class Game {
     }
     return fr;
   }
+  /** 選んだ仲間（Option.who）が、その選択肢で使えるか。使えるならその並び、使えない・選んでいないなら null。
+   *  マス：空いている（使っていない・休んでいない）仲間1人。戦闘：k 人、休み・負傷でなく、もう使った仲間は「もう1人置ける」の数まで */
+  whoFor(p: Player, o: Option): number[] | null {
+    const who = o.who;
+    if (!Array.isArray(who) || o.s === '@spell') return null;
+    const fight = !!this.nest(o.s) || o.s === 'lair';
+    if (who.length !== (fight ? o.k ?? 1 : 1)) return null;
+    let again = 0;
+    for (let j = 0; j < who.length; j++) {
+      const i = who[j], c = p.comps[i];
+      if (!Number.isInteger(i) || !c || who.indexOf(i) !== j || c.rest || (fight && c.injured)) return null;
+      if (c.used) { if (!fight) return null; again++; }
+    }
+    return again <= p.extra ? [...who] : null;
+  }
+  /** 戦闘に送る仲間（選んだ仲間か、戦力の高い順） */
+  compsFor(p: Player, o: Option): number[] { return this.whoFor(p, o) ?? this.pickComps(p, o.k ?? 1); }
   /** 戦闘に送った仲間を使ったことにする */
   useComps(p: Player, idxs: number[]) {
     for (const i of idxs) { if (!p.comps[i].used) p.comps[i].used = true; else p.extra = Math.max(0, p.extra - 1); }
@@ -1116,7 +1138,7 @@ export class Game {
             this.gearStock[id] -= 1;
             p.items.push(id);
             this.emit({ t: 'craft', seat: p.pid, card: id });
-            this.autoEquip(p);
+            yield* this.gotGear(p, id);
           } else yield* this.playItem(p, id, true);
           p.acts.push('craft');
           yield* this.fire(p, 'craft', {});
@@ -1255,8 +1277,9 @@ export class Game {
     const c = this.card(id);
     p.fame.card += c.fame ?? 0;
     if (c.kind === 'tool') { p.tools.push(id); this.emit({ t: 'build', seat: p.pid, kind: 'facility', card: id }); }
-    else { p.items.push(id); this.emit({ t: 'craft', seat: p.pid, card: id }); this.autoEquip(p); }
+    else { p.items.push(id); this.emit({ t: 'craft', seat: p.pid, card: id }); }
     this.emit({ t: 'play_card', seat: p.pid, card: id });
+    if (c.kind !== 'tool') yield* this.gotGear(p, id);
   }
   *playSpell(p: Player, id: string, ei: number): Gen {
     const i = p.hand.indexOf(id);
@@ -1306,8 +1329,10 @@ export class Game {
     for (const d of decks) this.rng.shuffle(d);
   }
 
-  /** 装備の持ち替え（無料）：武器は戦力の高い順に熟練の高い仲間へ、防具は守りの高い順に */
+  /** 装備の持ち替え（無料）：武器は戦力の高い順に熟練の高い仲間へ、防具は守りの高い順に。
+   *  AI の席だけ（人の席は自分で持たせる：gotGear の問いと、手番の equip） */
   autoEquip(p: Player) {
+    if (!p.ai) return;
     const before = p.comps.map((c) => [c.weapon, c.armor]);
     for (const c of p.comps) { c.weapon = null; c.armor = null; }
     const items = [...p.items].map((id) => this.card(id));
@@ -1333,6 +1358,47 @@ export class Game {
         if (before[i]?.[1] !== c.armor) this.emit({ t: 'equip', seat: p.pid, companion: i, slot: 'armor', card: c.armor });
       });
     }
+  }
+
+  /** その装備を持てる仲間（空いている枠が先、次に熟練の高い順）。two_hand の武器を持つ仲間は防具を持てない、leader_only はリーダーだけ */
+  equipTargets(p: Player, id: string): number[] {
+    const cd = this.card(id), sl = slotOf(cd);
+    if (!sl) return [];
+    const sk = sl === 'weapon' ? 'atk' : 'def';
+    return p.comps.map((_, i) => i)
+      .filter((i) => { const c = p.comps[i]; return (!cd.leader_only || c.leader) && !(sl === 'armor' && c.weapon && this.card(c.weapon).two_hand); })
+      .sort((a, b) => +!!p.comps[a][sl] - +!!p.comps[b][sl] || p.comps[b][sk] - p.comps[a][sk] || a - b);
+  }
+  /** 持たせられないなら理由（持たせられるなら null）。id＝null ははずす。倉庫か、ほかの仲間の同じ枠から持ってくる */
+  equipError(p: Player, ci: number, slot: 'weapon' | 'armor', id: string | null): string | null {
+    const c = p.comps[ci];
+    if (!c || (slot !== 'weapon' && slot !== 'armor')) return 'その仲間はいない';
+    if (id === null) return c[slot] ? null : 'もう何も持っていない';
+    if (typeof id !== 'string' || !this.byId.has(id) || slotOf(this.card(id)) !== slot) return 'その枠には持てない';
+    if (c[slot] === id) return 'もう持っている';
+    if (!this.storage(p).includes(id) && !p.comps.some((x, j) => j !== ci && x[slot] === id)) return '倉庫にない';
+    if (!this.equipTargets(p, id).includes(ci)) return this.card(id).leader_only ? 'リーダーだけが持てる' : '両手武器を持っていると防具は持てない';
+    return null;
+  }
+  /** 持たせる・はずす・持ち替える（無料）。前に持っていたものは倉庫へ。two_hand の武器を持たせると防具は倉庫へ */
+  equip(p: Player, ci: number, slot: 'weapon' | 'armor', id: string | null) {
+    const err = this.equipError(p, ci, slot, id);
+    if (err) throw new Error(err);
+    const set = (j: number, s: 'weapon' | 'armor', v: string | null) => { p.comps[j][s] = v; this.emit({ t: 'equip', seat: p.pid, companion: j, slot: s, card: v }); };
+    if (id !== null && !this.storage(p).includes(id)) set(p.comps.findIndex((x, j) => j !== ci && x[slot] === id), slot, null);
+    set(ci, slot, id);
+    if (id && slot === 'weapon' && this.card(id).two_hand && p.comps[ci].armor) set(ci, 'armor', null);
+  }
+  /** 装備を手に入れたとき：AI は自動で持ち替え、人には誰に持たせるか聞く（"eq:<仲間の番号>" か、倉庫に置く "eq:-"） */
+  *gotGear(p: Player, id: string): Gen {
+    if (p.ai) { this.autoEquip(p); return; }
+    const sl = slotOf(this.card(id));
+    if (!sl || !this.storage(p).includes(id)) return;
+    const to = this.equipTargets(p, id);
+    if (!to.length) return;
+    const x: string = yield* this.ask({ k: 'pick', g: this, p, what: `equip:${id}`, options: [...to.map((i) => `eq:${i}`), 'eq:-'] });
+    const ci = typeof x === 'string' && /^eq:\d+$/.test(x) ? Number(x.slice(3)) : -1;
+    if (to.includes(ci)) this.equip(p, ci, sl, id);
   }
 
   // ------------------------------------------------------------ 戦闘（§5・§6）
@@ -1454,8 +1520,7 @@ export class Game {
   }
 
   *placeFight(p: Player, o: Option): Gen {
-    const k = o.k ?? 1;
-    const idxs = this.pickComps(p, k);
+    const idxs = this.compsFor(p, o);
     this.useComps(p, idxs);
     const nd0 = this.nest(o.s);
     if (nd0 && nd0.groups >= D.NEST_CAP) p.ignoreFull = false;

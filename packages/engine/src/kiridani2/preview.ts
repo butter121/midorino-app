@@ -41,7 +41,6 @@ export interface FightPreview {
 export function previewFight(g0: Game, p0: Player, o: Option): FightPreview | null {
   const g = g0.clone();
   const p = g.players[p0.pid];
-  const k = o.k ?? 1;
   const mode: FightMode = o.mode ?? 'normal';
   let mon: Monster | undefined;
   let acc = 0, accStr = 0;
@@ -69,7 +68,7 @@ export function previewFight(g0: Game, p0: Player, o: Option): FightPreview | nu
     }
   }
   const need0 = mon.str - mon.wounds;
-  const idxs = g.pickComps(p, k);
+  const idxs = g.compsFor(p, o);
   const pl = g.makePlan(p, mon, idxs, mode === 'wait' ? 'wait' : mode, coop, need0 - acc, mode === 'wait' ? undefined : o.use);
   const strength = need0 + accStr + pl.str;
   const total = acc + pl.power;

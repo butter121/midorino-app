@@ -1,9 +1,9 @@
 // 霧谷 v2 — タップで詳しく見るシート（v1 の InspectSheet と同じ見た目。中身は v2 のカード・魔物・マス・プレイヤー）
 import { useEffect, type ReactNode } from 'react';
 import { DATA, type Monster, FLAVOR } from '@midorino/engine/src/kiridani2';
-import { KIcon, NestScene, TerrainArt } from '../kiridani/art-registry';
+import { KIcon } from '../kiridani/art-registry';
 import { CostRow, ResCount, Token } from '../kiridani/ui/parts';
-import { CardChip2, CardFace2, KIND2_JP, LeaderArt, MonArt, rageText } from './parts2';
+import { CardArt2, CardChip2, CardFace2, KIND2_JP, LeaderArt, MonArt, NestArt, SpaceArt, rageText } from './parts2';
 import { ANC2, CARD2, NEST_JP, QUEST2, RES_JP, cardName, placeName, type PV2, type Seat, type View2 } from './view';
 import { RES } from '@midorino/engine/src/kiridani2';
 
@@ -67,14 +67,14 @@ function body(target: string, v: View2): { kind: string; title: string; node: Re
     case 'space2': {
       if (id.startsWith('nest') || id === 'lair') {
         const n = v.nests.find((x) => x.id === id);
-        return { kind: '巣', title: NEST_JP[id] ?? id, node: <><div className="kd-insp-art is-wide"><NestScene id={id} width={300} /></div><p className="kd-insp-p">1ラウンドに2組まで。1回に送れる仲間は{DATA.MAX_SEND}人まで。戦力（2＋攻めの熟練＋武器）と運命カードの合計が強さ以上で撃破。</p>{n?.mon ? monBlock(n.mon) : <p className="kd-insp-p">いまは魔物がいない。</p>}</> };
+        return { kind: '巣', title: NEST_JP[id] ?? id, node: <><div className="kd-insp-art is-wide"><NestArt id={id} width={300} /></div><p className="kd-insp-p">1ラウンドに2組まで。1回に送れる仲間は{DATA.MAX_SEND}人まで。戦力（2＋攻めの熟練＋武器）と運命カードの合計が強さ以上で撃破。</p>{n?.mon ? monBlock(n.mon) : <p className="kd-insp-p">いまは魔物がいない。</p>}</> };
       }
       const def = DATA.SPACE[id];
       const st = CARD2[id];
       const s = v.spaces[id];
       return {
         kind: s?.stage ? `段階${s.stage}の場所` : '行動マス', title: placeName(id), node: <>
-          {!s?.stage && <div className="kd-insp-art"><TerrainArt id={id} size={96} /></div>}
+          <div className="kd-insp-art">{st && !def ? <CardArt2 id={id} size={96} /> : <SpaceArt id={id} size={96} />}</div>
           {st && <p className="kd-insp-p kd-insp-big">{st.text}</p>}
           {st && FLAVOR[id] && <p className="kd2-flavor">{FLAVOR[id]}</p>}
           {def?.accum && <Row k="毎ラウンドたまる"><CostRow cost={def.accum} size={18} signed /></Row>}
