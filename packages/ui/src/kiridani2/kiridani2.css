@@ -44,12 +44,25 @@
 .kd2-qtext { display: block; font-size: 11px; font-weight: 400; opacity: .8; }
 .kd2-secret { border-style: dashed; }
 
-/* 戦闘のトレイ */
+/* 戦闘のトレイ（v1 と同じ選択式。行く仲間ごとの装備・おまかせの後押し） */
 .kd2-modes .kd-tchip small { display: block; font-size: 10px; font-weight: 400; opacity: .8; }
-.kd2-fightpv { display: flex; flex-direction: column; gap: 6px; }
-.kd2-fightpv .kd-meter { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
-.kd2-fightpv .kd-meter b { font-size: 22px; }
-.kd2-fightpv-r { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; }
+.kd2-fcomps { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }
+.kd2-fcomp { display: grid; grid-template-columns: auto auto minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 5px; padding: 2px 5px; border-radius: 9px; background: #00000026; border: 1px solid var(--kd-line, #ffffff22); }
+.kd2-fcomp-st { display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.kd2-presets { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 6px; }
+.kd2-presets small { font-size: 11px; opacity: .75; }
+.kd2 .kd2-preset { min-height: 32px; padding: 2px 10px; font-size: 12px; }
+.kd-tray-item small { font-size: 10px; opacity: .75; }
+.kd-tray-item[data-inspect] { cursor: pointer; }
+/* 決めるボタンはトレイの下に貼りつける（中身が長くても押せる） */
+.kd2 .kd-tray > .kd-tray-act { position: sticky; bottom: -10px; z-index: 2; margin: 0 -10px -10px; padding: 6px 10px 10px; background: linear-gradient(#1a162000, #1a1620 30%); }
+@media (orientation: landscape) and (max-height: 560px) {
+  .kd2-fcomp { padding: 1px 4px; }
+  .kd2-fcomps .kd2-slot { padding: 1px 4px; flex-direction: row; align-items: baseline; gap: 4px; }
+  .kd2-fcomps { margin-top: 3px; gap: 2px; }
+  .kd2 .kd2-preset { min-height: 30px; }
+  .kd2 .kd-tray > .kd-tray-act { bottom: -8px; margin-bottom: -8px; padding-bottom: 8px; }
+}
 
 /* 名声の内訳 */
 .kd2-ftable td.is-neg { color: #f28b6b; }
@@ -104,3 +117,13 @@
 /* 終わりの名声の倍率（10年×2・15年×3） */
 .kd2-scale { margin: 3px 0 0; font-size: 11px; font-weight: 700; line-height: 1.35; color: var(--kd-gold-l, #f3d27a); }
 .kd-card.is-s .kd2-scale { display: none; }
+
+/* 盤面がはみ出すとき（段階カードでマスが増えた・小さい画面）：マスの大きさ・並びはそのまま、盤面を縦にスクロールする。
+   縦画面は盤面ごと、横画面は巣の列をそのままにして行動マスの側だけ。下の自分の持ち物・置くボタンは盤面の外なので動かない。横にはスクロールしない */
+.kd2 .kd-tabbody { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; padding: 4px; margin: -4px -4px 0; }
+.kd2 .kd-tabbody > .kd2-board { flex: 1 0 auto; min-height: 0; }
+.kd2 .kd2-board > .kd-spaces { grid-auto-rows: minmax(min-content, 1fr); }
+@media (orientation: landscape) and (min-width: 640px) and (max-width: 999px), (orientation: landscape) and (min-width: 640px) and (max-height: 540px) {
+  .kd2 .kd-tabbody > .kd2-board { flex: 1 1 0; min-height: 0; }
+  .kd2 .kd2-board > .kd-spaces { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; padding: 3px; margin: -3px; }
+}

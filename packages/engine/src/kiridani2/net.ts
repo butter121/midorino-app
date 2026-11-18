@@ -19,7 +19,7 @@ export type Action =
   | { t: 'card'; id: string }                                   // リーダー・職能・品物・始めの2枚・秘密依頼・引くカード
   | { t: 'ratio'; v: Ratio }                                    // 武具・道具・秘術の割合（合計5）
   | { t: 'kind'; v: ItemKind }                                  // 次に引く品物の種類
-  | { t: 'opt'; i: number }                                     // 置き場所の選択肢（Prompt.opts の番号）
+  | { t: 'opt'; i: number; use?: string[] }                                   // 置き場所の選択肢（Prompt.opts の番号）
   | { t: 'pick'; i: number }                                    // 細かい選択（Prompt.options の番号）
   | { t: 'yes'; v: boolean }                                    // はい／いいえ（回復・効果を使うか）
   | { t: 'trade'; b: number; give: Cost; get: Cost }            // AI との取引（置き場所の選択は続く）
@@ -439,7 +439,7 @@ export function applyAction(s: Kiridani2Session, a: Action): GameEvent[] {
       if (w.k !== 'choose') throw new Error('いまは置き場所を選ぶ場面ではありません');
       const o = Number.isInteger(a.i) ? w.opts[a.i] : undefined;
       if (!o) throw new Error('選べない行動です');
-      return s.answer(o);
+      return s.answer(a.use !== undefined ? { ...o, use: a.use } : o);
     }
     case 'pick': {
       if (w.k !== 'pick') throw new Error('いまは選ぶ場面ではありません');

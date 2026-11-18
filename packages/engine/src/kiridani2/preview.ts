@@ -1,8 +1,8 @@
 // 霧谷の冒険者団 v2 — 画面のための見込み（盤面は変えない。複製の上で計算する）。
 // 戦闘の勝つ見込み・必要な強さ・反撃と負傷の見込み、選択肢の短い説明。手元の試合でもオンラインの写しでも同じに動く。
 import * as D from './data';
-import { canPay, type Choice, type Game, type Option, type Player } from './engine';
-import type { Cost, FightMode, Monster, Res } from './types';
+import { canPay, type Choice, type FightChip, type Game, type Option, type Player } from './engine';
+import type { Cost, FightMode, Monster, PowerPart, Res } from './types';
 import { RES } from './types';
 
 export interface FightPreview {
@@ -26,6 +26,15 @@ export interface FightPreview {
   idxs: number[];
   /** 費用が払えない */
   short: boolean;
+  /** 足せる後押し（士気・ポーション・カード・秘術）と、いま使うものの key（use の形） */
+  chips: FightChip[];
+  keys: string[];
+  /** 戦力の内訳（仲間ごと・武器・使い魔・カードなど） */
+  parts: PowerPart[];
+  /** 運命の札の値と確率（運命を引く人の山） */
+  fate: [number, number][];
+  /** 運命なしで足りない分（これ以上の運命で勝つ） */
+  fateNeed: number;
 }
 
 /** 巣・主の巣に k 人で mode で挑んだときの見込み */
@@ -61,17 +70,18 @@ export function previewFight(g0: Game, p0: Player, o: Option): FightPreview | nu
   }
   const need0 = mon.str - mon.wounds;
   const idxs = g.pickComps(p, k);
-  const pl = g.makePlan(p, mon, idxs, mode === 'wait' ? 'wait' : mode, coop, need0 - acc);
+  const pl = g.makePlan(p, mon, idxs, mode === 'wait' ? 'wait' : mode, coop, need0 - acc, mode === 'wait' ? undefined : o.use);
   const strength = need0 + accStr + pl.str;
   const total = acc + pl.power;
   let pwin = 0;
-  for (const [v, pr] of g.fateDist(fateOf)) if (total + v >= strength) pwin += pr;
+  const fate = [...g.fateDist(fateOf)].sort((a, b) => a[0] - b[0]);
+  for (const [v, pr] of fate) if (total + v >= strength) pwin += pr;
   const guard = g.defense(p, pl);
   const counter = Math.max(0, mon.counter + pl.counter);
   const injuries = pl.rearAll ? 0 : Math.max(0, Math.min(idxs.length, counter - guard - pl.noInj));
   return {
     monster: mon, power: pl.power, partner: acc, need: strength, pwin, cost: pl.cost, boosts: pl.boosts, counter, guard, injuries, idxs,
-    short: !canPay(p, pl.cost),
+    short: !canPay(p, pl.cost), chips: pl.chips ?? [], keys: pl.keys ?? [], parts: pl.parts, fate, fateNeed: strength - total,
   };
 }
 

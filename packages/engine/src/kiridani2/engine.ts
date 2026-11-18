@@ -36,7 +36,12 @@ export interface Option {
   join?: boolean;
   card?: string;
   e?: number;
+  /** 戦闘で使う後押しを自分で選ぶ（FightChip の key の並び。士気は仲間の数まで重ねられる）。ないときは mode の決め方（safe・gamble）で選ぶ */
+  use?: string[];
 }
+
+/** 戦闘で足せる後押し1つ（士気・ポーション・払うカードの効果・手札の秘術） */
+export interface FightChip { key: string; name: string; label: string; cost: Cost; gain: number; card?: string; spell: boolean }
 
 export type CardWhy = 'leader' | 'occ' | 'item' | 'start_occ' | 'start_item' | 'quest' | 'draw' | 'refill_occ' | 'refill_item';
 export type Req =
@@ -175,6 +180,8 @@ export interface NestSt { id: string; mon: Monster | null; groups: number; wait:
 export interface Plan extends FightBuf {
   pid: number; idxs: number[]; mode: FightMode; power: number; parts: PowerPart[]; guard: number; counter: number; loot: number; trophy: number;
   str: number; noInj: number; cost: Cost; boosts: string[]; spells: string[]; used: string[]; rearAll: boolean; weak: boolean;
+  /** 足せた後押し（chips）と、実際に使ったものの key */
+  chips?: FightChip[]; keys?: string[];
 }
 
 export interface GameOptions {
@@ -214,7 +221,7 @@ export class Game {
   players: Player[];
   spaces: SpaceSt[] = [];
   nests: NestSt[] = [];
-  lairQ: { pid: number; idxs: number[]; mode: FightMode }[] = [];
+  lairQ: { pid: number; idxs: number[]; mode: FightMode; use?: string[] }[] = [];
   forecastQ: Monster[] = [];
   bossOf: Record<number, Monster> = {};
   bossTypes: MonsterType[] = [];
@@ -1338,8 +1345,8 @@ export class Game {
   }
 
   /** 戦力・守り・後押しの計画（盤面は変えない）。need は運命なしで勝つのに要る戦力の目安 */
-  makePlan(p: Player, mon: Monster, idxs: number[], mode: FightMode, coop: boolean, need: number): Plan {
-    const pl: Plan = { pid: p.pid, idxs, mode, power: 0, parts: [], guard: 0, counter: 0, loot: 0, trophy: 0, str: 0, noInj: 0, cost: {}, boosts: [], spells: [], used: [], rearAll: false, weak: false };
+  makePlan(p: Player, mon: Monster, idxs: number[], mode: FightMode, coop: boolean, need: number, use?: string[]): Plan {
+    const pl: Plan = { pid: p.pid, idxs, mode, power: 0, parts: [], guard: 0, counter: 0, loot: 0, trophy: 0, str: 0, noInj: 0, cost: {}, boosts: [], spells: [], used: [], rearAll: false, weak: false, keys: [] };
     for (const i of idxs) {
       const c = p.comps[i];
       const w = c.weapon ? this.card(c.weapon) : null;
@@ -1383,33 +1390,49 @@ export class Game {
         optional.push({ name: c, cost: addCost(this.cardCost(p, c), sumPays(e.do ?? [])), ops: e.do ?? [], card: c, e: ei, spell: true });
       });
     }
-    let target: number | null = null;
-    if (mode === 'safe' || mode === 'wait') target = need - this.fateMin(p) + pl.str;
-    else if (mode === 'gamble') target = need - 1 + pl.str;
-    if (target !== null && pl.power < target) {
-      const gainOf = (o: (typeof optional)[number]) => { const t: Plan = { ...pl, parts: [] }; t.power = 0; t.str = 0; applyFightOps(t, o.ops); return t.power - t.str; };
-      const cand = optional.map((o) => ({ o, g: gainOf(o) })).filter((x) => x.g > 0).sort((a, b) => costValue(a.o.cost) / a.g - costValue(b.o.cost) / b.g);
-      const chosen: typeof cand = [];
-      let cost: Cost = {};
-      let pw = pl.power;
-      for (const c of cand) {
-        if (pw >= target) break;
-        const tot = addCost(cost, c.o.cost);
+    const keyOf = (o: (typeof optional)[number]) => (o.card ? `${o.card}#${o.e}` : o.name);
+    const gainOf = (o: (typeof optional)[number]) => { const t: Plan = { ...pl, parts: [] }; t.power = 0; t.str = 0; applyFightOps(t, o.ops); return t.power - t.str; };
+    pl.chips = optional.map((o) => ({ key: keyOf(o), name: o.name, label: o.card ? this.card(o.card).name : o.name === 'morale' ? '士気' : 'ポーション', cost: o.cost, gain: gainOf(o), ...(o.card ? { card: o.card } : {}), spell: o.spell }));
+    let chosen: (typeof optional)[number][] = [];
+    let cost: Cost = {};
+    if (use && mode !== 'wait') {
+      // 自分で選んだ後押し（払えないもの・ないものは飛ばす）
+      const left = [...optional];
+      for (const key of use) {
+        const j = left.findIndex((o) => keyOf(o) === key);
+        if (j < 0) continue;
+        const tot = addCost(cost, left[j].cost);
         if (!canPay(p, tot)) continue;
-        cost = tot; pw += c.g; chosen.push(c);
+        cost = tot; chosen.push(left[j]); left.splice(j, 1);
       }
-      if (pw >= target || mode === 'safe' || mode === 'wait') {
-        for (const { o } of chosen) {
-          const before = pl.power;
-          applyFightOps(pl, o.ops);
-          pl.boosts.push(o.name);
-          if (o.spell) pl.spells.push(o.card);
-          if (o.e >= 0) pl.used.push(`${o.card}#${o.e}`);
-          pl.parts.push({ kind: o.spell ? 'spell' : o.card ? 'card' : 'boost', label: o.card ? this.card(o.card).name : o.name === 'morale' ? '士気' : 'ポーション', value: pl.power - before, seat: p.pid, ...(o.card ? { ref: o.card } : {}) });
+    } else {
+      let target: number | null = null;
+      if (mode === 'safe' || mode === 'wait') target = need - this.fateMin(p) + pl.str;
+      else if (mode === 'gamble') target = need - 1 + pl.str;
+      if (target !== null && pl.power < target) {
+        const cand = optional.map((o) => ({ o, g: gainOf(o) })).filter((x) => x.g > 0).sort((a, b) => costValue(a.o.cost) / a.g - costValue(b.o.cost) / b.g);
+        const pick: typeof optional = [];
+        let pw = pl.power;
+        for (const c of cand) {
+          if (pw >= target) break;
+          const tot = addCost(cost, c.o.cost);
+          if (!canPay(p, tot)) continue;
+          cost = tot; pw += c.g; pick.push(c.o);
         }
-        pl.cost = cost;
+        if (pw >= target || mode === 'safe' || mode === 'wait') chosen = pick;
+        else cost = {};
       }
     }
+    for (const o of chosen) {
+      const before = pl.power;
+      applyFightOps(pl, o.ops);
+      pl.boosts.push(o.name);
+      pl.keys!.push(keyOf(o));
+      if (o.spell) pl.spells.push(o.card);
+      if (o.e >= 0) pl.used.push(`${o.card}#${o.e}`);
+      pl.parts.push({ kind: o.spell ? 'spell' : o.card ? 'card' : 'boost', label: o.card ? this.card(o.card).name : o.name === 'morale' ? '士気' : 'ポーション', value: pl.power - before, seat: p.pid, ...(o.card ? { ref: o.card } : {}) });
+    }
+    pl.cost = cost;
     return pl;
   }
 
@@ -1428,7 +1451,7 @@ export class Game {
     for (const q of this.players) if (q !== p) yield* this.fire(q, 'other:nest', { nest: o.s });
     p.acts.push(`sp:${o.s === 'lair' ? 'lair' : 'nest'}`);
     this.emit({ t: 'place', seat: p.pid, space: o.s, companions: idxs, option: optLabel(o) });
-    if (o.s === 'lair') { this.lairQ.push({ pid: p.pid, idxs, mode: o.mode ?? 'normal' }); return; }
+    if (o.s === 'lair') { this.lairQ.push({ pid: p.pid, idxs, mode: o.mode ?? 'normal', ...(o.use ? { use: [...o.use] } : {}) }); return; }
     const nd = this.nest(o.s)!;
     nd.groups += 1;
     if (o.i === -1) {
@@ -1444,20 +1467,20 @@ export class Game {
     if (o.join && nd.wait) {
       const w = nd.wait;
       nd.wait = null;
-      yield* this.fight(nd, [{ p: this.players[w.pid], idxs: w.idxs, mode: 'gamble' }, { p, idxs, mode: o.mode ?? 'normal' }]);
-    } else yield* this.fight(nd, [{ p, idxs, mode: o.mode ?? 'normal' }]);
+      yield* this.fight(nd, [{ p: this.players[w.pid], idxs: w.idxs, mode: 'gamble' }, { p, idxs, mode: o.mode ?? 'normal', use: o.use }]);
+    } else yield* this.fight(nd, [{ p, idxs, mode: o.mode ?? 'normal', use: o.use }]);
     yield* this.fire(p, 'use:nest', { nest: nd.id });
   }
 
   /** 巣の戦闘（1人か共闘の2人） */
-  *fight(nd: NestSt, sides: { p: Player; idxs: number[]; mode: FightMode }[]): Gen {
+  *fight(nd: NestSt, sides: { p: Player; idxs: number[]; mode: FightMode; use?: string[] }[]): Gen {
     const mon = nd.mon!;
     const coop = sides.length > 1;
     const need0 = mon.str - mon.wounds;
     const plans: Plan[] = [];
     let acc = 0;
     for (const s of sides) {
-      const pl = this.makePlan(s.p, mon, s.idxs, s.mode, coop, need0 - acc);
+      const pl = this.makePlan(s.p, mon, s.idxs, s.mode, coop, need0 - acc, s.use);
       plans.push(pl);
       acc += pl.power;
     }
@@ -1474,7 +1497,7 @@ export class Game {
     let acc = 0;
     const ps = this.lairQ.map((e) => this.players[e.pid]);
     this.lairQ.forEach((e, j) => {
-      const pl = this.makePlan(ps[j], boss, e.idxs, e.mode, this.lairQ.length > 1, boss.str - acc);
+      const pl = this.makePlan(ps[j], boss, e.idxs, e.mode, this.lairQ.length > 1, boss.str - acc, e.use);
       plans.push(pl);
       acc += pl.power;
     });

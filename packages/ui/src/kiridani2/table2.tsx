@@ -25,8 +25,9 @@ export type Ask2 =
 export interface Table2Props {
   t: TablePlayer2;
   ask?: Ask2 | null;
-  /** 選んだ答え（カードの id・置く場所の id・割合は "w,t,s"） */
-  onAnswer?: (choice: string) => void;
+  /** 選んだ答え（カードの id・置く場所の id・割合は "w,t,s"）。false を返したら答えはまだ決まっていない（戦闘のトレイ・細かい選択のシートを開いた。
+   *  やめたら同じ問いのまま、ほかの場所を選び直せる） */
+  onAnswer?: (choice: string) => boolean | void;
   extra?: ReactNode;
   sheet?: ReactNode;
   actions?: ReactNode;
@@ -245,7 +246,7 @@ export function Board2({ v, selectable, selected, onSelect, cur }: { v: View2; s
           {v.forecast.map((m) => <span key={m.uid} className="kd2-fc" data-inspect={`fc:${m.uid}`} role="button" tabIndex={0} aria-label={`${m.name} 強さ${m.str}`}><MonArt m={m} size={26} /><b>{m.str}</b></span>)}
         </div>
       )}
-      <div className="kd-spaces" role="group" aria-label="行動マス">
+      <div className="kd-spaces" role="group" aria-label="行動マス" data-kd-scroll="">
         {v.spaceOrder.map((id) => {
           const s = v.spaces[id];
           const def = DATA.SPACE[id];
@@ -565,7 +566,12 @@ export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions }: Tabl
   }, [cur?.key]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const me = v.players[v.me];
-  const answer = (c: string) => { setQueued(c); t.sound.play(t.busy ? 'ui_queue' : 'ui_tap'); onAnswer?.(c); };
+  const answer = (c: string) => {
+    t.sound.play(t.busy ? 'ui_queue' : 'ui_tap');
+    // シート・トレイを開いただけなら「予約」にしない（やめたときに盤面の選択に戻れるように）
+    if (onAnswer?.(c) === false) return;
+    setQueued(c);
+  };
   const placeAsk = ask?.kind === 'place' ? ask : null;
   const selectable = placeAsk && !queued ? new Set(placeAsk.options) : undefined;
   const setupPhase = v.phase === 'setup' || ask?.kind === 'ratio' || (ask?.kind === 'card' && ask.why !== 'draw');
@@ -580,7 +586,7 @@ export function Kiridani2Table({ t, ask, onAnswer, extra, sheet, actions }: Tabl
       <nav className="kd-tabs" role="tablist">
         {TABS.map((x) => <button key={x.id} type="button" role="tab" aria-selected={tab === x.id} data-kd={`tab:${x.id}`} className={tab === x.id ? 'is-on' : ''} onClick={() => { setTab(x.id); setPeek(null); }}>{x.label}</button>)}
       </nav>
-      <div className="kd-tabbody">
+      <div className="kd-tabbody" data-kd-scroll="">
         {tab === 'board' && <Board2 v={v} cur={cur} selectable={selectable} selected={sel ?? queued} onSelect={setSel} />}
         {tab === 'base' && me && <BaseView2 p={v.players[peek ?? v.me]} v={v} cur={cur} />}
         {tab === 'quests' && <QuestsView2 v={v} cur={cur} />}

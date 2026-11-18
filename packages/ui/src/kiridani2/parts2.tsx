@@ -1,6 +1,7 @@
 // 霧谷 v2 — 小さな部品（カード・魔物・リーダーの絵）。見た目は v1 の部品とクラスをそのまま使う。
-import { BossArt, CardBackArt, HeroArt, ItemArt, JobArt, KIcon, MonsterArt } from '../kiridani/art-registry';
-import { HERO_IDS, ITEM_IDS, ITEM_KIND, JOB_IDS, MONSTER_IDS, BOSS_IDS } from '../kiridani/art';
+import { BossArt, CardBackArt, KIcon, MonsterArt } from '../kiridani/art-registry';
+import { MONSTER_IDS, BOSS_IDS } from '../kiridani/art';
+import { CardPicture, kindOf } from './art2';
 import { InfoDot } from '../kiridani/ui/inspect';
 import { CostRow } from '../kiridani/ui/parts';
 import { DATA, FLAVOR, type Monster } from '@midorino/engine/src/kiridani2';
@@ -28,26 +29,18 @@ export const ENGINE_JP: Record<string, string> = {
 
 const hash = (s: string) => { let h = 7; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
 const pick = <T,>(xs: T[], id: string) => xs[hash(id) % xs.length];
-const JOBS = JOB_IDS.filter((x) => /^o\d+$/.test(x));
-const ITEMS_BY: Record<string, string[]> = { weapon: ITEM_IDS.filter((x) => ITEM_KIND[x] === 'weapon'), tool: ITEM_IDS.filter((x) => ITEM_KIND[x] === 'tool'), spell: ITEM_IDS.filter((x) => ITEM_KIND[x] === 'spell') };
-const GEAR_ART: Record<string, string> = { g_spear: 'i09', g_sword: 'i02', g_bow: 'i01', g_staff: 'i04', g_wshield: 'i06', g_leather: 'i08', g_ishield: 'i06', g_mail: 'i08' };
 
-/** リーダーの絵（v1 の団長の絵を使う） */
+/** リーダーの絵（絵の画像があればそれ、無ければ v1 の団長の絵） */
 export function LeaderArt({ id, size = 40 }: { id?: string; size?: number }) {
   if (!id) return <CardBackArt id="occ" size={size} />;
-  const h = id.replace(/^l_/, '');
-  return <HeroArt id={HERO_IDS.includes(h) ? h : pick(HERO_IDS, id)} size={size} />;
+  return <CardPicture id={id} kind="leader" size={size} />;
 }
 
-/** カードの絵（v2 のカードには専用の絵がまだ無いので、種類の合う v1 の絵を割り当てる） */
+/** カードの絵（絵の画像 cards/<id>.webp があればそれ、無ければ種類の合う v1 の絵）。種類の縁取りと強い動きの札を重ねる */
 export function CardArt2({ id, size }: { id: string; size: number }) {
-  const c = CARD2[id];
-  if (!c) return <CardBackArt id={ANC2[id] ? 'item' : 'occ'} size={size} />;
-  if (c.kind === 'leader') return <LeaderArt id={id} size={size} />;
-  if (c.kind === 'occ') return <JobArt id={pick(JOBS, id)} size={size} />;
-  if (c.kind === 'gear') return <ItemArt id={GEAR_ART[id] ?? pick(ITEMS_BY.weapon, id)} size={size} />;
-  const k = c.kind === 'armor' ? 'weapon' : c.kind === 'stage' ? 'tool' : c.kind;
-  return <ItemArt id={pick(ITEMS_BY[k] ?? ITEMS_BY.tool, id)} size={size} />;
+  const k = kindOf(id);
+  if (!k) return <CardBackArt id="item" size={size} />;
+  return <CardPicture id={id} kind={k} size={size} />;
 }
 
 /** カードの表（職能・品物・リーダー・共通の装備・段階カード） */

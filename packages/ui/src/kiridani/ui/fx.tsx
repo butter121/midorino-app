@@ -77,6 +77,13 @@ export const FxLayer = forwardRef<FxApi, { root: () => HTMLElement | null; reduc
     const r = root();
     const el = r?.querySelector<HTMLElement>(`[data-kd="${sel}"]`);
     if (!el) return null;
+    // スクロールする盤面（data-kd-scroll）の中で見えていない目印は、先に見えるところまで動かす（演出が画面の外へ飛ばないように）
+    for (let sc = el.closest<HTMLElement>('[data-kd-scroll]'); sc; sc = sc.parentElement?.closest<HTMLElement>('[data-kd-scroll]') ?? null) {
+      if (sc.scrollHeight <= sc.clientHeight + 1) continue;
+      const er = el.getBoundingClientRect(), sr = sc.getBoundingClientRect();
+      if (er.top < sr.top) sc.scrollTop -= sr.top - er.top + 4;
+      else if (er.bottom > sr.bottom) sc.scrollTop += Math.min(er.bottom - sr.bottom + 4, er.top - sr.top - 4);
+    }
     const rect = el.getBoundingClientRect();
     if (!rect.width && !rect.height) return null;
     return rect;

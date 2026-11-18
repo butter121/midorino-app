@@ -1,5 +1,7 @@
 // 霧谷 v2（新ルール）の通しテスト：ブラウザで
 //   A. ひとりで遊ぶ：タイトル → 5年・4人 → 準備（リーダー・職能・割合・品物・初期カード・秘密依頼）→ 数ラウンド → ⚙「自分の席もAIに任せる」→ 最終得点（内訳）
+//      戦闘のトレイ（選択式：使うものを足すと戦力・見込みが変わる）→「選び直す」で盤面に戻り、別の場所に置ける（以前は止まった）。
+//      細かい選択のシートも「選び直す」で戻れる。小さい画面（360×640・横 740×360）では盤面が縦にスクロールする
 //   B. 友だちと遊ぶ：ホスト＋参加者（手元の PeerJS サーバー）→ 新ルールの待合室 → 数ラウンド → チャット → 参加者の途中退室と復帰 → 部屋を閉じる
 // 画面写真（deviceScaleFactor 2、縦 390×844・横 844×390）を --shots DIR に保存する。
 // 使い方：node tools/kiridani2/smoke.mjs [--shots DIR] [--only solo|online] [--headed] [--dist DIR]
@@ -84,7 +86,6 @@ async function step(page, seen) {
   const tray = await page.$('.kd-tray');
   if (tray) {
     const lab = await tray.getAttribute('aria-label');
-    if (lab === '戦闘' && seen && !seen.has('tray')) { seen.add('tray'); await sleep(300); await both(page, '30-fight-tray', '戦闘のトレイ'); }
     if (/取引の申し込み/.test(lab ?? '')) return null;
     const go = await page.$('.kd-tray-act .kd-btn.is-primary:not([disabled])');
     if (go && !(await page.$('.kd-tray .kd-partners'))) { await go.click(); return 'tray'; }
@@ -138,6 +139,86 @@ async function step(page, seen) {
   return null;
 }
 
+const canCount = (page) => page.$$eval('[data-kd^="space:"].is-can', (e) => e.length);
+const firstLine = (e) => String(e).split(String.fromCharCode(10))[0];
+/** 戦闘のトレイ：使うものを足す → 選び直す → 盤面に戻って別の場所に置ける */
+async function fightFlow(page, tag, shots = true) {
+  const nest = await page.$('[data-kd^="space:nest"].is-can, [data-kd="space:lair"].is-can');
+  if (!nest) return false;
+  await nest.click(); await sleep(60);
+  await page.click('.kd-mybar .kd-btn.is-primary');
+  await page.waitForSelector('.kd-tray[aria-label="戦闘"]', { timeout: 5000 });
+  await sleep(300);
+  if (shots) await both(page, '30-fight-tray', '戦闘のトレイ');
+  const pw0 = Number(await page.textContent('[data-kd="fight-power"]'));
+  const chip = await page.$('.kd2-fchips .kd-tchip:not([aria-disabled="true"]):not(.is-on)');
+  if (chip) {
+    const items0 = await page.$$eval('.kd-tray-items .kd-tray-item', (e) => e.length);
+    await chip.click(); await sleep(250);
+    const pw1 = Number(await page.textContent('[data-kd="fight-power"]'));
+    const items1 = await page.$$eval('.kd-tray-items .kd-tray-item', (e) => e.length);
+    check(pw1 > pw0 && items1 === items0 + 1 && !!(await page.$('.kd2-fchips .kd-tchip.is-on')), `${tag}戦闘のトレイ：使うものをタップで足すと戦力が上がりトレイに並ぶ（${pw0}→${pw1}）`);
+    if (shots) await both(page, '32-fight-select', '戦闘のトレイ（使うものを選んだ）');
+  } else log(`${tag}戦闘のトレイ：足せるものがない`);
+  await page.click('.kd-tray-act .kd-btn:not(.is-primary)');
+  await sleep(250);
+  const n = await canCount(page);
+  const bar = (await page.textContent('.kd-mybar-a').catch(() => '')) ?? '';
+  check(!(await page.$('.kd-tray')) && n > 0 && /あなたの番/.test(bar), `${tag}戦闘を選んで「選び直す」と、盤面で置く場所を選び直せる（光る場所 ${n}）`);
+  if (shots) await shot(page, '33-fight-cancel.png');
+  // 別の場所に置く（シートが出たら一度やめて戻れるかも見る）
+  const tokens = () => page.$$eval('.kd-space-by .kd-token, .kd-nest .kd-cap .kd-token', (e) => e.length);
+  const t0 = await tokens();
+  const others = await page.$$('[data-kd^="space:"].is-can:not([data-kd^="space:nest"]):not([data-kd="space:lair"])');
+  let placed = false, sheetChecked = false;
+  for (const o of others) {
+    await o.click(); await sleep(60);
+    await page.click('.kd-mybar .kd-btn.is-primary');
+    await sleep(200);
+    if (await page.$('.kd-sheet .kd-sheet-x')) {
+      if (!sheetChecked) {
+        sheetChecked = true;
+        await page.click('.kd-sheet .kd-sheet-x'); await sleep(200);
+        check((await canCount(page)) > 0 && !(await page.$('.kd-sheet')), `${tag}細かい選択のシートを「選び直す」と盤面に戻る`);
+        continue;
+      }
+      await page.click('.kd-sheet .kd-choice');
+    }
+    placed = true; break;
+  }
+  if (!placed) { const nn = await page.$('[data-kd^="space:nest"].is-can, [data-kd="space:lair"].is-can'); if (nn) { await nn.click(); await page.click('.kd-mybar .kd-btn.is-primary'); await sleep(200); await page.click('.kd-tray-act .kd-btn.is-primary'); placed = true; } }
+  // 置いた駒が盤面に増える（仲間が残っていればすぐまた自分の番になるので、番の表示では見ない）
+  let moved = false;
+  for (let i = 0; i < 80 && !moved; i++) { moved = (await tokens()) > t0 || !!(await page.$('.kd-queued, .kd-sheet .kd-choice, .kd-tray')); if (!moved) await sleep(100); }
+  check(placed && moved, `${tag}選び直したあと、別の場所に置いて試合が進む`);
+  return true;
+}
+/** 小さい画面で盤面が縦にスクロールして全部見える（ページは横にも縦にもはみ出さない、下の持ち物・ボタンは画面内） */
+async function scrollCheck(page, vp, name) {
+  await page.setViewportSize(vp); await sleep(400);
+  const m = await page.evaluate(() => {
+    const se = document.scrollingElement;
+    const scs = [...document.querySelectorAll('.kd2 [data-kd-scroll]')].filter((x) => x.scrollHeight > x.clientHeight + 1);
+    const bar = document.querySelector('.kd-mybar')?.getBoundingClientRect();
+    return { pageOk: se.scrollHeight <= innerHeight + 1 && se.scrollWidth <= innerWidth + 1, over: scs.map((x) => x.scrollHeight - x.clientHeight), barOk: !!bar && bar.bottom <= innerHeight + 1 && bar.top >= 0 };
+  });
+  await shot(page, `${name}.png`);
+  const last = await page.evaluate(() => {
+    for (const x of document.querySelectorAll('.kd2 [data-kd-scroll]')) x.scrollTop = x.scrollHeight;
+    return new Promise((ok) => requestAnimationFrame(() => {
+      const sp = [...document.querySelectorAll('.kd-space')].at(-1)?.getBoundingClientRect();
+      const spaces = document.querySelector('.kd-spaces');
+      const box = (spaces && spaces.scrollHeight > spaces.clientHeight + 1 ? spaces : document.querySelector('.kd-tabbody')).getBoundingClientRect();
+      ok({ visible: !!sp && sp.bottom <= box.bottom + 1 && sp.top >= box.top - 1 });
+    }));
+  });
+  if (m.over.length) await shot(page, `${name}-scrolled.png`);
+  check(m.pageOk && m.barOk && last.visible, `${vp.width}×${vp.height}：盤面はスクロールで最後のマスまで見え、ページははみ出さない（はみ出し ${m.over.join(',') || 'なし'}px）`);
+  for (const x of await page.$$('.kd2 [data-kd-scroll]')) await x.evaluate((e) => { e.scrollTop = 0; });
+  await page.setViewportSize(PORTRAIT); await sleep(300);
+  return m.over.length > 0;
+}
+
 let failed = false;
 // ================================================================ A. ひとりで遊ぶ
 async function solo() {
@@ -155,8 +236,15 @@ async function solo() {
   const seen = new Set();
   const counts = {};
   const t0 = Date.now();
-  let boardShot = false, inspShot = false;
+  let boardShot = false, inspShot = false, fightDone = false;
   while ((await roundOf(page)) < 4) {
+    if (!fightDone && (await roundOf(page)) >= 1 && await page.$('.kd-root.is-myturn') && !(await page.$('.kd-ovwrap, .kd-tray, .kd-sheet')) && await page.$('[data-kd^="space:nest"].is-can, [data-kd="space:lair"].is-can')) {
+      await idle(page);
+      if (await page.$('.kd-root.is-myturn') && !(await page.$('.kd-ovwrap, .kd-tray, .kd-sheet'))) {
+        try { fightDone = await fightFlow(page, ''); seen.add('tray'); } catch (e) { check(false, `戦闘のトレイ：${firstLine(e)}`); fightDone = true; }
+        continue;
+      }
+    }
     if (Date.now() - t0 > 6 * 60_000) throw new Error('solo: 4ラウンドに届かない');
     if (!boardShot && (await roundOf(page)) >= 2 && await page.$('.kd-root.is-myturn') && !(await page.$('.kd-ovwrap'))) {
       await idle(page);
@@ -189,6 +277,7 @@ async function solo() {
     if (r) counts[r] = (counts[r] ?? 0) + 1; else await sleep(40);
   }
   log('solo counts', counts);
+  check(fightDone, '戦闘のトレイを開いて選び直す流れを試せた');
   check((counts.pick ?? 0) >= 4 && counts.ratio >= 1 && (counts.place ?? 0) > 3, `準備（カード・割合）と置き場所を答えた ${JSON.stringify(counts)}`);
   check(boardShot, '盤面の写真が撮れた');
   // ⚙ → タイトルへ →「途中の試合にもどる」：答えの記録から同じ場面に戻る
@@ -214,6 +303,9 @@ async function solo() {
     const r1 = await roundOf(page);
     const fame1 = await page.$$eval('.kd-pchip b[data-kd^="fame:"]', (e) => e.map((x) => x.textContent));
     check(r1 === r0 && JSON.stringify(fame1) === JSON.stringify(fame0), `再開して同じ場面に戻る（ラウンド ${r0}→${r1}・名声 ${fame0.join(',')} → ${fame1.join(',')}）`);
+    // 小さい画面：盤面のスクロール
+    await scrollCheck(page, { width: 360, height: 640 }, '25-board-360x640');
+    await scrollCheck(page, { width: 740, height: 360 }, '26-board-740x360');
   } catch (e) { check(false, `ひとりの途中再開：${String(e).split('\n')[0]}`); }
   // ⚙ → 自分の席もAIに任せる → 最後まで（開いているトレイ・シートは先に答える）
   for (let i = 0; i < 50 && await page.$('.kd-tray, .kd-sheet'); i++) { await step(page).catch(() => null); await sleep(100); }
@@ -267,7 +359,7 @@ async function online() {
 
   const MENU = '.kd-hud-ctl .kd-cat-menu:not(.kd-hudmenu) summary';
   const seen = new Set(['tray', 'sheet', 'ratio', ...Array.from({ length: 12 }, (_, i) => `pick:${i}`)]);
-  let chatted = false, awayDone = false, guestShot = false, setupShot = false;
+  let chatted = false, awayDone = false, guestShot = false, setupShot = false, guestFight = false;
   const counts = {};
   const t0 = Date.now();
   for (let i = 0; ; i++) {
@@ -276,6 +368,9 @@ async function online() {
     if (!guestShot && (await roundOf(guest)) >= 2 && await guest.$('.kd-root.is-myturn') && !(await guest.$('.kd-ovwrap'))) {
       await idle(guest);
       if (await guest.$('.kd-root.is-myturn')) { guestShot = true; await both(guest, '52-ingame-guest', '参加者の試合画面'); }
+    }
+    if (guestShot && !guestFight && await guest.$('.kd-root.is-myturn') && !(await guest.$('.kd-ovwrap, .kd-tray, .kd-sheet')) && await guest.$('[data-kd^="space:nest"].is-can, [data-kd="space:lair"].is-can')) {
+      try { guestFight = await fightFlow(guest, '参加者：', false); } catch (e) { guestFight = true; check(false, `参加者の戦闘のトレイ：${firstLine(e)}`); }
     }
     if (guestShot && !chatted) {
       chatted = true;
@@ -329,6 +424,7 @@ async function online() {
     if (i % 40 === 0) log(`round host ${rh} guest ${rg}`, counts);
     await sleep(40);
   }
+  check(guestFight, '参加者も戦闘を選んで「選び直す」流れを試せた');
   check(counts.pick > 0 && counts.place > 0 && counts.ratio > 0, `準備と置き場所を両方の画面で答えた ${JSON.stringify(counts)}`);
   const [fh, fg] = [await host.$$eval('.kd-pchip b[data-kd^="fame:"]', (e) => e.map((x) => x.textContent)), await guest.$$eval('.kd-pchip b[data-kd^="fame:"]', (e) => e.map((x) => x.textContent))];
   log('fame host', fh, 'guest', fg);
