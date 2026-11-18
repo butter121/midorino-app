@@ -23,7 +23,8 @@ export default function HostScreen({ resume, onLeave }: { resume: boolean; onLea
   const leave = () => { room.close(); onLeave(); };
   const ref = room.referee;
   const seat = room.mySeat;
-  const prompt = useStablePrompt(ref && seat >= 0 ? room.prompt(seat) : null);
+  const gameKey = room.game ? room.game.gid ?? String(room.game.seed) : '';
+  const prompt = useStablePrompt(ref && seat >= 0 ? room.prompt(seat) : null, gameKey);
   const evLen = ref && seat >= 0 ? ref.logs[seat].length : 0;
   const events = useMemo(() => (ref && seat >= 0 ? ref.logs[seat].slice() : []), [ref, seat, evLen]); // eslint-disable-line react-hooks/exhaustive-deps
   const onAct = useCallback((id: string, a: AnyAction) => Promise.resolve(room.hostAct(id, a)), [room]);
@@ -62,12 +63,14 @@ export default function HostScreen({ resume, onLeave }: { resume: boolean; onLea
   const banner = dropping.length ? <><b>{dropping.join('・')}</b>の接続が切れました（戻らなければ、少ししてAIが代わりに動かします）</> : undefined;
   const awayNames = ref.away.map((x) => g.names[x]);
   const menu = <Menu chat={chat} items={[['部屋を閉じてタイトルへ', leave]]} />;
+  // 終わったら、同じ席・同じ人で次の試合（参加者はつないだまま移る）
+  const again = ref.done ? <><button type="button" className="kd-btn is-primary" data-kd="rematch" onClick={() => room.rematch()}>同じメンバーでもう一度</button><small>参加者もこのまま次の試合に移ります（抜けたい人は退室できます）</small></> : null;
   return (
     <>
     {g.rules === 2
-      ? <Kiridani2OnlineGame seat={seat} events={events as Ev[]} prompt={prompt as Prompt2 | null} waitFor={waitFor} names={g.names} onAct={onAct as (id: string, a: Action2) => Promise<{ ok: true } | { ok: false; error: string }>}
+      ? <Kiridani2OnlineGame key={gameKey} finalExtra={again} seat={seat} events={events as Ev[]} prompt={prompt as Prompt2 | null} waitFor={waitFor} names={g.names} onAct={onAct as (id: string, a: Action2) => Promise<{ ok: true } | { ok: false; error: string }>}
         onJudge={onJudge as (b: number, give: Cost, get: Cost) => Promise<TradeJudge2>} banner={banner} away={awayNames} speed={SPEED} offer={offer as OfferView2 | null} note={note as OfferNote2 | null} extra={menu} />
-      : <KiridaniOnlineGame seat={seat} events={events as GameEvent[]} prompt={prompt as Prompt | null} waitFor={waitFor} names={g.names} onAct={onAct as (id: string, a: Action) => Promise<{ ok: true } | { ok: false; error: string }>}
+      : <KiridaniOnlineGame key={gameKey} finalExtra={again} seat={seat} events={events as GameEvent[]} prompt={prompt as Prompt | null} waitFor={waitFor} names={g.names} onAct={onAct as (id: string, a: Action) => Promise<{ ok: true } | { ok: false; error: string }>}
         onJudge={onJudge as (b: number, give: Cost, get: Cost) => Promise<TradeJudge>} banner={banner} away={awayNames} speed={SPEED} offer={offer as OfferView | null} note={note as OfferNote | null} extra={menu} />}
     {chat.node}
     </>

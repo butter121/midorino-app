@@ -132,4 +132,46 @@ describe('霧谷 v2：オンライン対戦（新ルール）', () => {
     expect(host.referee!.done).toBe(true);
     host.close(); a.close(); (b2 as KdGuestClient | null)?.close();
   }, 60000);
+
+  it('終わったあと「同じメンバーでもう一度」：参加者はつないだまま新しい試合に移り、前の試合の出来事は捨てる。チャット・保存・退室も新しい試合で動く', async () => {
+    const net = memoryNet();
+    const stores = [memStore(), memStore(), memStore()];
+    const { host, a, b } = await setupRoom(net, stores, 30);
+    expect(host.rematch()).toBe(false);
+    host.start(99);
+    await until(() => a.seat >= 0 && b.seat >= 0);
+    expect(host.rematch()).toBe(false);
+    host.hostSay('よろしく');
+    await until(() => a.chat.length === 1 && b.chat.length === 1);
+    const [aSeat, bSeat, names, gid0] = [a.seat, b.seat, host.game!.names, host.game!.gid];
+    await playAll(host, [a, b]);
+    expect(a.done && b.done).toBe(true);
+    const oldLen = a.events.length;
+    expect(host.rematch(1234)).toBe(true);
+    expect(host.game!.gid).not.toBe(gid0);
+    expect(host.game!.names).toEqual(names);
+    expect(host.game!.seed).toBe(1234);
+    await until(() => a.rematched && b.rematched && !!a.prompt === (host.referee!.prompt(aSeat) !== null) && a.events.length > 0);
+    expect(a.seat).toBe(aSeat); expect(b.seat).toBe(bSeat);
+    expect(a.done).toBe(false);
+    expect(a.gid).toBe(host.game!.gid);
+    expect(a.events.length).toBeLessThan(oldLen);
+    expect((a.events[0] as { t: string }).t).toBe('game_start');
+    // チャットはそのまま
+    expect(a.chat.map((m) => m.text)).toEqual(['よろしく']);
+    // 保存は新しい試合に置き換わる（読み込み直すと新しい試合の同じところ）
+    const saved = JSON.parse(stores[0].m.get('kiridani.host')!);
+    expect(saved.game.gid).toBe(host.game!.gid);
+    expect(saved.game.seed).toBe(1234);
+    // 1人が抜けると AI が代わる。最後まで遊べて、出来事はホストの記録と同じ
+    b.close();
+    await until(() => host.referee!.isAway(bSeat));
+    await playAll(host, [a]);
+    const j = (x: unknown) => JSON.parse(JSON.stringify(x));
+    expect(a.events).toEqual(j(host.referee!.logs[aSeat]));
+    const again = KdHostRoom.resume(memoryNet(), stores[0])!;
+    expect(again.game!.gid).toBe(host.game!.gid);
+    expect(again.referee!.scores).toEqual(host.referee!.scores);
+    host.close(); again.close(); a.close();
+  }, 90000);
 });

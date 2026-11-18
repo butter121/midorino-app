@@ -27,10 +27,12 @@ export interface Engine2GameProps {
   resume?: { hist: Action2[]; auto?: boolean };
   /** 答えるたびに呼ぶ（保存用）。done は試合が終わったか */
   onProgress?: (p: { hist: Action2[]; auto: boolean; done: boolean }) => void;
+  /** 最終画面の下に出すもの（「同じメンバーでもう一度」） */
+  finalExtra?: ReactNode;
   extra?: (ctl: { restart: () => void; auto: boolean; setAuto: (a: boolean) => void; session: Kiridani2Session | null }) => ReactNode;
 }
 
-export function Kiridani2EngineGame({ n, seed, years = 5, level = 'normal', speed, resume, onProgress, extra }: Engine2GameProps) {
+export function Kiridani2EngineGame({ n, seed, years = 5, level = 'normal', speed, resume, onProgress, extra, finalExtra }: Engine2GameProps) {
   const me = 0;
   const t = useTable2(me, { speed });
   const sRef = useRef<Kiridani2Session | null>(null);
@@ -130,5 +132,5 @@ export function Kiridani2EngineGame({ n, seed, years = 5, level = 'normal', spee
 
   const ctl = useSeat2(seat, send, { sheetReady, onTrade: (b: number, give: Cost, get: Cost) => send({ t: 'trade', b, give, get }) });
   return <Kiridani2Table t={t} ask={auto ? null : ctl.ask} onAnswer={ctl.onAnswer} sheet={auto ? null : ctl.sheetNode} actions={ctl.actions}
-    extra={extra?.({ restart, auto, setAuto, session: sRef.current })} />;
+    extra={extra?.({ restart, auto, setAuto, session: sRef.current })} finalExtra={finalExtra} />;
 }

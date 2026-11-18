@@ -22,10 +22,12 @@ export interface Online2GameProps {
   banner?: ReactNode;
   away?: string[];
   extra?: ReactNode;
+  /** 最終画面の下に出すもの（ホスト：「同じメンバーでもう一度」・参加者：待っている案内） */
+  finalExtra?: ReactNode;
   speed?: Speed;
 }
 
-export function Kiridani2OnlineGame({ seat, events, prompt, waitFor, names, onAct, onJudge, offer = null, note = null, banner, away = [], extra, speed }: Online2GameProps) {
+export function Kiridani2OnlineGame({ seat, events, prompt, waitFor, names, onAct, onJudge, offer = null, note = null, banner, away = [], extra, finalExtra, speed }: Online2GameProps) {
   const t = useTable2(seat, { speed });
   const fed = useRef(0);
   const [err, setErr] = useState('');
@@ -100,7 +102,7 @@ export function Kiridani2OnlineGame({ seat, events, prompt, waitFor, names, onAc
   const waitNote = !shadow && others.length && !t.busy ? `${others.map((x) => names[x] ?? `席${x + 1}`).join('・')}が選んでいます…` : '';
   return (
     <>
-      <Kiridani2Table t={t} ask={waitingOffer ? null : ctl.ask} onAnswer={ctl.onAnswer} sheet={<>{sheetNode}{offerNode}</>} actions={ctl.actions} extra={extra} />
+      <Kiridani2Table t={t} ask={waitingOffer ? null : ctl.ask} onAnswer={ctl.onAnswer} sheet={<>{sheetNode}{offerNode}</>} actions={ctl.actions} extra={extra} finalExtra={finalExtra} />
       {(banner || waitNote || err || shownNote || away.length > 0) && (
         <div className="kd-netnote" role="status">
           {banner}

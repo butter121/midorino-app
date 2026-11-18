@@ -34,8 +34,9 @@ export type KdToHost =
 export type KdToGuest =
   | { t: 'welcome'; memberId: string; token: string; status: LobbyMember['status'] }
   | { t: 'lobby'; lobby: KdLobby }
-  /** from 件目からの出来事。last のときだけ問い・待っている席・人どうしの取引の申し込みとお知らせ（当事者だけ）が付く */
-  | { t: 'game'; seat: number; names: string[]; from: number; evs: AnyEvent[]; last: boolean; prompt?: AnyPrompt | null; wait?: number[]; done?: boolean; offer?: AnyOfferView | null; note?: AnyOfferNote | null; rules?: KdRules }
+  /** from 件目からの出来事。last のときだけ問い・待っている席・人どうしの取引の申し込みとお知らせ（当事者だけ）が付く。
+   *  gid は試合の番号（「同じメンバーでもう一度」で変わる。変わったら参加者は前の試合の出来事・問いを捨てる） */
+  | { t: 'game'; gid?: string; seat: number; names: string[]; from: number; evs: AnyEvent[]; last: boolean; prompt?: AnyPrompt | null; wait?: number[]; done?: boolean; offer?: AnyOfferView | null; note?: AnyOfferNote | null; rules?: KdRules }
   | { t: 'result'; reqId: number; result: ActResult }
   | { t: 'judged'; reqId: number; j: AnyJudge }
   | { t: 'denied'; reason: string }

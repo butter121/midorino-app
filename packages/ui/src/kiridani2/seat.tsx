@@ -10,7 +10,7 @@ import { InfoDot } from '../kiridani/ui/inspect';
 import { CostRow, Token } from '../kiridani/ui/parts';
 import { TradeButton, TradeTray } from '../kiridani/ui/tray';
 import type { SeatSession } from '@midorino/engine/src/kiridani';
-import { CardArt2, MonArt } from './parts2';
+import { CardArt2, MonArt, rageText } from './parts2';
 import { whyTitle, type Ask2 } from './table2';
 import { CARD2, cardName, placeName } from './view';
 
@@ -145,7 +145,7 @@ export function FightTray2({ s, sid, onPick, onCancel }: { s: SeatSession2; sid:
           <strong>{title}</strong>
           {mon && (
             <span className="kd-tray-stats">
-              <span className="kd-stat is-str">強さ{mon.str - mon.wounds}{mon.wounds ? <small>（傷{mon.wounds}）</small> : null}</span>
+              <span className="kd-stat is-str">強さ{mon.str - mon.wounds}{rageText(mon)}{mon.wounds ? <small>（傷{mon.wounds}）</small> : null}</span>
               <span className="kd-stat is-ctr">反撃{mon.counter}</span>
               {mon.weak && <span className="kd-stat is-weak"><KIcon name={mon.weak} size={14} />弱点{EL_JP[mon.weak] ?? mon.weak}</span>}
             </span>

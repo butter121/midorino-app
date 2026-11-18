@@ -25,7 +25,13 @@ export interface View2 {
   quests: { id: string; doneBy: Seat[] }[];
   players: PV2[]; combat?: CombatView2; winter?: { upkeep: { seat: Seat; need: number; paid: number; discontent: number }[]; raids: { seat: Seat; damage: number; blocked: number }[] };
   setup?: SetupView; final?: ScoreRow[]; log: string[];
+  /** 名声の移り変わり（グラフ用）。round 0 は始まり、1..rounds は各ラウンドの終わり（冬越し・依頼のあと）。集計後の値は final の total */
+  fameHist: FamePoint[];
+  /** いまのラウンドの点をまだ動かしてよいか（ラウンドの終わりで閉じる） */
+  histOpen?: boolean;
 }
+/** グラフの1点：そのラウンドの終わりの全員の名声 */
+export interface FamePoint { round: number; year: number; season: Season; fame: number[] }
 
 export const RES_JP = DATA.RES_JP;
 export const SEASON_JP: Record<Season, string> = { spring: '春', summer: '夏', autumn: '秋', winter: '冬' };
@@ -43,7 +49,7 @@ export const emptyRes = (): Record<Res, number> => Object.fromEntries(RES.map((r
 export function initialView2(me: Seat = 0): View2 {
   return {
     phase: 'title', me, years: 5, rounds: 20, round: 0, year: 0, season: 'spring', progress: 0, first: 0, spaceOrder: [], spaces: {}, stages: [],
-    nests: [], lair: { occupants: [] }, forecast: [], bosses: [], quests: [], players: [], log: [],
+    nests: [], lair: { occupants: [] }, forecast: [], bosses: [], quests: [], players: [], log: [], fameHist: [],
   };
 }
 
@@ -103,6 +109,9 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
       if (v.lair.round !== undefined && v.lair.round < ev.round) v.lair = { occupants: [] };
       for (const p of v.players) for (const c of p.comps) c.at = undefined;
       log(`ラウンド${ev.round}・${ev.year}年目の${SEASON_JP[ev.season]}`);
+      if (!v.fameHist.length) v.fameHist.push({ round: 0, year: 1, season: 'spring', fame: v.players.map((p) => p.fame) });
+      v.fameHist = [...v.fameHist.filter((x) => x.round < ev.round), { round: ev.round, year: ev.year, season: ev.season, fame: [] }];
+      v.histOpen = true;
       break;
     case 'stage_reveal':
       if (!v.spaces[ev.card]) { v.spaces[ev.card] = { id: ev.card, stock: {}, occupants: [], stage: ev.stage }; v.spaceOrder.push(ev.card); v.stages.push(ev.card); }
@@ -229,6 +238,7 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
     case 'fame': P(ev.seat).fame += ev.amount; break;
     case 'first_pass': v.first = ev.seat; break;
     case 'round_end':
+      v.histOpen = false;
       for (const p of v.players) for (const c of p.comps) { c.at = undefined; c.rest = c.injured; c.injured = false; }
       for (const s of Object.values(v.spaces)) s.occupants = [];
       for (const n of v.nests) { n.occupants = []; n.wait = undefined; }
@@ -236,12 +246,15 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
       v.turn = undefined;
       break;
     case 'score':
+      v.histOpen = false;
       v.phase = 'final'; v.final = ev.rows;
       for (const r of ev.rows) if (P(r.seat)) P(r.seat).fame = r.total;
       break;
     case 'game_end': log('冒険の終わり'); break;
     default: break;
   }
+  // ラウンドの点：そのラウンドの間は名声の変化に合わせて書き換える（終わりで閉じる。合わせの遅れは次のラウンドの点に入る）
+  if (v.histOpen && v.phase === 'play') { const last = v.fameHist.at(-1); if (last && last.round === v.round) last.fame = v.players.map((p) => p.fame); }
   return v;
 }
 

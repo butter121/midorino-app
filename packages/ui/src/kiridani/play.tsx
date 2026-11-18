@@ -98,10 +98,12 @@ export interface EngineGameProps {
   at?: string;
   /** 自分の席も AI に任せる */
   auto?: boolean;
+  /** 最終画面の下に出すもの（「同じメンバーでもう一度」） */
+  finalExtra?: ReactNode;
   extra?: (ctl: { restart: (n?: number, seed?: number) => void; auto: boolean; setAuto: (a: boolean) => void; session: KiridaniSession | null }) => ReactNode;
 }
 
-export function KiridaniEngineGame({ n: n0, seed: seed0, level = 'mid', speed, at, auto: auto0 = false, extra }: EngineGameProps) {
+export function KiridaniEngineGame({ n: n0, seed: seed0, level = 'mid', speed, at, auto: auto0 = false, extra, finalExtra }: EngineGameProps) {
   const me = 0;
   const t = useTable(me, { speed });
   const sRef = useRef<KiridaniSession | null>(null);
@@ -212,5 +214,5 @@ export function KiridaniEngineGame({ n: n0, seed: seed0, level = 'mid', speed, a
   }
 
   const actions = ask?.kind === 'place' && !auto ? <TradeButton s={s} onOpen={() => setTray({ kind: 'trade' })} /> : null;
-  return <KiridaniTable t={t} ask={ask} onAnswer={onAnswer} sheet={sheetNode} actions={actions} extra={extra?.({ restart: (n, seed) => restart(n, seed), auto, setAuto, session: s })} />;
+  return <KiridaniTable t={t} ask={ask} onAnswer={onAnswer} sheet={sheetNode} actions={actions} extra={extra?.({ restart: (n, seed) => restart(n, seed), auto, setAuto, session: s })} finalExtra={finalExtra} />;
 }

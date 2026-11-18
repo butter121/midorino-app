@@ -32,6 +32,8 @@ export interface OnlineGameProps {
   /** 退室中で、AI が代わりに動かしている人の名前（ほかのお知らせの下にいつも出す） */
   away?: string[];
   extra?: ReactNode;
+  /** 最終画面の下に出すもの */
+  finalExtra?: ReactNode;
   speed?: Speed;
 }
 
@@ -42,7 +44,7 @@ function sheetAction(p: Prompt, id: string): Action {
   return { t: 'yes', v: id === 'yes' };
 }
 
-export function KiridaniOnlineGame({ seat, events, prompt, waitFor, names, onAct, onJudge, offer = null, note = null, banner, away = [], extra, speed }: OnlineGameProps) {
+export function KiridaniOnlineGame({ seat, events, prompt, waitFor, names, onAct, onJudge, offer = null, note = null, banner, away = [], extra, finalExtra, speed }: OnlineGameProps) {
   const t = useTable(seat, { speed });
   const fed = useRef(0);
   const [ask, setAsk] = useState<Ask | null>(null);
@@ -164,7 +166,7 @@ export function KiridaniOnlineGame({ seat, events, prompt, waitFor, names, onAct
   const actions = ask?.kind === 'place' ? <TradeButton s={s} onOpen={() => setTray({ kind: 'trade' })} /> : null;
   return (
     <>
-      <KiridaniTable t={t} ask={waitingOffer ? null : ask} onAnswer={onAnswer} sheet={<>{sheetNode}{offerNode}</>} actions={actions} extra={extra} />
+      <KiridaniTable t={t} ask={waitingOffer ? null : ask} onAnswer={onAnswer} sheet={<>{sheetNode}{offerNode}</>} actions={actions} extra={extra} finalExtra={finalExtra} />
       {(banner || waitNote || err || shownNote || away.length > 0) && (
         <div className="kd-netnote" role="status">
           {banner}

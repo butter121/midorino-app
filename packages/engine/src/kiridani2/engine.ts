@@ -163,6 +163,10 @@ export class Player {
   fightable() { return Math.min(this.free().length + this.extra, this.comps.filter((c) => !c.rest && !c.injured).length); }
 }
 
+export interface FightRec {
+  round: number; t: number; kind: 'nest' | 'boss' | 'dragon'; str: number; base: number; total: number; win: boolean;
+  addons: number; comps: number; sides: number; pids: number[]; /** 席ごとの証（pids と同じ並び） */ tro: number[]; mode: string;
+}
 export interface FightBuf { power: number; guard: number; counter: number; loot: number; trophy: number; str: number; noInj: number }
 export const emptyBuf = (): FightBuf => ({ power: 0, guard: 0, counter: 0, loot: 0, trophy: 0, str: 0, noInj: 0 });
 
@@ -239,14 +243,18 @@ export class Game {
   errors: string[] = [];
   /** 先読み：運命カードを決め打ちする（AI の複製だけ） */
   forceFate: number | null = null;
+  /** 先読み：主・古竜の荒ぶりを決め打ちする（AI の複製だけ） */
+  forceRage: number | null = null;
   /** 先読み：最後の戦闘（運命を足す前の戦力と強さ） */
-  lastClash: { base: number; strength: number; win: boolean } | null = null;
+  lastClash: { base: number; strength: number; win: boolean; rage: number } | null = null;
   E: GameEvent[] | null = null;
   me = -1;
   names: string[] = [];
   /** 測定：戦闘の運命（運の寄与の推定に使う） */
   fateLog: { pid: number; v: number }[] = [];
   monLog: { round: number; dev: number }[] = [];
+  /** 測定：戦闘ごとの記録（sim.ts の勝率・差・後押しの数）。skip＝主・古竜に誰も挑まなかった */
+  fightLog: FightRec[] = [];
 
   constructor(n: number, ais: (Brain | null)[], opts: GameOptions) {
     if (n < 2 || n > 6) throw new Error('players must be 2..6');
@@ -327,9 +335,9 @@ export class Game {
     g.quests = this.quests.map((q) => ({ id: q.id, done: [...q.done] }));
     g.first = this.first; g.nextFirst = this.nextFirst; g.round = this.round; g.uid = this.uid; g.over = this.over;
     g.errors = [];
-    g.forceFate = null; g.lastClash = null;
+    g.forceFate = null; g.forceRage = null; g.lastClash = null;
     g.E = null; g.me = this.me; g.names = this.names;
-    g.fateLog = []; g.monLog = [];
+    g.fateLog = []; g.monLog = []; g.fightLog = [];
     return g;
   }
 
@@ -473,19 +481,26 @@ export class Game {
     if (!this.monDeck.length) this.monDeck = this.rng.shuffle(D.MONSTERS.map((m) => m.id));
     return D.MON[this.monDeck.shift()!];
   }
-  rollMonster(type: MonsterType, t: number, year: number, boss = false): Monster {
+  /** 魔物の強さなど（§6、調整は data.ts の MON_ROLL）。kind：巣の魔物・主・古竜 */
+  rollMonster(type: MonsterType, t: number, year: number, kind: 'nest' | 'boss' | 'dragon' = 'nest'): Monster {
     const R = D.MON_ROLL;
     const z = this.rng.truncNormal(0, R.sd, R.clip);
     const n = this.rng.truncNormal(0, R.lootSd, R.lootClip);
     this.monLog.push({ round: this.round, dev: z });
-    const str = Math.max(1, Math.round(R.base + R.slope * t + type.grade + z));
-    const lootN = Math.max(0, Math.round(str / 2 + n));
+    const slope = (kind === 'nest' ? R.slope : R.boss.slope)[this.years] ?? 15;
+    const grade = kind === 'dragon' ? D.DRAGON.grade : type.grade;
+    const s0 = Math.max(1, R.base + slope * t + grade + z);
+    const boss = kind !== 'nest';
+    const per = kind === 'boss' ? R.boss.per[this.years] ?? 1 : kind === 'dragon' ? D.DRAGON.per[this.years] ?? 1 : 0;
+    const str = boss ? Math.max(1, Math.round((s0 - grade) * per * this.n) + grade) : Math.max(1, Math.round(s0));
+    const lootN = Math.max(0, Math.round((s0 / 2) * (boss ? R.boss.loot : 1) + n));
     const loot: Cost = {};
     for (let i = 0; i < lootN; i++) { const r = type.loot[i % type.loot.length]; loot[r] = (loot[r] ?? 0) + 1; }
-    return {
-      uid: ++this.uid, type: type.id, name: type.name, race: type.race, weak: type.weak, str, counter: Math.round(str / R.counterDiv), loot,
-      trophy: Math.max(1, Math.round((str / R.trophyDiv) * (boss ? R.bossTrophy : 1) + n)), raid: Math.round(str / R.raidDiv), boss, year, wounds: 0,
-    };
+    const counter = Math.round(s0 / R.counterDiv) + (kind === 'boss' ? R.boss.counter : kind === 'dragon' ? D.DRAGON.counter : 0);
+    const trophy = kind === 'dragon' ? D.DRAGON.trophy : Math.max(1, Math.round((s0 / R.trophyDiv) * (boss ? R.boss.trophy : 1) + n));
+    const raid = kind === 'dragon' ? 0 : Math.round(s0 / R.raidDiv) + (boss ? R.boss.raid : 0);
+    const rage = kind === 'nest' ? 0 : Math.round(str * (kind === 'dragon' ? D.DRAGON.rage : R.boss.rage) * 10) / 10;
+    return { uid: ++this.uid, type: type.id, name: type.name, race: type.race, weak: type.weak, str, counter, loot, trophy, raid, boss, year, wounds: 0, ...(rage ? { rage } : {}) };
   }
   private refillForecast() {
     const nr = this.round + 1;
@@ -613,17 +628,13 @@ export class Game {
       const bi = this.bossYears().indexOf(y);
       if (bi >= 0) {
         const wr = y * 4;
-        const b = this.rollMonster(this.bossTypes[bi], this.tAt(wr), y, true);
+        const b = this.rollMonster(this.bossTypes[bi], this.tAt(wr), y, 'boss');
         this.bossOf[wr] = b;
         this.emit({ t: 'boss_reveal', boss: { ...b }, round: wr });
       }
       if (y === this.years) {
         const wr = y * 4;
-        const t0 = D.ANCIENT_DRAGON;
-        this.bossOf[wr] = {
-          uid: ++this.uid, type: t0.id, name: t0.name, race: t0.race, weak: t0.weak, str: D.DRAGON.str, counter: D.DRAGON.counter, loot: { mana: 3, gold: 3 },
-          trophy: D.DRAGON.trophy, raid: 0, boss: true, year: y, wounds: 0,
-        };
+        this.bossOf[wr] = this.rollMonster(D.ANCIENT_DRAGON, 1, y, 'dragon');
         this.emit({ t: 'boss_reveal', boss: { ...this.bossOf[wr] }, round: wr });
       }
       if (D.REFILL_YEARS[this.years].includes(y)) {
@@ -1407,7 +1418,7 @@ export class Game {
       }
     } else {
       let target: number | null = null;
-      if (mode === 'safe' || mode === 'wait') target = need - this.fateMin(p) + pl.str;
+      if (mode === 'safe' || mode === 'wait') target = need - this.fateMin(p) + pl.str + Math.ceil(mon.rage ?? 0);
       else if (mode === 'gamble') target = need - 1 + pl.str;
       if (target !== null && pl.power < target) {
         const cand = optional.map((o) => ({ o, g: gainOf(o) })).filter((x) => x.g > 0).sort((a, b) => costValue(a.o.cost) / a.g - costValue(b.o.cost) / b.g);
@@ -1507,6 +1518,7 @@ export class Game {
   }
   private failBoss(boss: Monster) {
     this.bossFailedYear.add(this.year());
+    if (!this.lairQ.length) this.fightLog.push({ round: this.round, t: this.t, kind: boss.type === D.ANCIENT_DRAGON.id ? 'dragon' : 'boss', str: boss.str, base: 0, total: 0, win: false, addons: 0, comps: 0, sides: 0, pids: [], tro: [], mode: 'skip' });
     if (boss.type === D.ANCIENT_DRAGON.id) {
       for (const p of this.players) { p.fame.dragon -= D.DRAGON.fail; this.emit({ t: 'fame', seat: p.pid, amount: -D.DRAGON.fail, reason: '古竜' }); }
     }
@@ -1532,10 +1544,17 @@ export class Game {
     // 運命：主の巣は全員が1枚ずつ、巣は置いた人（共闘なら待っていた人）が1枚
     const flips = boss ? ps : [ps[0]];
     for (const p of flips) { const v = this.drawFate(p); total += v; this.emit({ t: 'fate_flip', seat: p.pid, value: v }); }
-    const strength = mon.str - mon.wounds + strAdj;
+    const rage = mon.rage ? this.forceRage ?? Math.round(this.rng.truncNormal(0, mon.rage, D.MON_ROLL.clip)) : 0;
+    const strength = mon.str - mon.wounds + strAdj + rage;
     const win = total >= strength;
-    this.lastClash = { base: plans.reduce((a, pl) => a + pl.power, 0), strength, win };
-    this.emit({ t: 'clash', total, strength, result: win ? 'win' : 'lose' });
+    this.fightLog.push({
+      round: this.round, t: this.t, kind: mon.type === D.ANCIENT_DRAGON.id ? 'dragon' : boss ? 'boss' : 'nest', str: strength,
+      base: plans.reduce((a, pl) => a + pl.power, 0), total, win, addons: plans.reduce((a, pl) => a + pl.boosts.length, 0),
+      comps: plans.reduce((a, pl) => a + pl.idxs.length, 0), sides: ps.length, pids: ps.map((p) => p.pid), tro: ps.map(() => 0), mode: plans[0].mode,
+    });
+    const rec = this.fightLog[this.fightLog.length - 1];
+    this.lastClash = { base: plans.reduce((a, pl) => a + pl.power, 0), strength, win, rage };
+    this.emit({ t: 'clash', total, strength, result: win ? 'win' : 'lose', ...(mon.rage ? { rage } : {}) });
     let wounds = 0;
     const totPow = Math.max(1, plans.reduce((a, pl) => a + Math.max(0, pl.power), 0));
     for (let j = 0; j < ps.length; j++) {
@@ -1557,7 +1576,8 @@ export class Game {
         gainRes(p, loot);
         this.actGain(p, loot);
         if (costUnits(loot)) this.emit({ t: 'loot', seat: p.pid, gain: loot });
-        const tro = Math.max(1, Math.round((mon.trophy + pl.trophy) * (coop ? Math.max(share, 0.5) : 1)));
+        const tro = Math.max(1, Math.round((mon.trophy + pl.trophy) * (coop ? Math.max(share, boss ? D.MON_ROLL.boss.minShare : 0.5) : 1)));
+        rec.tro[j] = tro;
         if (mon.type === D.ANCIENT_DRAGON.id) { p.fame.dragon += tro + D.DRAGON.join; this.emit({ t: 'trophy', seat: p.pid, monster: mon.type, fame: tro + D.DRAGON.join }); }
         else { p.fame.trophy += tro; this.emit({ t: 'trophy', seat: p.pid, monster: mon.type, fame: tro }); }
         p.kills += 1;
@@ -1667,6 +1687,23 @@ export function sumPays(ops: Op[]): Cost {
   for (const o of ops) if (o.pay) c = addCost(c, o.pay);
   return c;
 }
+/** 荒ぶりの分布（round(N(0, sd²))、|N|≤clip·sd）：[値, 確率] */
+export function rageDist(sd: number | undefined): [number, number][] {
+  if (!sd) return [[0, 1]];
+  const clip = D.MON_ROLL.clip * sd;
+  const cdf = (x: number) => 0.5 * (1 + erf(Math.max(-clip, Math.min(clip, x)) / (sd * Math.SQRT2)));
+  const lo = Math.round(-clip), hi = Math.round(clip);
+  const out: [number, number][] = [];
+  let tot = 0;
+  for (let v = lo; v <= hi; v++) { const p = cdf(v + 0.5) - cdf(v - 0.5); if (p > 0) { out.push([v, p]); tot += p; } }
+  return out.map(([v, p]) => [v, p / tot]);
+}
+function erf(x: number) {
+  const t = 1 / (1 + 0.3275911 * Math.abs(x));
+  const y = 1 - ((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-x * x);
+  return x >= 0 ? y : -y;
+}
+
 function applyFightOps(pl: Plan, ops: Op[]) {
   for (const o of ops) {
     if (o.power) pl.power += o.power;

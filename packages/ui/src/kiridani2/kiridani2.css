@@ -127,3 +127,59 @@
   .kd2 .kd-tabbody > .kd2-board { flex: 1 1 0; min-height: 0; }
   .kd2 .kd2-board > .kd-spaces { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; padding: 3px; margin: -3px; }
 }
+
+/* 最終画面：順位の下に名声の移り変わり（グラフ）と「同じメンバーでもう一度」。画面に収まらなければ最終画面の中だけ縦にスクロール */
+.kd2 .kd-final { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; padding-bottom: 8px; }
+.kd-final.is-graph .kd-final-board, .kd-final.is-graph .kd-ftable { display: none; }
+.kd2-fgraph { flex: none; display: flex; flex-direction: column; gap: 4px; padding: 8px 8px 6px; border-radius: var(--kd-r); background: var(--kd-panel); border: 1px solid var(--kd-line); }
+.kd2-fgraph h3 { margin: 0; font-size: 13px; font-weight: 900; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.kd2-fgraph h3 small { font-size: 11px; font-weight: 400; color: var(--kd-dim); }
+.kd2-fgraph-plot { position: relative; height: clamp(170px, 28dvh, 260px); min-width: 0; }
+.kd2-fgraph-plot > svg { position: absolute; inset: 0; display: block; touch-action: pan-y; cursor: crosshair; border-radius: 6px; }
+.kd-final.is-graph .kd2-fgraph { flex: 1 1 auto; min-height: 230px; }
+.kd-final.is-graph .kd2-fgraph-plot { flex: 1 1 auto; height: auto; min-height: 150px; }
+.kd2-fg-band { fill: #ffffff08; }
+.kd2-fg-grid { stroke: var(--kd-line); stroke-width: 1; opacity: .55; }
+.kd2-fg-zero { stroke: var(--kd-dim); stroke-width: 1; }
+.kd2-fg-sep { stroke: var(--kd-dim); stroke-width: 1; stroke-dasharray: 2 3; opacity: .7; }
+.kd2-fg-tick { stroke: var(--kd-dim); stroke-width: 1; }
+.kd2-fg-xl, .kd2-fg-yl { fill: var(--kd-ink2); font-size: 10px; font-family: var(--kd-font); }
+.kd2-fg-xl.is-final { fill: var(--kd-gold-l); font-weight: 900; }
+.kd2-fg-line { transition: opacity .2s; }
+.kd2-fg-line.is-dim { opacity: .18; }
+.kd2-fg-line.is-focus path { stroke-width: 3; }
+.kd2-fg-end { stroke: var(--kd-panel); stroke-width: 2; }
+.kd2-fg-cur line { stroke: var(--kd-ink2); stroke-width: 1; }
+.kd2-fg-cur circle { stroke: var(--kd-panel); stroke-width: 2; }
+.kd2-fg-tip { position: absolute; top: 4px; z-index: 2; min-width: 128px; max-width: 62%; padding: 6px 8px; border-radius: 10px; background: #15131cf2; border: 1px solid var(--kd-line); box-shadow: 0 6px 16px #0008; pointer-events: none; font-size: 12px; }
+.kd2-fg-tip > b { display: block; font-size: 12px; }
+.kd2-fg-tip > small { display: block; color: var(--kd-dim); font-size: 10px; margin-bottom: 3px; }
+.kd2-fg-tip ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
+.kd2-fg-tip li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 4px; }
+.kd2-fg-tip li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kd2-fg-tip li b { font-variant-numeric: tabular-nums; text-align: right; color: var(--kd-ink); }
+.kd2-fg-tip li i { font-style: normal; font-size: 10px; color: var(--kd-good); min-width: 22px; text-align: right; }
+.kd2-fg-tip li i.is-neg { color: #f28b6b; }
+.kd2-fg-legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 6px; }
+.kd2-fg-legend button { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 0 8px; border-radius: 15px; border: 1px solid var(--kd-line); background: var(--kd-panel2); color: var(--kd-ink); font: inherit; font-size: 12px; cursor: pointer; }
+.kd2-fg-legend button.is-on { border-color: var(--seat); box-shadow: 0 0 0 1px var(--seat) inset; }
+.kd2-fg-legend button i { width: 14px; height: 3px; border-radius: 2px; background: var(--seat); }
+.kd2-fg-legend button b { color: var(--kd-gold-l); font-variant-numeric: tabular-nums; }
+.kd2-final-after { flex: none; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: center; padding: 4px 0 2px; }
+.kd2-final-after small { color: var(--kd-ink2); font-size: 12px; text-align: center; }
+
+/* 参加者：ホストが同じメンバーで次の試合を始めたお知らせ（続ける／抜ける） */
+.kd2-rematch-note { position: fixed; z-index: 60; left: 50%; bottom: max(16px, env(safe-area-inset-bottom)); transform: translateX(-50%); width: min(420px, calc(100vw - 32px)); padding: 12px 14px; border-radius: var(--kd-r-lg, 16px); background: #26222ff7; border: 1px solid var(--kd-gold, #E8B923); box-shadow: 0 10px 30px #000a; color: var(--kd-ink, #F1EADB); font-family: var(--kd-font); animation: kd2-note-in .35s ease-out both; }
+.kd2-rematch-note p { margin: 0 0 10px; display: grid; gap: 4px; }
+.kd2-rematch-note p b { font-size: 15px; color: var(--kd-gold-l, #FFE29A); }
+.kd2-rematch-note p small { font-size: 12px; color: var(--kd-ink2, #C4BAA6); line-height: 1.5; }
+.kd2-rematch-note > div { display: flex; gap: 8px; justify-content: flex-end; }
+.kd2-rematch-note .kd-btn { min-height: 44px; }
+@keyframes kd2-note-in { from { opacity: 0; transform: translate(-50%, 12px); } }
+@media (prefers-reduced-motion: reduce) { .kd2-rematch-note { animation: none; } }
+.kd-root .kd2-fgraph-plot > svg:focus:not(:focus-visible) { outline: none; }
+.kd-root .kd2-fgraph-plot > svg:focus-visible { outline: 2px solid var(--kd-focus); outline-offset: -2px; }
+
+/* 候補カードの一覧では効果文を優先し、フレーバーは詳細（i）で見せる */
+.kd-offer .kd2-flavor { display: none; }
+.kd2-rage { font-size: .75em; opacity: .8; margin-left: 1px; }

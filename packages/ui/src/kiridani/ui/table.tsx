@@ -29,6 +29,8 @@ export interface TableProps {
   sheet?: ReactNode;
   /** 下の欄に足すボタン（取引など） */
   actions?: ReactNode;
+  /** 最終画面の下に出すもの（「同じメンバーでもう一度」など） */
+  finalExtra?: ReactNode;
 }
 
 const nameOf = (v: GameView, s: Seat) => (s === v.me ? 'あなた' : v.players[s]?.name ?? '');
@@ -141,7 +143,7 @@ function Overlay({ cur, v }: { cur: Playing | null; v: GameView }) {
   return null;
 }
 
-export function KiridaniTable({ t, ask, onAnswer, extra, sheet, actions }: TableProps) {
+export function KiridaniTable({ t, ask, onAnswer, extra, sheet, actions, finalExtra }: TableProps) {
   const { view: v, cur } = t;
   const rootRef = useRef<HTMLDivElement>(null);
   const fxRef = useRef<FxApi>(null);
@@ -176,7 +178,7 @@ export function KiridaniTable({ t, ask, onAnswer, extra, sheet, actions }: Table
   if (v.phase === 'setup') main = <div className="kd-screen kd-title"><h1>霧谷の冒険者団</h1><p>魔物に荒らされた霧谷に拠点を構え、3年間で名声を競う</p></div>;
   else if (v.phase === 'draft') main = <DraftScreen view={v} options={ask?.kind === 'draft' ? ask.options : undefined} onPick={ask?.kind === 'draft' && !queuedChoice ? answer : undefined} queuedPick={queuedChoice ?? undefined} />;
   else if (v.phase === 'character') main = <CharacterPick view={v} options={ask?.kind === 'char' ? ask.options : undefined} onPick={ask?.kind === 'char' && !queuedChoice ? answer : undefined} />;
-  else if (v.phase === 'final' && v.final) main = <FinalScoring view={v} rows={v.final} cur={cur} />;
+  else if (v.phase === 'final' && v.final) main = <><FinalScoring view={v} rows={v.final} cur={cur} />{finalExtra && !t.busy && <div className="kd2-final-after">{finalExtra}</div>}</>;
   else main = (
     <>
       <nav className="kd-tabs" role="tablist">

@@ -2,7 +2,10 @@
 //   A. ひとりで遊ぶ：タイトル → 5年・4人 → 準備（リーダー・職能・割合・品物・初期カード・秘密依頼）→ 数ラウンド → ⚙「自分の席もAIに任せる」→ 最終得点（内訳）
 //      戦闘のトレイ（選択式：使うものを足すと戦力・見込みが変わる）→「選び直す」で盤面に戻り、別の場所に置ける（以前は止まった）。
 //      細かい選択のシートも「選び直す」で戻れる。小さい画面（360×640・横 740×360）では盤面が縦にスクロールする
-//   B. 友だちと遊ぶ：ホスト＋参加者（手元の PeerJS サーバー）→ 新ルールの待合室 → 数ラウンド → チャット → 参加者の途中退室と復帰 → 部屋を閉じる
+//      最終画面：名声の移り変わりのグラフ（タップで値）→「同じメンバーでもう一度」（同じ人数・年数・強さ、新しい種）
+//      どの画面にも強い動き（engine タグ）の札・文字が出ない
+//   B. 友だちと遊ぶ：ホスト＋参加者（手元の PeerJS サーバー）→ 新ルールの待合室 → 数ラウンド → チャット → 参加者の途中退室と復帰 → 最後まで
+//      → ホストが「同じメンバーでもう一度」→ 参加者はつないだまま次の試合へ（お知らせ・チャットはそのまま）→ 部屋を閉じる
 // 画面写真（deviceScaleFactor 2、縦 390×844・横 844×390）を --shots DIR に保存する。
 // 使い方：node tools/kiridani2/smoke.mjs [--shots DIR] [--only solo|online] [--headed] [--dist DIR]
 import { createRequire } from 'node:module';
@@ -76,6 +79,19 @@ async function both(page, name, what) {
   await shot(page, `${name}-landscape.png`);
   if (what) check(await fits(page), `${what}が1画面に収まる（844×390）`);
   await page.setViewportSize(PORTRAIT); await sleep(250);
+}
+/** 強い動き（engine タグ）の札・文字がどこにも出ていない（札の色の丸・kd-quirk・kd-tags・「強い動き」の文字） */
+const MOVE_COLORS = ['#FF4F5E', '#3FCB6A', '#FFC21A', '#4C8DFF', '#FF8A1F', '#FF7EB6', '#A35BFF', '#C77A3A', '#1FC7C1', '#2F6BFF', '#B9A66B', '#7A1F4F', '#8F96B2'];
+const ENGINE_WORDS = ['狩り', '採集', '交易', '鍛冶', '獣使い', '共闘', '遺跡', '主狩り', '橋渡し'];
+async function noMoves(page, where) {
+  const r = await page.evaluate(([cols, words]) => {
+    const badges = [...document.querySelectorAll('svg[data-art] circle')].filter((c) => cols.includes((c.getAttribute('fill') ?? '').toUpperCase())).length;
+    const tags = document.querySelectorAll('.kd-quirk, .kd-tags').length;
+    const text = /強い動き/.test(document.body.innerText);
+    const kindLine = [...document.querySelectorAll('.kd-card-kind')].some((e) => words.some((w) => e.textContent.includes(w)));
+    return { badges, tags, text, kindLine, arts: document.querySelectorAll('svg[data-art]').length };
+  }, [MOVE_COLORS, ENGINE_WORDS]);
+  check(!r.badges && !r.tags && !r.text && !r.kindLine, `${where}：強い動きの札・文字が出ない（カードの絵 ${r.arts}枚）`);
 }
 const roundOf = (page) => page.evaluate(() => Number(document.querySelector('.kd-hud-meta b')?.textContent ?? 0));
 const idle = async (page) => { await page.waitForSelector('.kd-hud-ctl .kd-iconbtn[disabled]', { timeout: 15000 }).catch(() => {}); await sleep(300); };
@@ -236,8 +252,17 @@ async function solo() {
   const seen = new Set();
   const counts = {};
   const t0 = Date.now();
-  let boardShot = false, inspShot = false, fightDone = false;
+  let boardShot = false, inspShot = false, fightDone = false, moveChecked = false;
   while ((await roundOf(page)) < 4) {
+    if (!moveChecked && await page.$('.kd-offer .kd-card .kd-idot')) {
+      moveChecked = true;
+      await sleep(300);
+      await noMoves(page, '準備のカード');
+      await page.click('.kd-offer .kd-card .kd-idot');
+      await page.waitForSelector('.kd-insp', { timeout: 5000 }).catch(() => {});
+      await noMoves(page, 'カードの詳しく見るシート');
+      await page.keyboard.press('Escape'); await sleep(200);
+    }
     if (!fightDone && (await roundOf(page)) >= 1 && await page.$('.kd-root.is-myturn') && !(await page.$('.kd-ovwrap, .kd-tray, .kd-sheet')) && await page.$('[data-kd^="space:nest"].is-can, [data-kd="space:lair"].is-can')) {
       await idle(page);
       if (await page.$('.kd-root.is-myturn') && !(await page.$('.kd-ovwrap, .kd-tray, .kd-sheet'))) {
@@ -329,6 +354,39 @@ async function solo() {
   const brk = await page.$('.kd2-ftable');
   if (brk && await brk.isVisible()) { const rows = await page.$$eval('.kd2-ftable tbody tr', (e) => e.length); await both(page, '41-final-breakdown', '名声の内訳'); check(rows > 3, `名声の内訳表が出る（${rows}行）`); }
   else check(false, '名声の内訳表が見つからない');
+  await noMoves(page, '最終画面');
+  // 名声の移り変わり（グラフ）：順位の下にも出る。「推移」で大きく、タップでその時点の値
+  check(!!(await page.$('.kd-final.is-table .kd2-fgraph')) === false, '内訳ではグラフを出さない');
+  await page.click('.kd-final [role="tab"]:has-text("順位")'); await sleep(300);
+  check(!!(await page.$('.kd-final.is-rank .kd2-fgraph svg')), '順位の下に名声の移り変わりのグラフが出る');
+  await page.click('.kd-final [role="tab"]:has-text("推移")'); await sleep(400);
+  const g = await page.evaluate(() => {
+    const svg = document.querySelector('.kd2-fgraph svg');
+    const r = svg?.getBoundingClientRect();
+    return { lines: document.querySelectorAll('.kd2-fg-line').length, ends: document.querySelectorAll('.kd2-fg-end').length, legend: document.querySelectorAll('.kd2-fg-legend li').length, w: r?.width ?? 0, h: r?.height ?? 0, final: !!document.querySelector('.kd2-fg-xl.is-final'), years: [...document.querySelectorAll('.kd2-fg-xl')].map((e) => e.textContent) };
+  });
+  check(g.lines === 4 && g.ends === 4 && g.legend === 4 && g.final && g.w > 300 && g.h > 150, `グラフ：4人の線・集計の点・凡例・年の目盛り（${g.years.join(' ')}・${Math.round(g.w)}×${Math.round(g.h)}）`);
+  const box = await (await page.$('.kd2-fgraph svg')).boundingBox();
+  await page.mouse.click(box.x + box.width * 0.55, box.y + box.height * 0.5); await sleep(250);
+  const tip = await page.$$eval('.kd2-fg-tip li', (e) => e.map((x) => x.textContent));
+  check(tip.length === 4, `グラフをタップするとその時点の全員の名声が出る（${tip.join(' / ')}）`);
+  await shot(page, '42-final-graph.png');
+  check(await fits(page), '名声の移り変わりが1画面に収まる（390×844）');
+  await page.setViewportSize(LANDSCAPE); await sleep(400);
+  const box2 = await (await page.$('.kd2-fgraph svg')).boundingBox();
+  await page.mouse.click(box2.x + box2.width - 30, box2.y + box2.height * 0.5); await sleep(250);
+  const tip2 = await page.textContent('.kd2-fg-tip').catch(() => '');
+  check(/集計/.test(tip2 ?? ''), `右端は「集計」の点（${(tip2 ?? '').slice(0, 20)}）`);
+  await shot(page, '42-final-graph-landscape.png');
+  check(await fits(page) && box2.height > 120, `名声の移り変わりが1画面に収まる（844×390・グラフの高さ ${Math.round(box2.height)}）`);
+  await page.setViewportSize(PORTRAIT); await sleep(300);
+  // 同じメンバーでもう一度：同じ人数・年数・強さ、新しい種
+  const before = await page.evaluate(() => JSON.parse(localStorage.getItem('kd.n') ?? 'null'));
+  await page.click('[data-kd="rematch"]');
+  await page.waitForSelector('.kd2-setup', { timeout: 15000 });
+  const sv = await page.evaluate(() => JSON.parse(localStorage.getItem('kd2.solo') ?? 'null'));
+  const chips = await page.$$eval('.kd-draft-others .kd-chip', (e) => e.length);
+  check(!!sv && sv.n === 4 && sv.years === 5 && sv.hist.length === 0 && chips === 3, `ひとり：「同じメンバーでもう一度」で同じ4人・5年の新しい試合が始まる（種 ${sv?.seed}・設定 ${before}）`);
 }
 
 // ================================================================ B. 友だちと遊ぶ
@@ -363,7 +421,8 @@ async function online() {
   const counts = {};
   const t0 = Date.now();
   for (let i = 0; ; i++) {
-    if (Date.now() - t0 > 12 * 60_000) throw new Error('online: 時間切れ');
+    if (Date.now() - t0 > 30 * 60_000) throw new Error('online: 時間切れ');
+    for (const page of [host, guest]) { const sk = await page.$('.kd-hud-ctl .kd-iconbtn:not([disabled])'); if (sk && !(await page.$('.kd-root.is-myturn'))) await sk.click().catch(() => {}); }
     if (!setupShot && await guest.$('.kd2-setup .kd-confirm .kd-btn.is-primary')) { setupShot = true; await sleep(300); await shot(guest, '51-setup-guest.png'); }
     if (!guestShot && (await roundOf(guest)) >= 2 && await guest.$('.kd-root.is-myturn') && !(await guest.$('.kd-ovwrap'))) {
       await idle(guest);
@@ -420,7 +479,7 @@ async function online() {
       if (r) counts[r] = (counts[r] ?? 0) + 1;
     }
     const [rh, rg] = [await roundOf(host), await roundOf(guest)];
-    if (awayDone && Math.min(rh, rg) >= 5) break;
+    if (awayDone && await host.$('.kd-final') && await guest.$('.kd-final')) break;
     if (i % 40 === 0) log(`round host ${rh} guest ${rg}`, counts);
     await sleep(40);
   }
@@ -428,6 +487,36 @@ async function online() {
   check(counts.pick > 0 && counts.place > 0 && counts.ratio > 0, `準備と置き場所を両方の画面で答えた ${JSON.stringify(counts)}`);
   const [fh, fg] = [await host.$$eval('.kd-pchip b[data-kd^="fame:"]', (e) => e.map((x) => x.textContent)), await guest.$$eval('.kd-pchip b[data-kd^="fame:"]', (e) => e.map((x) => x.textContent))];
   log('fame host', fh, 'guest', fg);
+  // 最後まで：両方にグラフ。ホストが「同じメンバーでもう一度」→ 参加者はつないだまま次の試合へ
+  await idle(host); await idle(guest); await sleep(1500);
+  check(!!(await guest.$('.kd2-fgraph svg')) && !!(await host.$('.kd2-fgraph svg')), '参加者・ホストの最終画面に名声の移り変わりのグラフが出る');
+  const gl = await guest.$$eval('.kd2-fg-line', (e) => e.length);
+  check(gl === 3, `参加者のグラフも全員分（${gl}本）`);
+  await noMoves(guest, '参加者の最終画面');
+  check(!(await guest.$('[data-kd="rematch"]')) && /同じメンバーでもう一度/.test(await guest.textContent('.kd2-final-after').catch(() => '') ?? ''), '参加者にはボタンでなく案内が出る');
+  const hostGid0 = await host.evaluate(() => JSON.parse(localStorage.getItem('kiridani.host')).game.gid);
+  await host.click('[data-kd="rematch"]');
+  await guest.waitForSelector('.kd2-rematch-note', { timeout: 15000 });
+  await sleep(600);
+  await shot(guest, '43-rematch-online-guest.png');
+  check(true, '参加者に「ホストが同じメンバーでもう一度始めました」が出る');
+  const hs = await host.evaluate(() => JSON.parse(localStorage.getItem('kiridani.host')));
+  check(hs.game.gid !== hostGid0 && hs.actions.length < 40 && hs.game.n === 3, `ホストの保存は新しい試合に置き換わる（gid ${hostGid0}→${hs.game.gid}・答え ${hs.actions.length}）`);
+  await guest.click('[data-kd="rematch-ok"]');
+  await sleep(300);
+  check(!(await guest.$('.kd2-rematch-note')) && !(await guest.$('.kd-final')) && !(await host.$('.kd-final')), '「続ける」でお知らせが消え、両方とも新しい試合（最終画面ではない）');
+  // 新しい試合を少し進める（準備を両方で答える）
+  const t2 = Date.now();
+  while (Date.now() - t2 < 4 * 60_000 && Math.min(await roundOf(host), await roundOf(guest)) < 1) {
+    for (const page of [host, guest]) await step(page).catch(() => null);
+    await sleep(40);
+  }
+  check(Math.min(await roundOf(host), await roundOf(guest)) >= 1, '次の試合も両方の画面で進む（ラウンド1まで）');
+  try {
+    await guest.click(MENU); await guest.click('.kd-chatbtn'); await guest.waitForSelector('.kd-chat');
+    check(!!(await guest.$('.kd-chatline:has-text("こんにちは、新ルール！")')), '次の試合でも前のチャットが残っている');
+    await guest.click('.kd-chat-x');
+  } catch (e) { check(false, `次の試合のチャット：${firstLine(e)}`); }
   await host.click(MENU);
   await host.click('button:has-text("部屋を閉じてタイトルへ")');
   await guest.waitForSelector('text=部屋が閉じました', { timeout: 15000 });
