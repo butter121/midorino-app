@@ -42,7 +42,8 @@ export const POTION: [Cost, number] = [{ herb: 2 }, 1];
 export const OCC_FOOD = [1, 2];
 export const QUEST_FAME = [4, 3, 2];
 export const SECRET_FAME = 5;
-export const DRAGON = { str: 20, counter: 4, trophy: 10, join: 2, fail: 3 };
+/** 古竜：主と同じ式で t=1・格 grade・per[年数]（調整：仕様は強さ20固定）。証 trophy を割合で分け、参加者に join、負けると全員 −fail */
+export const DRAGON = { grade: 3, rage: 0.12, per: { 5: 0.88, 10: 1.03, 15: 1.07 } as Record<number, number>, counter: 1, trophy: 14, join: 3, fail: 3 };
 export const TRADE_MAX = 3;
 
 // ---- 交換所
@@ -171,15 +172,22 @@ export const BOSS: Record<string, MonsterType> = Object.fromEntries([...BOSS_TYP
 
 // ---- 魔物の数値（§6）
 export const MON_ROLL = {
-  base: 5, slope: 8, sd: 1.2, clip: 2.5, lootSd: 0.5, lootClip: 2,
-  /** 証＝round(強さ/trophyDiv + n)、反撃＝round(強さ/counterDiv)（調整：仕様は 2.5 と 3） */
-  trophyDiv: 5.5, counterDiv: 2.5, bossTrophy: 3.5,
-  /** 冬の襲撃＝round(強さ/raidDiv)（調整：仕様は 4。防壁を持たない動きが襲撃で負けすぎるので弱めた） */
-  raidDiv: 5,
+  /** 強さの元 s＝base + slope[年数]·t + 格 + N(0, sd²)（|N|≤clip·sd）。長い試合ほど仲間・装備が育つので傾きを年数で変える（調整：仕様は 5 + 8t） */
+  base: 6, slope: { 5: 14, 10: 18, 15: 21 } as Record<number, number>, sd: 1.2, clip: 2.5, lootSd: 0.5, lootClip: 2,
+  /** 証＝round(s/trophyDiv + n)、反撃＝round(s/counterDiv)（調整：仕様は 2.5 と 3。強さを上げたので反撃は割る数を大きく） */
+  trophyDiv: 5.5, counterDiv: 3.2,
+  /** 冬の襲撃＝round(s/raidDiv)（調整：仕様は 4。防壁を持たない動きが襲撃で負けすぎるので弱めた。強さを上げたので 5→14。主に負けたときは +boss.raid） */
+  raidDiv: 14,
   /** 空いた巣に予告の魔物が入る確率（調整：毎ラウンド全部は埋まらない） */
   spawnP: 0.85,
+  /**
+   * 主：強さの元は傾き slope[年数] で s と同じに作り、強さ＝round((s − 格) × per[年数] × 人数) ＋ 格。全員で挑む前提の強さ（4人・10年で巣の魔物の約4倍）。
+   * 証・戦利品・反撃・襲撃は s から（証×trophy、戦利品×loot、反撃+counter、襲撃+raid）。
+   * 主の巣・古竜の証の分け方は戦力の割合（最低 minShare。巣の共闘は最低 0.5）。尻馬に乗るだけの参加で証を稼げないように。
+   * 荒ぶり：戦うときに強さへ round(N(0, (rage·強さ)²)) を足す（見えている強さだけでは勝ちを決めきれない）。
+   */
+  boss: { slope: { 5: 12, 10: 15, 15: 18 } as Record<number, number>, per: { 5: 0.78, 10: 1, 15: 1 } as Record<number, number>, rage: 0.1, trophy: 6, minShare: 0.25, loot: 1.5, counter: 0, raid: 2 },
 };
-
 /** AI・評価用の資源の目安 */
 export const RES_VAL: Record<Res, number> = { wood: 0.4, iron: 0.6, herb: 0.45, mana: 0.9, food: 0.55, gold: 0.3, mat: 0.6 };
 export const RES_JP: Record<Res, string> = { wood: '木材', iron: '鉄', herb: '薬草', mana: '魔石', food: '食料', gold: '金貨', mat: '素材' };

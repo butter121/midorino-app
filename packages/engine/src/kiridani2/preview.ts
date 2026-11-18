@@ -1,7 +1,7 @@
 // 霧谷の冒険者団 v2 — 画面のための見込み（盤面は変えない。複製の上で計算する）。
 // 戦闘の勝つ見込み・必要な強さ・反撃と負傷の見込み、選択肢の短い説明。手元の試合でもオンラインの写しでも同じに動く。
 import * as D from './data';
-import { canPay, type Choice, type FightChip, type Game, type Option, type Player } from './engine';
+import { canPay, rageDist, type Choice, type FightChip, type Game, type Option, type Player } from './engine';
 import type { Cost, FightMode, Monster, PowerPart, Res } from './types';
 import { RES } from './types';
 
@@ -75,7 +75,17 @@ export function previewFight(g0: Game, p0: Player, o: Option): FightPreview | nu
   const total = acc + pl.power;
   let pwin = 0;
   const fate = [...g.fateDist(fateOf)].sort((a, b) => a[0] - b[0]);
-  for (const [v, pr] of fate) if (total + v >= strength) pwin += pr;
+  if (o.s === 'lair') {
+    // 主の巣は挑む全員が1枚ずつめくる（合計の分布）
+    let dist = new Map<number, number>([[0, 1]]);
+    for (const q of [...g.lairQ.map((e) => g.players[e.pid]), p]) {
+      const nx = new Map<number, number>();
+      for (const [s, a] of dist) for (const [v, b] of g.fateDist(q)) nx.set(s + v, (nx.get(s + v) ?? 0) + a * b);
+      dist = nx;
+    }
+    // 主・古竜の荒ぶり
+    for (const [v, pr] of dist) for (const [r, rp] of rageDist(mon.rage)) if (total + v >= strength + r) pwin += pr * rp;
+  } else for (const [v, pr] of fate) if (total + v >= strength) pwin += pr;
   const guard = g.defense(p, pl);
   const counter = Math.max(0, mon.counter + pl.counter);
   const injuries = pl.rearAll ? 0 : Math.max(0, Math.min(idxs.length, counter - guard - pl.noInj));

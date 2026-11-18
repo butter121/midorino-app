@@ -29,9 +29,10 @@ const env = (k: string, d: string) => process.env[k] ?? d;
 interface PRec {
   seat: number; level: Level; target: string; targets: string[]; leader: string; score: number; rel: number; win: boolean;
   bd: Record<string, number>; picked: string[]; loopN: number; loopOk: number; repeats: number; rounds: number; fed: number; winters: number;
-  plaza: number; places: number; fateMean: number; fates: number; comps: number; kills: number;
+  plaza: number; places: number; fateMean: number; fates: number; comps: number; kills: number; bossTro: number; bossWins: number;
 }
-interface GRec { years: number; n: number; mixed: boolean; seed: number; players: PRec[]; ms: number }
+interface FRec { t: number; kind: string; str: number; base: number; total: number; win: boolean; addons: number; comps: number; sides: number; mode: string }
+interface GRec { years: number; n: number; mixed: boolean; seed: number; players: PRec[]; ms: number; fights: FRec[] }
 
 function playOne(years: number, n: number, seed: number, mixed: boolean): GRec {
   const lr = new Rng(seed * 7919 + 13);
@@ -67,11 +68,13 @@ function playOne(years: number, n: number, seed: number, mixed: boolean): GRec {
       seat: i, level: levels[i], target: t, targets: p.target, leader: p.leader ?? '', score: scores[i], rel: scores[i] - mean, win: scores[i] === top,
       bd: scoreBreakdown(g, p), picked: [p.leader ?? '', ...p.picked].filter(Boolean), loopN, loopOk, repeats, rounds: p.history.length,
       fed: p.fed.filter(Boolean).length, winters: p.fed.length, plaza, places, fateMean: fv.length ? fv.reduce((a, b) => a + b, 0) / fv.length : 0.5, fates: fv.length, comps: p.comps.length, kills: p.kills,
+      bossTro: g.fightLog.filter((f) => f.kind !== 'nest').reduce((a, f) => a + (f.tro[f.pids.indexOf(p.pid)] ?? 0), 0), bossWins: p.st.boss,
     };
   });
   if (g.errors.length) throw new Error(`errors in game ${seed}: ${g.errors.join(';')}`);
   for (const [i, p] of g.players.entries()) if (score(g, p) !== scores[i]) throw new Error('score mismatch');
-  return { years, n, mixed, seed, players, ms };
+  const fights = g.fightLog.map(({ t, kind, str, base, total, win, addons, comps, sides, mode }) => ({ t, kind, str, base, total, win, addons, comps, sides, mode }));
+  return { years, n, mixed, seed, players, ms, fights };
 }
 
 // ------------------------------------------------------------ 並列
@@ -157,7 +160,7 @@ function summarize(years: number, eq: GRec[], mx: GRec[]) {
   // 強い動きごと
   res.engine = Object.fromEntries([...new Set(P.map((p) => p.target))].sort().map((t) => {
     const q = P.filter((p) => p.target === t);
-    return [t, { n: q.length, rel: avg(q.map((p) => p.rel)), fame: avg(q.map((p) => p.score)), win: avg(q.map((p) => (p.win ? 1 : 0))), comps: avg(q.map((p) => p.comps)), kills: avg(q.map((p) => p.kills)), src: Object.fromEntries(Object.entries(SRC).map(([k, f]) => [k, avg(q.map((p) => f(p.bd)))])), neg: avg(q.map((p) => p.bd.discontent + p.bd.raid + Math.min(0, p.bd.dragon))) }];
+    return [t, { n: q.length, rel: avg(q.map((p) => p.rel)), fame: avg(q.map((p) => p.score)), win: avg(q.map((p) => (p.win ? 1 : 0))), comps: avg(q.map((p) => p.comps)), kills: avg(q.map((p) => p.kills)), bossTro: avg(q.map((p) => p.bossTro)), bossWins: avg(q.map((p) => p.bossWins)), src: Object.fromEntries(Object.entries(SRC).map(([k, f]) => [k, avg(q.map((p) => f(p.bd)))])), neg: avg(q.map((p) => p.bd.discontent + p.bd.raid + Math.min(0, p.bd.dragon))), negParts: [avg(q.map((p) => p.bd.discontent)), avg(q.map((p) => p.bd.raid)), avg(q.map((p) => Math.min(0, p.bd.dragon)))] }];
   }));
   // 名声の内訳（勝者）
   const W = P.filter((p) => p.win);
@@ -177,6 +180,20 @@ function summarize(years: number, eq: GRec[], mx: GRec[]) {
   res.cards = cards;
   res.cardsOut = cards.filter((x) => Math.abs(x.d) > 3).length;
   res.ms = avg(eq.map((g) => g.ms));
+  // 戦闘（同じ腕前の卓）：種類 × 時期（t＜1/3 序盤、＜2/3 中盤、それ以降 終盤）
+  const F = eq.flatMap((g) => g.fights);
+  const phase = (t: number) => (t < 1 / 3 ? 'early' : t < 2 / 3 ? 'mid' : 'late');
+  const fstat = (q: FRec[]) => {
+    const f = q.filter((x) => x.mode !== 'skip');
+    return { n: f.length / eq.length, skip: q.length ? 1 - f.length / q.length : NaN, win: avg(f.map((x) => (x.win ? 1 : 0))), margin: avg(f.map((x) => x.base - x.str)), addons: avg(f.map((x) => x.addons)), comps: avg(f.map((x) => x.comps)), str: avg(f.map((x) => x.str)) };
+  };
+  res.fights = Object.fromEntries([
+    ...['early', 'mid', 'late'].map((ph) => [`nest/${ph}`, fstat(F.filter((x) => x.kind === 'nest' && phase(x.t) === ph))]),
+    ['nest/all', fstat(F.filter((x) => x.kind === 'nest'))],
+    ...['early', 'mid', 'late'].map((ph) => [`boss/${ph}`, fstat(F.filter((x) => x.kind === 'boss' && phase(x.t) === ph))]),
+    ['boss/all', fstat(F.filter((x) => x.kind === 'boss'))],
+    ['dragon', fstat(F.filter((x) => x.kind === 'dragon'))],
+  ]);
   return res;
 }
 
@@ -197,6 +214,9 @@ function print(all: Record<string, any>[]) {
   L('どれかの入り口が4割超の勝者', (r) => pct(r.over40));
   L('カード：±3名声を超える枚数', (r) => `${r.cardsOut}/${r.cards.length}`);
   L('1局の時間(ms)', (r) => f1(r.ms));
+  console.log('\n--- 戦闘（同じ腕前の卓）：勝率 / 戦力−強さ（運命の前） / 後押しの数 / 送った仲間 / 1局の回数 [主・古竜は挑まなかった割合]');
+  for (const k of Object.keys(all[0].fights)) L(`  ${k}`, (r) => { const s = r.fights[k]; return `${pct(s.win)} ${f1(s.margin)} ${f1(s.addons)}`; });
+  if (process.env.SIM_DETAIL) for (const k of Object.keys(all[0].fights)) L(`  ${k} 仲間/回数/強さ/skip`, (r) => { const s = r.fights[k]; return `${f1(s.comps)}/${f1(s.n)}/${f1(s.str)}/${k.startsWith('nest') ? '-' : pct(s.skip)}`; });
   console.log('\n--- 名声の内訳（勝者の平均。目標：どれも4割以下）');
   for (const k of Object.keys(SRC)) L(`  ${k}`, (r) => pct(r.source[k]));
   console.log('\n--- 強い動きごとの「名声 − 卓の平均」（目標±3以内）[人数]');
@@ -204,11 +224,11 @@ function print(all: Record<string, any>[]) {
   for (const t of tags) L(`  ${t}`, (r) => (r.engine[t] ? `${f1(r.engine[t].rel)} [${r.engine[t].n}]` : '-'));
   console.log('\n--- 同じ値を5年換算（÷ 年数/5。長い試合は名声の桁が大きいので、±3 はこの値で見る）');
   for (const t of tags) L(`  ${t}`, (r) => (r.engine[t] ? f1(r.engine[t].rel / (r.years / 5)) : '-'));
-  console.log('\n--- 強い動きごとの終わりの仲間の数／倒した数');
-  for (const t of tags) L(`  ${t}`, (r) => (r.engine[t] ? `${f1(r.engine[t].comps)}/${f1(r.engine[t].kills)}` : '-'));
+  console.log('\n--- 強い動きごとの終わりの仲間の数／倒した数／主・古竜を倒した数／その証');
+  for (const t of tags) L(`  ${t}`, (r) => (r.engine[t] ? `${f1(r.engine[t].comps)}/${f1(r.engine[t].kills)}/${f1(r.engine[t].bossWins)}/${f1(r.engine[t].bossTro)}` : '-'));
   if (process.env.SIM_DETAIL) for (const r of all) {
     console.log(`\n--- 強い動きごとの名声の入り口（${r.years}年、平均）: ${[...Object.keys(SRC), 'neg'].join(' / ')}`);
-    for (const t of tags) if (r.engine[t]) console.log(`  ${t.padEnd(8)} ${[...Object.keys(SRC).map((k) => f1(r.engine[t].src[k])), f1(r.engine[t].neg)].join(' / ')}`);
+    for (const t of tags) if (r.engine[t]) console.log(`  ${t.padEnd(8)} ${[...Object.keys(SRC).map((k) => f1(r.engine[t].src[k])), f1(r.engine[t].neg)].join(' / ')}  (不満/襲撃/古竜 ${r.engine[t].negParts.map(f1).join('/')})`);
   }
   console.log('\n--- 強い動きごとの「一周」の割合');
   for (const t of tags) L(`  ${t}`, (r) => (r.loopBy[t] !== undefined ? pct(r.loopBy[t]) : '-'));

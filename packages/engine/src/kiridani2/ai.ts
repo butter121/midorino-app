@@ -5,7 +5,7 @@
 import * as D from './data';
 import { cardEffects } from './dsl';
 import {
-  ancientScore, costValue, drive, Game, Player, score, type Brain, type Choice, type Option, type Ratio, type Req,
+  ancientScore, costValue, drive, Game, Player, rageDist, score, type Brain, type Choice, type Option, type Ratio, type Req,
 } from './engine';
 import { Rng } from './rng';
 import type { CardDef, Cost, EngineTag, Op, Res } from './types';
@@ -16,6 +16,10 @@ export const LEVELS: Level[] = ['novice', 'normal', 'strong'];
 const NOISE: Record<Level, number> = { random: 0, novice: 2.0, normal: 0.8, strong: 0.12 };
 /** 置く場所を先読みせずに選ぶ割合（腕前の差をはっきりさせる） */
 const SLIP: Record<Level, number> = { random: 1, novice: 0.25, normal: 0.08, strong: 0 };
+/** 主の巣の先読みで、まだ置いていない人が送ると見込む仲間の数 */
+const LAIR_GUESS = 2;
+/** 主の巣の前のラウンドで、薬草・余った食料に足す重み */
+const BOSS_PREP = { herb: 0.15, food: 0.12 };
 
 export interface W {
   res: Record<Res, number>;
@@ -265,7 +269,7 @@ export class AI implements Brain {
   private worthLooking(g: Game, p: Player, o: Option): boolean {
     if (o.mode === 'chip') return false;
     if (o.mode === 'wait') return this.targets.includes('ally') && this.level !== 'novice';
-    if (o.mode === 'normal' && !o.join) return false;
+    if (o.mode === 'normal' && !o.join && o.s !== 'lair') return false;
     if (o.x && typeof o.x === 'object' && (o.x.m === 'sell' || o.x.m === 'buy')) {
       const q = g.marketQty(p);
       return o.x.q === 1 || o.x.q === q || (o.x.m === 'sell' && o.x.q === p.res[o.x.r]);
@@ -275,20 +279,49 @@ export class AI implements Brain {
 
   valueOf(g: Game, p: Player, o: Option): number {
     const fight = (g.nest(o.s) || o.s === 'lair') && o.i >= 0;
-    const run = (fate: number | null) => {
+    const run = (fate: number | null, rage: number | null = null) => {
       const g2 = g.clone();
       g2.forceFate = fate;
+      g2.forceRage = rage;
       const p2 = g2.players[p.pid];
+      // 主の巣：まだ置いていない人も（休んでいない仲間を2人まで）挑むと見込む。主は全員で挑む強さなので、先に置く人が損に見えないように
+      if (o.s === 'lair') for (const q of g2.players) {
+        if (q === p2 || g2.lairQ.some((e) => e.pid === q.pid)) continue;
+        const k = Math.min(q.fightable(), LAIR_GUESS);
+        if (k > 0) g2.lairQ.push({ pid: q.pid, idxs: g2.pickComps(q, k), mode: 'normal' });
+      }
       drive(g2.apply(p2, o));
-      if (o.s === 'lair') drive(g2.resolveLair());
+      const decks = o.s === 'lair' ? g2.lairQ.map((e) => { const q = g2.players[e.pid]; return q.fate.length ? [...q.fate] : D.FATE_DECK; }) : [];
+      let adj = 0;
+      if (o.s === 'lair') {
+        const boss = g2.bossOf[g2.round]!;
+        const dragon = boss.type === D.ANCIENT_DRAGON.id;
+        drive(g2.resolveLair());
+        // 主・古竜に負けたときの罰（古竜の −3、主の襲撃）は誰も挑まなくても受けるので、ほかの手と同じ土台で比べる：
+        // 負けの罰は打ち消し、勝てば避けられた罰を足す
+        const won = g2.lastClash?.win;
+        if (dragon) adj = D.DRAGON.fail;
+        else if (won) adj = Math.max(0, boss.raid - g.homeGuard(p)) * 0.8;
+      }
       if (o.mode === 'wait') {
         const nd = g2.nest(o.s)!;
         if (nd.wait && nd.mon) { const w = nd.wait; nd.wait = null; drive(g2.fight(nd, [{ p: p2, idxs: w.idxs, mode: 'gamble' }])); }
       }
-      return { v: evaluate(g2, p2, this.W, this.targets), clash: g2.lastClash };
+      return { v: evaluate(g2, p2, this.W, this.targets) + adj, clash: g2.lastClash, decks };
     };
     if (!fight) return run(null).v;
     const deck = p.fate.length ? p.fate : D.FATE_DECK;
+    if (o.s === 'lair') {
+      // 主の巣：全員の運命の合計と主の荒ぶりで勝つ確率を出し、勝った盤面と負けた盤面を混ぜる
+      const rd = rageDist(g.bossOf[g.round]?.rage);
+      const rMin = rd[0][0], rMax = rd[rd.length - 1][0];
+      const hi = run(Math.max(...deck), rMin), lo = run(Math.min(...deck), rMax);
+      if (!hi.clash || !lo.clash || hi.clash.win === lo.clash.win) return (hi.v + lo.v) / 2;
+      const need = hi.clash.strength - hi.clash.rage - hi.clash.base;
+      let pwin = 0;
+      for (const [r, pr] of rd) pwin += pr * sumAtLeast(hi.decks, need + r);
+      return pwin * hi.v + (1 - pwin) * lo.v;
+    }
     const hi = run(Math.max(...deck)), lo = run(Math.min(...deck));
     if (!hi.clash || !lo.clash || hi.clash.win === lo.clash.win) return (hi.v + lo.v) / 2;
     const need = hi.clash.strength - hi.clash.base;
@@ -324,6 +357,19 @@ export class AI implements Brain {
   }
 }
 
+/** 山ごとに1枚ずつめくった合計が need 以上になる確率 */
+export function sumAtLeast(decks: number[][], need: number): number {
+  let dist = new Map<number, number>([[0, 1]]);
+  for (const d of decks) {
+    const nx = new Map<number, number>();
+    for (const [s, pr] of dist) for (const v of d) nx.set(s + v, (nx.get(s + v) ?? 0) + pr / d.length);
+    dist = nx;
+  }
+  let p = 0;
+  for (const [s, pr] of dist) if (s >= need) p += pr;
+  return p;
+}
+
 // ------------------------------------------------------------ 評価関数
 function wintersFrom(g: Game, r: number) { let n = 0; for (let w = 4; w <= g.R; w += 4) if (w >= r) n++; return n; }
 
@@ -347,6 +393,12 @@ export function evaluate(g: Game, p: Player, W: W, targets: EngineTag[] = []): n
     const short = Math.max(0, need - p.res.food);
     v -= W.short * short * urg;
     v -= 0.25 * W.short * Math.max(0, need * wl - p.res.food - short);
+  }
+  // 主・古竜の備え：その年の主の巣（冬）までは、後押しに使う薬草（ポーション）と冬の分を超える食料（士気）を少し高く見る
+  const lair = g.year(g.round) * 4;
+  if (g.bossOf[lair] && g.round < lair && lair - g.round <= 3) {
+    const spare = Math.max(0, p.res.food - D.upkeepOf(p.comps.length));
+    v += BOSS_PREP.herb * Math.min(p.res.herb, 4) + BOSS_PREP.food * Math.min(spare, 3);
   }
   // 仲間（この先の手数）と負傷
   v += W.act * p.comps.length * Math.min(rl, 8) * 0.5;
