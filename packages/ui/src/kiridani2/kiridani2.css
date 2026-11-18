@@ -1,0 +1,106 @@
+/* 霧谷 v2 — v1 の kiridani.css の上に足すぶんだけ（準備段階・段階カードのマス・仲間ごとの装備・進み具合・名声の内訳） */
+.kd2 .kd2-prog { display: block; width: 84px; height: 5px; border-radius: 3px; background: #ffffff1a; overflow: hidden; margin-top: 2px; }
+.kd2 .kd2-prog i { display: block; height: 100%; background: var(--kd-gold, #e3b22b); border-radius: 3px; transition: width .4s; }
+
+/* 準備段階 */
+.kd2-setup .kd-laps li { width: auto; padding: 0 6px; font-size: 11px; white-space: nowrap; }
+.kd2-setup .kd-offer { flex-wrap: wrap; justify-content: center; }
+.kd2-setup .kd-deal { flex: 0 1 200px; min-width: 150px; }
+.kd2-setup .kd2-wait { opacity: .55; }
+.kd2-ratio-rows { display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; max-width: 520px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+.kd2-ratio-row { display: grid; grid-template-columns: minmax(84px, 1fr) 44px 36px 44px minmax(0, 2fr); align-items: center; gap: 8px; padding: 8px 10px; border-radius: 12px; background: var(--kd-card-bg); border: 2px solid var(--kd-line); }
+.kd2-ratio-row.is-weapon { border-color: #8a5a3a; } .kd2-ratio-row.is-tool { border-color: #5a7a3a; } .kd2-ratio-row.is-spell { border-color: #6a4a9a; }
+.kd2-ratio-l { display: flex; flex-direction: column; } .kd2-ratio-l small { font-size: 11px; opacity: .75; }
+.kd2-ratio-n { font-size: 24px; text-align: center; }
+.kd2-ratio-bar { display: flex; gap: 3px; } .kd2-ratio-bar i { width: 12px; height: 18px; border-radius: 3px; background: var(--kd-gold, #e3b22b); }
+.kd2-ratio-sum { text-align: center; font-weight: 700; margin: 4px 0 0; color: #f28b6b; } .kd2-ratio-sum.is-ok { color: #8fd18f; }
+
+/* 盤面：予告・段階カードのマス */
+.kd2-forecast { display: flex; align-items: center; gap: 6px; padding: 2px 6px; font-size: 11px; overflow-x: auto; }
+.kd2-forecast small { opacity: .75; white-space: nowrap; }
+.kd2-fc { display: inline-flex; align-items: center; gap: 2px; background: #00000033; border-radius: 8px; padding: 1px 5px 1px 1px; cursor: pointer; }
+.kd2-fc b { font-size: 12px; }
+.kd-space.kd2-stage { border-color: #b88a2e; background: linear-gradient(180deg, #3a3020, #261f15); }
+.kd-space.kd2-stage.is-new { animation: kd2-glow 1.2s ease 2; }
+.kd2-stagebadge { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 10px; background: linear-gradient(135deg, #e3b22b, #a8761c); color: #1b140a; font-weight: 900; font-size: 13px; }
+@keyframes kd2-glow { 50% { box-shadow: 0 0 0 3px #e3b22b88, 0 0 18px #e3b22b; } }
+
+/* 拠点：仲間ごとの装備 */
+.kd2-complist { display: flex; flex-direction: column; gap: 4px; }
+.kd2-comp { display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 6px; padding: 3px 6px; border-radius: 10px; background: #00000026; border: 1px solid var(--kd-line); }
+.kd2-comp.is-injured, .kd2-comp.is-rest { opacity: .7; border-color: #a04a4a; }
+.kd2-comp-who { display: flex; align-items: center; gap: 4px; } .kd2-comp-who small { font-size: 10px; white-space: nowrap; }
+.kd2-comp-sk { display: flex; flex-direction: column; gap: 1px; } .kd2-comp-sk > span { display: inline-flex; align-items: center; gap: 2px; }
+.kd2-comp-sk .kd-skill.is-def i.is-on { background: #7fb0e0; }
+.kd2-slots { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; min-width: 0; }
+.kd2-slot { display: flex; flex-direction: column; min-width: 0; padding: 2px 6px; border-radius: 8px; border: 1px dashed #ffffff33; font-size: 11px; line-height: 1.25; }
+.kd2-slot small { font-size: 9px; opacity: .7; }
+.kd2-slot b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kd2-slot i { opacity: .5; font-style: normal; }
+.kd2-slot.is-on { border-style: solid; cursor: pointer; }
+.kd2-slot.is-weapon.is-on { border-color: #c07a4a; background: #8a5a3a33; } .kd2-slot.is-armor.is-on { border-color: #6a9ad0; background: #3a5a8a33; }
+
+/* 依頼 */
+.kd2-qtext { display: block; font-size: 11px; font-weight: 400; opacity: .8; }
+.kd2-secret { border-style: dashed; }
+
+/* 戦闘のトレイ */
+.kd2-modes .kd-tchip small { display: block; font-size: 10px; font-weight: 400; opacity: .8; }
+.kd2-fightpv { display: flex; flex-direction: column; gap: 6px; }
+.kd2-fightpv .kd-meter { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+.kd2-fightpv .kd-meter b { font-size: 22px; }
+.kd2-fightpv-r { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; }
+
+/* 名声の内訳 */
+.kd2-ftable td.is-neg { color: #f28b6b; }
+
+/* タイトル：ルールと年数 */
+.kda-rules small { display: block; font-size: 11px; font-weight: 400; opacity: .8; }
+
+/* 盤面：v1 の2段（巣・行動マス）に「次の予告」を足した3つ。予告は巣のすぐ下（横画面では巣の列の下）に詰めて置く */
+.kd2-board { grid-template-areas: 'nests' 'fc' 'spaces'; grid-template-rows: auto auto minmax(0, 1fr); }
+.kd2-board > .kd-nests { grid-area: nests; }
+.kd2-board > .kd2-forecast { grid-area: fc; }
+.kd2-board > .kd-spaces { grid-area: spaces; }
+/* スマホ・小さめのタブレットの横画面：左に巣の列（絵を左・数字を右に並べて、高さを等分）、その下に予告を1行。右に行動マス5列 */
+@media (orientation: landscape) and (min-width: 640px) and (max-width: 999px), (orientation: landscape) and (min-width: 640px) and (max-height: 540px) {
+  .kd2-board { grid-template-columns: clamp(136px, 21vw, 220px) minmax(0, 1fr); grid-template-areas: 'nests spaces' 'fc spaces'; grid-template-rows: minmax(0, 1fr) auto; column-gap: 6px; row-gap: 4px; }
+  .kd2-board > .kd-spaces { --kd-sc: 5; }
+  .kd2-board .kd-nests { gap: 4px; }
+  .kd2 { --kd-nest-art: clamp(22px, calc((100dvh - var(--kd-hud-h, 44px) - 100px) / var(--kd-nn, 4) - 14px), 64px); }
+  .kd2-board .kd-nest { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); column-gap: 6px; row-gap: 2px; align-items: start; align-content: center; padding: 3px 5px; }
+  .kd2-board .kd-nest > .kd-nest-h { grid-column: 2; grid-row: 1; padding-right: 18px; }
+  .kd2-board .kd-nest .kd-mon.is-compact { display: contents; }
+  .kd2-board .kd-nest .kd-mon-art { grid-column: 1; grid-row: 1 / -1; align-self: center; }
+  .kd2-board .kd-nest.is-spawn .kd-mon-art { animation: kd-rise var(--ms) cubic-bezier(.2,.9,.3,1.2) both; }
+  .kd2-board .kd-nest .kd-mon-stats { grid-column: 2; grid-row: 2; flex-direction: row; flex-wrap: wrap; justify-content: flex-start; align-items: center; gap: 2px; width: auto; }
+  .kd2-board .kd-nest .kd-hpbar { grid-column: 2; grid-row: 3; align-self: start; }
+  .kd2-board .kd-nest > .kd-nest-empty { grid-column: 1 / -1; grid-row: 2 / -1; margin: 0; align-self: center; }
+  .kd2-board .kd-nest > .kd-lair-when { grid-column: 2; grid-row: 3; text-align: left; align-self: start; }
+  .kd2-board .kd-nest:not(:has(.kd-mon)) > .kd-nest-h { grid-column: 1 / -1; }
+  .kd2-board > .kd2-forecast { flex-wrap: nowrap; justify-content: flex-start; gap: 4px; padding: 0 2px; overflow-x: auto; scrollbar-width: none; }
+  .kd2-board .kd-space.is-can .kd-space-n { padding-right: 17px; }
+  .kd2-board > .kd2-forecast small { flex: none; font-size: 10px; }
+  .kd2-board > .kd2-forecast .kd2-fc svg { width: 22px; height: 22px; }
+  .kd2-board > .kd2-forecast .kd2-fc b { font-size: 11px; }
+}
+/* 巣の魔物の絵は縮めない（PC の横並びで名前に押されて切れないように） */
+.kd2 .kd-nest .kd-mon-art { flex: none; }
+
+/* 縦画面：進み具合はバーで見せるので、HUD の空の札は出さない */
+@media (orientation: portrait), (max-width: 639px) {
+  .kd2 .kd-tidechip { display: none; }
+}
+
+/* フレーバー文 */
+.kd2-flavor { margin: 6px 0 0; font-size: 12px; font-style: italic; line-height: 1.5; opacity: .72; }
+
+/* 合わせ（演出の外）で動いた名声・持ち物の数字を光らせる */
+.kd2-flash { animation: kd2-flash .9s ease-out; border-radius: 6px; }
+.kd2-flash.is-up { --kd2-fl: #e3b22b; } .kd2-flash.is-down { --kd2-fl: #f28b6b; }
+@keyframes kd2-flash { 0% { box-shadow: 0 0 0 2px var(--kd2-fl), 0 0 14px var(--kd2-fl); transform: scale(1.18); } 60% { transform: scale(1); } 100% { box-shadow: 0 0 0 0 transparent; } }
+.is-reduced .kd2-flash { animation-duration: .01s; }
+
+/* 終わりの名声の倍率（10年×2・15年×3） */
+.kd2-scale { margin: 3px 0 0; font-size: 11px; font-weight: 700; line-height: 1.35; color: var(--kd-gold-l, #f3d27a); }
+.kd-card.is-s .kd2-scale { display: none; }

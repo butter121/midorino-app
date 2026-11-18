@@ -98,6 +98,9 @@ try {
   await host.waitForSelector('.kd-room-wait button:has-text("承認")', { timeout: 15000 });
   await host.click('.kd-room-wait button:has-text("承認")');
   await guest.waitForSelector('text=ホストが始めるのを待っています', { timeout: 15000 });
+  // このテストは旧ルール（v1）。新ルールが標準になったので、待合室で旧ルールを選ぶ
+  await host.click('.kd-room-seg button[role="radio"]:has-text("旧ルール")');
+  await sleep(200);
   await host.click('.kd-room-seg button:has-text("3人")');
   await sleep(300);
   await shot(host, '60-lobby-host.png');

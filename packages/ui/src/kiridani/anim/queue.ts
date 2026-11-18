@@ -24,6 +24,8 @@ export interface QueueOptions {
   onEvent: (ev: GameEvent, ms: number) => void;
   /** キューが空になったとき */
   onIdle?: () => void;
+  /** 出来事の長さの決め方を差し替える（v2 の出来事など。省略は timing.ts の表） */
+  timing?: { eventMs: (ev: GameEvent, speed: Speed, me: Seat, inMyCombat: boolean) => number; minMs: (t: string) => number };
 }
 
 export class AnimQueue {
@@ -83,19 +85,20 @@ export class AnimQueue {
 
   /** ある出来事の、いまの設定での長さ（縮める前） */
   rawMs(ev: GameEvent) {
-    return eventMs(ev, this.speed, this.opts.me, this.myCombat);
+    return (this.opts.timing?.eventMs ?? eventMs)(ev, this.speed, this.opts.me, this.myCombat);
   }
 
   /** 次の出来事を何ミリ秒で見せるか（予算による圧縮込み） */
   plannedMs(ev: GameEvent): number {
     const ms = this.rawMs(ev);
+    const mn = (this.opts.timing?.minMs ?? minMs) as (t: string) => number;
     const rest: { ms: number; min: number }[] = [];
     for (const e of [ev, ...this.q]) {
       if (e !== ev && e.t === 'round_start') break;
-      rest.push({ ms: this.rawMs(e), min: minMs(e.t) });
+      rest.push({ ms: this.rawMs(e), min: mn(e.t) });
     }
     const f = compressFactor(this.spentRound, rest, this.budget);
-    return compress(ms, minMs(ev.t), f);
+    return compress(ms, mn(ev.t), f);
   }
 
   private next() {
@@ -103,7 +106,7 @@ export class AnimQueue {
     const ev = this.q.shift();
     if (!ev) { this.drainInputs(); return; }
     if (ev.t === 'round_start') { this.spentRound = 0; this.round = ev.round; }
-    if (ev.t === 'combat_start') this.myCombat = ev.seats.includes(this.opts.me);
+    if (ev.t === 'combat_start') this.myCombat = (ev.seats as Seat[]).includes(this.opts.me);
     const ms = this.plannedMs(ev);
     if (ev.t === 'combat_end') this.myCombat = false;
     this.spentRound += ms;

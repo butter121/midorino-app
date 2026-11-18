@@ -30,10 +30,14 @@ export interface RoomLobbyProps {
   copied?: boolean;
   /** 見出しの右に置くもの（チャットのボタンなど） */
   extra?: ReactNode;
+  /** 選べる席の数（省略は 3〜6） */
+  seatOptions?: number[];
+  /** 席の設定の上に足すもの（ホスト：ルールの版・年数の選択。参加者：決まった設定の表示） */
+  settings?: ReactNode;
 }
 
 /** 待合室：招待（QR・リンク）、参加申請の承認、席の数と AI の強さ、開始 */
-export function RoomLobby({ inviteUrl, qr, members, isHost, seats, level, status, onSeats, onLevel, onApprove, onDecline, onRemove, onStart, onCopy, onShare, onLeave, copied, extra }: RoomLobbyProps) {
+export function RoomLobby({ inviteUrl, qr, members, isHost, seats, level, status, onSeats, onLevel, onApprove, onDecline, onRemove, onStart, onCopy, onShare, onLeave, copied, extra, seatOptions = [3, 4, 5, 6], settings }: RoomLobbyProps) {
   const humans = members.filter((m) => m.status === 'host' || m.status === 'joined');
   const waiting = members.filter((m) => m.status === 'waiting');
   const ai = Math.max(0, seats - humans.length);
@@ -84,8 +88,9 @@ export function RoomLobby({ inviteUrl, qr, members, isHost, seats, level, status
         </ul>
         {isHost ? (
           <div className="kd-room-set">
+            {settings}
             <div className="kd-room-seg" role="radiogroup" aria-label="席の数">
-              {[3, 4, 5, 6].map((x) => (
+              {seatOptions.map((x) => (
                 <button key={x} type="button" role="radio" aria-checked={x === seats} className={x === seats ? 'is-on' : ''} disabled={x < humans.length} onClick={() => onSeats?.(x)}>{x}人</button>
               ))}
             </div>
@@ -96,7 +101,7 @@ export function RoomLobby({ inviteUrl, qr, members, isHost, seats, level, status
             </div>
             <button type="button" className="kd-btn is-primary kd-room-start" onClick={onStart} disabled={humans.length > seats}>冒険をはじめる{ai ? `（空き${ai}席はAI）` : ''}</button>
           </div>
-        ) : <p className="kd-room-note" role="status">ホストが始めるのを待っています…</p>}
+        ) : <>{settings}<p className="kd-room-note" role="status">ホストが始めるのを待っています…</p></>}
       </section>
     </div>
   );

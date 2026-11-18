@@ -1,7 +1,7 @@
 // 霧谷の冒険者団：参加者。ホストにつなぎ、自分の席の出来事と問いを受け取り、答えをホストに送る。
 // 切れたら自動でつなぎ直す（読み込み直しても、保存した合言葉で同じ席に戻る）。ホストが部屋を閉じたら知らせる。
-import type { Action, ActResult, Cost, GameEvent, OfferNote, OfferView, Prompt, TradeJudge } from '@midorino/engine/src/kiridani';
-import { KD_MAX_MSG, type KdLobby, type KdToGuest, type KdToHost } from './kiridaniProtocol';
+import type { ActResult, Cost } from '@midorino/engine/src/kiridani';
+import { KD_MAX_MSG, type AnyAction, type AnyEvent, type AnyJudge, type AnyOfferNote, type AnyOfferView, type AnyPrompt, type KdLobby, type KdRules, type KdToGuest, type KdToHost } from './kiridaniProtocol';
 import type { Conn, Net } from './transport';
 import type { ChatMsg } from './chat';
 
@@ -16,14 +16,16 @@ export class KdGuestClient {
   memberId: string | null = null;
   seat = -1;
   names: string[] = [];
-  events: GameEvent[] = [];
-  prompt: Prompt | null = null;
+  events: AnyEvent[] = [];
+  prompt: AnyPrompt | null = null;
+  /** 試合のルールの版（ホストが送る。届くまでは待合室の設定） */
+  rules: KdRules = 1;
   wait: number[] = [];
   done = false;
   /** 人どうしの取引の申し込み（自分が申し込んだ・申し込まれた） */
-  offer: OfferView | null = null;
+  offer: AnyOfferView | null = null;
   /** 取引の結果のお知らせ */
-  note: OfferNote | null = null;
+  note: AnyOfferNote | null = null;
   /** チャット（ホストが配った分） */
   chat: ChatMsg[] = [];
   private token: string | null = null;
@@ -94,9 +96,10 @@ export class KdGuestClient {
         try { this.store?.setItem(keyFor(this.roomId), JSON.stringify({ memberId: msg.memberId, token: msg.token, name: this.name })); } catch { /* 無視 */ }
         this.status = msg.status === 'joined' ? 'joined' : 'waiting';
         break;
-      case 'lobby': this.lobby = msg.lobby; break;
+      case 'lobby': this.lobby = msg.lobby; if (!this.started) this.rules = msg.lobby.rules ?? 1; break;
       case 'game': {
         this.seat = msg.seat; this.names = msg.names;
+        if (msg.rules) this.rules = msg.rules;
         const have = this.events.length;
         if (msg.from > have) { this.conn?.send(JSON.stringify({ t: 'sync', have } satisfies KdToHost)); return; }
         const add = msg.evs.slice(have - msg.from);
@@ -155,11 +158,11 @@ export class KdGuestClient {
     });
   }
 
-  act(id: string, a: Action): Promise<ActResult> {
+  act(id: string, a: AnyAction): Promise<ActResult> {
     return this.request<ActResult>({ t: 'act', id, a }, { ok: false, error: 'ホストに届きませんでした' });
   }
-  judge(b: number, give: Cost, get: Cost): Promise<TradeJudge> {
-    return this.request<TradeJudge>({ t: 'judge', b, give, get }, { ok: false, accept: false, gain: 0, error: 'ホストに届きませんでした' });
+  judge(b: number, give: Cost, get: Cost): Promise<AnyJudge> {
+    return this.request<AnyJudge>({ t: 'judge', b, give, get }, { ok: false, accept: false, gain: 0, error: 'ホストに届きませんでした' });
   }
 
   /** チャットを送る（ホストが整えて全員に配る。自分にも届く） */
