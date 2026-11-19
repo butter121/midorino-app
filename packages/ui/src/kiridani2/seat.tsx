@@ -2,7 +2,7 @@
 // 答えはオンラインの答え（Action2）の形で返す。ひとり遊びは applyAction2 でそのまま手元の試合に渡す。
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  choiceLabel, DATA, optionLabel, previewFight, RES, slotOf, type Action2, type Choice, type Cost, type FightChip, type FightMode, type Game, type Option,
+  choiceLabel, DATA, optionLabel, opsText, previewFight, whenText, RES, slotOf, type Action2, type Choice, type Cost, type FightChip, type FightMode, type Game, type Option,
   type Player, type SeatSession2,
 } from '@midorino/engine/src/kiridani2';
 import { KIcon } from '../kiridani/art-registry';
@@ -93,11 +93,20 @@ export function uiFor2(s: SeatSession2): { ask: Ask2 | null; sheet: (ChoiceSpec 
       },
     };
     case 'effect': {
+      // どの効果か（カードに効果が2つ以上あれば「n つ目」）・いつの効果か・何を払って何が起きるかを出す。
+      // 1つ目を断ったあとに2つ目を聞くときも、見出しと中身で違いがわかる
       const c = CARD2[w.card];
+      const n = c?.effects?.length ?? 0;
+      const nth = n > 1 && w.ei !== undefined ? `（効果${w.ei + 1}／${n}）` : '';
+      const what = opsText(w.ops) || c?.text || '';
+      const pays = w.ops.reduce<Cost>((a, op) => (op.pay ? addC(a, op.pay) : op.convert ? addC(a, op.convert.from) : a), {});
       return {
         ask: null, sheet: {
-          title: `${c?.name ?? w.card}の効果を使う？`, sub: c?.text,
-          items: [{ id: 'yes', title: '使う', card: c ? w.card : undefined, primary: true }, { id: 'no', title: '使わない' }],
+          title: `${c?.name ?? w.card}${nth}：${whenText(w.when, placeName)}`, sub: n > 1 ? `カード全体：${c?.text ?? ''}` : c?.text,
+          items: [
+            { id: 'yes', title: `使う：${what}`, card: c ? w.card : undefined, cost: sumCost(pays) ? pays : undefined, primary: true },
+            { id: 'no', title: '使わない', detail: n > 1 && w.ei !== undefined && w.ei + 1 < n ? 'この効果は使わずに、次の効果へ' : 'この効果は使わずに進む' },
+          ],
           toAction: (id) => ({ t: 'yes', v: id === 'yes' }),
         },
       };
@@ -436,7 +445,11 @@ export function routeAnswer2(w: NonNullable<SeatSession2['waiting']>, c: string)
     const os = w.opts.filter((o) => o.s === c && o.s !== '@spell');
     if (!os.length) return { k: 'none' };
     if (isFight(c)) return { k: 'fight', sid: c };
-    if (os.length === 1) return { k: 'send', a: { t: 'opt', i: w.opts.indexOf(os[0]) } };
+    // 選べるものが1つでも、選ぶ要素のあるマス（建てる・作る・売り買い・できることが複数）は中身を見せてから決める。
+    // 何も選ばないマス（金貨+2 など）だけ、そのまま置く
+    const sp = w.g.space(c);
+    const choosy = os[0].x !== undefined || (sp?.def.options.length ?? 0) > 1 || os[0].i < 0;
+    if (os.length === 1 && !choosy) return { k: 'send', a: { t: 'opt', i: w.opts.indexOf(os[0]) } };
     return { k: 'sub', sid: c, opts: os };
   }
   if (w.k === 'ratio') {

@@ -33,11 +33,16 @@ describe('kiridani2 訓練', () => {
     expect(p.comps.map((c) => c.atk)).toEqual([1, 0, 3]);
   });
 
-  it('上げられるのが1人なら聞かずに上げる', () => {
+  it('上げられるのが1人でも人の席には聞く（AI の席は聞かない）', () => {
     const { g, p } = bare([3, 3, 1]);
     const gen = g.runOps(p, [{ train: 'atk' }], { x: 'atk' });
-    expect(gen.next().done).toBe(true);
+    expect((gen.next().value as { options: string[] }).options).toEqual(['tr:2']);
+    expect(gen.next('tr:2').done).toBe(true);
     expect(p.comps[2].atk).toBe(2);
+    const q = g.players[1];
+    q.comps = [{ atk: 3, def: 0, weapon: null, armor: null, leader: true, injured: false, rest: false, used: false }, { atk: 1, def: 0, weapon: null, armor: null, leader: false, injured: false, rest: false, used: false }];
+    expect(g.runOps(q, [{ train: 'atk' }], { x: 'atk' }).next().done).toBe(true);
+    expect(q.comps[1].atk).toBe(2);
   });
 
   it('若手の訓練：まだその熟練がない仲間だけ、1段階目だけ', () => {
@@ -47,8 +52,10 @@ describe('kiridani2 訓練', () => {
     const gen = g.runOps(p, ops, { x: 'atk' });
     const r = gen.next();
     expect((r.value as { options: string[] }).options).toEqual(['tr:1', 'tr:2']);
-    // 守りは仲間1（リーダー）だけが0なので聞かずに上がる
-    expect(gen.next('tr:2').done).toBe(true);
+    // 次は守り（選択肢が1つでも聞く）：まず守り+1、次に誰か（守りが0なのはリーダーだけ）
+    expect((gen.next('tr:2').value as { what: string; options: string[] }).options).toEqual(['def']);
+    expect((gen.next('def').value as { options: string[] }).options).toEqual(['tr:0']);
+    expect(gen.next('tr:0').done).toBe(true);
     expect(p.comps.map((c) => [c.atk, c.def])).toEqual([[1, 1], [0, 1], [1, 2]]);
   });
 
@@ -105,5 +112,16 @@ describe('kiridani2 共通の依頼の同着', () => {
     boss(b);
     g.checkQuests(g.players);
     expect([a.fame.quest, b.fame.quest]).toEqual([DATA.QUEST_FAME[0], DATA.QUEST_FAME[1]]);
+  });
+});
+
+describe('kiridani2 選択肢が1つでも人には見せる', () => {
+  it('遺跡で山に1枚しか残っていなくても、そのカードを見せて選ばせる', () => {
+    const { g, p } = bare();
+    g.decks.tool = g.decks.tool.slice(0, 1);
+    const gen = g.runOps(p, [{ draw: { from: 'tool', look: 3, take: 1 } }], {});
+    const req = gen.next().value as { k: string; cards: string[] };
+    expect(req.k).toBe('card');
+    expect(req.cards).toHaveLength(1);
   });
 });

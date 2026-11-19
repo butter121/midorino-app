@@ -18,5 +18,5 @@ export {
   type Action as Action2, type Prompt as Prompt2, type Snapshot as Snapshot2, type ActResult as ActResult2, type RefereeOptions as Referee2Options,
   type OfferView as OfferView2, type OfferNote as OfferNote2, type SeatSession2, type SyncEvent, type NetEvent, syncEvent,
 } from './net';
-export { previewFight, choiceLabel, optionLabel, type FightPreview } from './preview';
+export { previewFight, choiceLabel, optionLabel, opsText, whenText, type FightPreview } from './preview';
 export { FLAVOR } from './cards/flavor';

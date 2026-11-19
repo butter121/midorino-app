@@ -52,7 +52,7 @@ export type Req =
   | { k: 'kind'; g: Game; p: Player; options: ItemKind[]; left: Ratio }
   | { k: 'choose'; g: Game; p: Player; opts: Option[] }
   | { k: 'heal'; g: Game; p: Player; comp: number; cost: Cost }
-  | { k: 'effect'; g: Game; p: Player; card: string; when: string; ops: Op[] }
+  | { k: 'effect'; g: Game; p: Player; card: string; when: string; ops: Op[]; ei?: number }
   | { k: 'pick'; g: Game; p: Player; what: string; options: Choice[] };
 export type Gen<T = void> = Generator<Req, T, any>;
 
@@ -370,6 +370,11 @@ export class Game {
   private *ask(req: Req): Gen<any> {
     if (req.p.ai) return req.p.ai.respond(req);
     return yield req;
+  }
+  /** 選択肢から1つ選ぶ。人の席は1つしかなくても聞く（何ができるのか見てから決められるように）。AI の席は1つなら聞かない */
+  private *askOne<T>(p: Player, opts: T[], req: Req): Gen<T> {
+    if (opts.length === 1 && p.ai) return opts[0];
+    return yield* this.ask(req);
   }
 
   /** 効果を持つカード（リーダー・出した職能・建てた道具・装備中の品物）。fightIdxs を渡すと装備は送った仲間の分だけ */
@@ -1047,7 +1052,7 @@ export class Game {
         else {
           const xs = this.expand(p, [op]);
           if (!xs.length || xs[0] === undefined) continue;
-          x = xs.length === 1 ? xs[0] : yield* this.ask({ k: 'pick', g: this, p, what: k, options: xs as Choice[] });
+          x = yield* this.askOne(p, xs, { k: 'pick', g: this, p, what: k, options: xs as Choice[] });
           xUsed = true;
         }
       }
@@ -1083,7 +1088,7 @@ export class Game {
           if (!canPay(p, sumPays(sub))) break;
           const xs = this.expand(p, sub);
           if (!xs.length) break;
-          const x = xs.length === 1 ? xs[0] : yield* this.ask({ k: 'pick', g: this, p, what: 'again', options: xs as Choice[] });
+          const x = yield* this.askOne(p, xs, { k: 'pick', g: this, p, what: 'again', options: xs as Choice[] });
           yield* this.runOps(p, sub, { ...ctx, space: sp.id, opIndex: tgt.i, x, again: true });
           break;
         }
@@ -1109,7 +1114,7 @@ export class Game {
           if (!nd) {
             const cand = this.nests.filter((n) => n.mon?.race === 'beast').map((n) => n.id);
             if (!cand.length) break;
-            const nid: string = cand.length === 1 ? cand[0] : yield* this.ask({ k: 'pick', g: this, p, what: 'tame', options: cand });
+            const nid: string = yield* this.askOne(p, cand, { k: 'pick', g: this, p, what: 'tame', options: cand });
             nd = this.nest(nid);
           }
           if (!nd?.mon || nd.mon.race !== 'beast') break;
@@ -1125,8 +1130,7 @@ export class Game {
           const cands = this.trainCands(p, s, !!op.fresh);
           if (!cands.length) break;
           // 誰を鍛えるかは本人が選ぶ（いちばん熟練の低い仲間が先頭＝お任せのときの答え）
-          const idx: number = cands.length === 1 ? cands[0]
-            : Number(String(yield* this.ask({ k: 'pick', g: this, p, what: `train:${s}`, options: cands.map((i) => `tr:${i}`) })).slice(3));
+          const idx = Number(String(yield* this.askOne(p, cands.map((i) => `tr:${i}`), { k: 'pick', g: this, p, what: `train:${s}`, options: cands.map((i) => `tr:${i}`) })).slice(3));
           if (!cands.includes(idx)) throw new Error('bad train target');
           p.comps[idx][s] += 1;
           p.acts.push('train');
@@ -1272,10 +1276,10 @@ export class Game {
       if (!xs.length) continue;
       const optional = ops.some((o) => o.pay || o.convert) || xs[0] !== undefined;
       if (optional) {
-        const yes: boolean = yield* this.ask({ k: 'effect', g: this, p, card, when, ops });
+        const yes: boolean = yield* this.ask({ k: 'effect', g: this, p, card, when, ops, ei });
         if (!yes) continue;
       }
-      const x = xs.length === 1 ? xs[0] : yield* this.ask({ k: 'pick', g: this, p, what: card, options: xs as Choice[] });
+      const x = xs.length === 1 && xs[0] === undefined ? undefined : yield* this.askOne(p, xs, { k: 'pick', g: this, p, what: card, options: xs as Choice[] });
       this.markLimit(p, card, ei, e.limit);
       this.emit({ t: 'effect', seat: p.pid, card, when });
       yield* this.runOps(p, ops, { ...ctx, card, x });
@@ -1339,7 +1343,7 @@ export class Game {
     }
     for (let j = 0; j < take && pool.length; j++) {
       const cards = pool.map(([c]) => c);
-      const c: string = cards.length === 1 ? cards[0] : yield* this.ask({ k: 'card', g: this, p, why: 'draw', cards, kind: from });
+      const c: string = yield* this.askOne(p, cards, { k: 'card', g: this, p, why: 'draw', cards, kind: from });
       const idx = cards.indexOf(c);
       if (idx < 0) throw new Error('bad draw');
       pool.splice(idx, 1);

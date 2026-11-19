@@ -78,6 +78,8 @@ export interface Prompt {
   card?: string;
   when?: string;
   ops?: unknown[];
+  /** effect：カードの何番目の効果か */
+  ei?: number;
   /** pick：何を選ぶかと選択肢 */
   what?: string;
   options?: Choice[];
@@ -290,7 +292,7 @@ export class Kiridani2Referee {
         if (this.offer?.from === seat) out.offer = this.offerFor(seat)!;
         break;
       case 'heal': out.comp = w.comp; out.cost = w.cost; break;
-      case 'effect': out.card = w.card; out.when = w.when; out.ops = w.ops; break;
+      case 'effect': out.card = w.card; out.when = w.when; out.ops = w.ops; out.ei = w.ei; break;
       case 'pick': out.what = w.what; out.options = w.options; break;
     }
     return out;
@@ -498,7 +500,7 @@ export class ShadowSession implements SeatSession2 {
       case 'kind': this.waiting = { k: 'kind', g, p, options: pr.kinds ?? [], left: pr.ratioLeft ?? { weapon: 0, tool: 0, spell: 0 } }; break;
       case 'choose': this.waiting = { k: 'choose', g, p, opts: pr.opts ?? [] }; break;
       case 'heal': this.waiting = { k: 'heal', g, p, comp: pr.comp ?? 0, cost: pr.cost ?? {} }; break;
-      case 'effect': this.waiting = { k: 'effect', g, p, card: pr.card ?? '', when: pr.when ?? '', ops: (pr.ops ?? []) as never }; break;
+      case 'effect': this.waiting = { k: 'effect', g, p, card: pr.card ?? '', when: pr.when ?? '', ops: (pr.ops ?? []) as never, ei: pr.ei }; break;
       case 'pick': this.waiting = { k: 'pick', g, p, what: pr.what ?? '', options: pr.options ?? [] }; break;
     }
   }
