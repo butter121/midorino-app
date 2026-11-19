@@ -2,3 +2,5 @@ node_modules/
 dist/
 golden/*.json
 packages/ui/dist-catalog/
+__pycache__/
+*.pyc

@@ -100,6 +100,8 @@ export interface Op {
   hire_free?: number;
   tame?: boolean;
   train?: 'atk' | 'def' | 'any';
+  /** train のとき：まだその熟練がない仲間（0）だけ、1段階目だけ上げる（若手の訓練） */
+  fresh?: boolean;
   build?: 'wall' | 'bed' | 'facility' | 'any';
   /** build のときの値引き */
   discount?: Cost;

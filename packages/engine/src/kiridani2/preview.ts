@@ -101,8 +101,9 @@ export function choiceLabel(g: Game, p: Player | null, x: Choice): { title: stri
   if (typeof x === 'string') {
     if (x === 'bed') return { title: '寝床を建てる', detail: '仲間を増やせる数+1', cost: p ? g.bedCost(p) : D.BED_COST };
     if (x === 'wall') return { title: '防壁を建てる', detail: '冬の襲撃を1ずつ防ぐ・戦闘の守り（2つで+1）', cost: p ? g.wallCost(p) : D.WALL_COST };
-    if (x === 'atk') return { title: '攻めの熟練+1', detail: '仲間1人の戦力+1' };
-    if (x === 'def') return { title: '守りの熟練+1', detail: '仲間1人の守り+1' };
+    if (x === 'atk') return { title: '攻めの熟練+1', detail: `選んだ仲間1人の戦力+1（${D.MAX_SKILL.atk}まで）` };
+    if (x === 'def') return { title: '守りの熟練+1', detail: `選んだ仲間1人の守り+1（${D.MAX_SKILL.def}まで）` };
+    if (x.startsWith('tr:')) { const i = Number(x.slice(3)); return { title: p?.comps[i]?.leader ? 'リーダー' : `仲間${i + 1}` }; }
     if (g.byId.has(x)) {
       const c = g.card(x);
       const cost = p ? (c.kind === 'occ' ? g.occCost(p, x) : g.cardCost(p, x)) : c.cost ?? {};
@@ -143,6 +144,27 @@ export function optionLabel(g: Game, p: Player | null, o: Option): { title: stri
   return { title, detail: eff && st ? st.text : undefined };
 }
 
+const sign = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
+/** 効果の手順（do）を「→」でつないだ短い説明（払う→得る の順のまま） */
+export function opsText(ops: unknown[]): string {
+  return ops.map((op) => opText(op as Record<string, unknown>)).filter(Boolean).join(' → ');
+}
+/** 効果が働くとき（when）の短い説明 */
+export function whenText(when: string, name: (id: string) => string = (id) => id): string {
+  const [w, a] = when.split(':');
+  const arg = a && name(a);
+  const JP: Record<string, string> = {
+    use: '使う', fight: '戦うとき', win: '勝ったとき', lose: '負けたとき', round_start: 'ラウンドの始め', round_end: 'ラウンドの終わり', winter: '冬',
+    game_end: '試合の終わり', setup: '準備', build: '建てたとき', hire: '仲間を雇ったとき', craft: '装備を作ったとき', sell: '売ったとき', buy: '買ったとき',
+    trade: '取引したとき', donate: '寄進したとき', spell: '秘術を使ったとき', tame: '使い魔にしたとき', play: '出したとき', passive: 'いつも', occ: '職能を出したとき', quest: '依頼を達成したとき',
+  };
+  if (w === 'use' && arg) return `${arg}を使うとき`;
+  if (w === 'instead' && arg) return `${arg}の代わりに`;
+  if (w === 'other' && arg) return `ほかの人が${arg}を使ったとき`;
+  if (w === 'win_race' && arg) return `${arg}に勝ったとき`;
+  return JP[w] ?? when;
+}
+
 function opText(op: Record<string, unknown>): string {
   const k = Object.keys(op)[0];
   const v = op[k] as never;
@@ -168,6 +190,15 @@ function opText(op: Record<string, unknown>): string {
     case 'gain_per': { const g = v as { gain: Cost }; return `${costJP(g.gain)}（数に応じて）`; }
     case 'fame_per': return '名声（数に応じて）';
     case 'others_gain': return `他の人全員が${costJP(v)}を得る`;
+    case 'power': return `戦力${sign(v)}`;
+    case 'guard': return `守り${sign(v)}`;
+    case 'counter': return `反撃${sign(v)}`;
+    case 'loot': return `戦利品${sign(v)}`;
+    case 'trophy': return `討伐の名声${sign(v)}`;
+    case 'str': return `魔物の強さ${sign(v)}`;
+    case 'no_injury': return `負傷を${v}人防ぐ`;
+    case 'steal_gain': return `${costJP(v)}を得る`;
+    case 'ignore_full': return '定員の埋まった巣にも置ける';
     default: return '';
   }
 }

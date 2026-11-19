@@ -11,8 +11,8 @@ const OPS = new Set([
   'extra_worker', 'place_again', 'ignore_full', 'future', 'draw', 'hire', 'hire_free', 'tame', 'train',
   'build', 'heal', 'steal_gain', 'craft', 'occ', 'exchange', 'first', 'donate', 'fame_per', 'gain_per', 'others_gain',
 ]);
-/** op のキーに添えてよいもの（build の値引き） */
-const OP_EXTRA = new Set(['discount']);
+/** op のキーに添えてよいもの（build の値引き・train の fresh） */
+const OP_EXTRA = new Set(['discount', 'fresh']);
 const MODS = new Set([
   'market_qty', 'market_both', 'trade_count', 'accum_bonus', 'cost_discount', 'upkeep', 'donate_rate',
   'base_guard', 'pet_power', 'hand_limit', 'power', 'heal_discount', 'sell_bonus', 'bed_cap',
