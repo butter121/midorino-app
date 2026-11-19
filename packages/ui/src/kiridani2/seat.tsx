@@ -13,6 +13,7 @@ import { TradeButton, TradeTray } from '../kiridani/ui/tray';
 import type { SeatSession } from '@midorino/engine/src/kiridani';
 import { CardArt2, FateRow2, MonArt } from './parts2';
 import { whyTitle, type Ask2 } from './table2';
+import { MarketTray2 } from './market2';
 import { CARD2, cardName, placeName } from './view';
 
 const KIND_JP: Record<string, string> = { weapon: '武具', tool: '道具', spell: '秘術' };
@@ -113,6 +114,19 @@ export function uiFor2(s: SeatSession2): { ask: Ask2 | null; sheet: (ChoiceSpec 
               const c = p.comps[ci], st = compStats(g, p, ci);
               const out = [c[sl], sl === 'weapon' && cd.two_hand ? c.armor : null].filter(Boolean).map((y) => cardName(y!));
               return { id: String(i), title: compName(p, ci), detail: `戦力${st.power}・守り${st.guard}${out.length ? `／${out.join('・')}は倉庫へ` : ''}`, primary: i === 0 };
+            }),
+            toAction: (id) => ({ t: 'pick', i: Number(id) }),
+          },
+        };
+      }
+      if (w.what.startsWith('train:') && p) {
+        const st = w.what.slice(6) as 'atk' | 'def', max = DATA.MAX_SKILL[st], jp = st === 'atk' ? '攻め' : '守り';
+        return {
+          ask: null, sheet: {
+            title: `${jp}の熟練を上げる仲間を選ぶ`, sub: `${jp}の熟練は${max}まで`,
+            items: w.options.map((x, i) => {
+              const ci = Number(String(x).slice(3)), c = p.comps[ci], cs = compStats(g, p, ci);
+              return { id: String(i), title: compName(p, ci), detail: `${jp}の熟練 ${c[st]}→${c[st] + 1}・いまの戦力${cs.power}・守り${cs.guard}`, primary: i === 0 };
             }),
             toAction: (id) => ({ t: 'pick', i: Number(id) }),
           },
@@ -485,6 +499,13 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
   else if (s && w?.k === 'choose' && tray?.kind === 'spell') {
     const sp = w.opts.filter((o) => o.s === '@spell');
     sheetNode = <ChoiceSheet spec={{ title: '秘術を使う', sub: '置く前に1枚。使うと手札から捨てる', items: sp.map((o, i) => { const l = optionLabel(s.g, s.player, o); return { id: String(i), title: l.title.replace(/を使う$/, ''), detail: l.detail, card: l.card, cost: l.cost }; }), cancel: '使わない' }} onPick={(id) => go({ t: 'opt', i: w.opts.indexOf(sp[Number(id)]) })} onCancel={reset} />;
+  } else if (s && p && w?.k === 'choose' && sub && sub.opts.every((o) => o.x !== undefined && typeof o.x === 'object')) {
+    // 売り買いのマス：両替の形のトレイ
+    const stage = s.g.space(sub.sid)?.stage;
+    sheetNode = <MarketTray2 key={sub.sid} g={s.g} p={p} title={`${placeName(sub.sid)}で売り買い`} sub={stage ? CARD2[stage]?.text : undefined} choices={sub.opts.map((o) => o.x!)}
+      onPick={(i) => go({ t: 'opt', i: w.opts.indexOf(sub.opts[i]) })} onCancel={reset} />;
+  } else if (s && p && w?.k === 'pick' && w.what === 'exchange' && opts.sheetReady && w.options.every((x) => typeof x === 'object')) {
+    sheetNode = <MarketTray2 g={s.g} p={p} title="交換所で売り買い" choices={w.options} onPick={(i) => go({ t: 'pick', i })} />;
   } else if (s && w?.k === 'choose' && sub) {
     sheetNode = <ChoiceSheet spec={optionSheet2(s, sub.sid, sub.opts)} onPick={(id) => go({ t: 'opt', i: w.opts.indexOf(sub.opts[Number(id)]) })} onCancel={reset} />;
   } else if (ui.sheet && opts.sheetReady) {

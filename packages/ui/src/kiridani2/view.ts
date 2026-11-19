@@ -26,7 +26,8 @@ export interface View2 {
   spaceOrder: string[]; spaces: Record<string, SpaceView2>; stages: string[];
   nests: NestView2[]; lair: { boss?: Monster; round?: number; occupants: Seat[]; defeated?: boolean };
   forecast: Monster[]; bosses: { round: number; boss: Monster }[];
-  quests: { id: string; doneBy: Seat[] }[];
+  /** 共通の依頼：達成した人と、それぞれが得た名声（同時に達成した人は同じ名声） */
+  quests: { id: string; doneBy: Seat[]; fames: number[] }[];
   players: PV2[]; combat?: CombatView2; winter?: { upkeep: { seat: Seat; need: number; paid: number; discontent: number }[]; raids: { seat: Seat; damage: number; blocked: number }[] };
   setup?: SetupView; final?: ScoreRow[]; log: string[];
   /** 名声の移り変わり（グラフ用）。round 0 は始まり、1..rounds は各ラウンドの終わり（冬越し・依頼のあと）。集計後の値は final の total */
@@ -132,7 +133,7 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
     case 'game_start':
       v.me = ev.me; v.years = ev.years; v.rounds = ev.rounds; v.phase = 'setup';
       v.players = ev.players.map((p) => newPlayer(p.seat, p.name));
-      v.quests = ev.quests.map((id) => ({ id, doneBy: [] }));
+      v.quests = ev.quests.map((id) => ({ id, doneBy: [], fames: [] }));
       v.spaceOrder = [...ev.spaces];
       v.spaces = Object.fromEntries(ev.spaces.map((id) => [id, { id, stock: {}, occupants: [] }]));
       v.nests = ev.nests.map((id) => ({ id, occupants: [] }));
@@ -288,7 +289,7 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
     case 'winter_end': v.winter = undefined; break;
     case 'quest_done': {
       const q = v.quests.find((x) => x.id === ev.quest);
-      if (q && !q.doneBy.includes(ev.seat)) q.doneBy.push(ev.seat);
+      if (q && !q.doneBy.includes(ev.seat)) { q.doneBy.push(ev.seat); q.fames.push(ev.fame); }
       const p = P(ev.seat); p.quests.push(ev.quest); p.fame += ev.fame;
       log(`${who(v, ev.seat)}が依頼「${QUEST2[ev.quest]?.name ?? ev.quest}」を達成`);
       break;

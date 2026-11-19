@@ -101,8 +101,9 @@ export function choiceLabel(g: Game, p: Player | null, x: Choice): { title: stri
   if (typeof x === 'string') {
     if (x === 'bed') return { title: '寝床を建てる', detail: '仲間を増やせる数+1', cost: p ? g.bedCost(p) : D.BED_COST };
     if (x === 'wall') return { title: '防壁を建てる', detail: '冬の襲撃を1ずつ防ぐ・戦闘の守り（2つで+1）', cost: p ? g.wallCost(p) : D.WALL_COST };
-    if (x === 'atk') return { title: '攻めの熟練+1', detail: '仲間1人の戦力+1' };
-    if (x === 'def') return { title: '守りの熟練+1', detail: '仲間1人の守り+1' };
+    if (x === 'atk') return { title: '攻めの熟練+1', detail: `選んだ仲間1人の戦力+1（${D.MAX_SKILL.atk}まで）` };
+    if (x === 'def') return { title: '守りの熟練+1', detail: `選んだ仲間1人の守り+1（${D.MAX_SKILL.def}まで）` };
+    if (x.startsWith('tr:')) { const i = Number(x.slice(3)); return { title: p?.comps[i]?.leader ? 'リーダー' : `仲間${i + 1}` }; }
     if (g.byId.has(x)) {
       const c = g.card(x);
       const cost = p ? (c.kind === 'occ' ? g.occCost(p, x) : g.cardCost(p, x)) : c.cost ?? {};

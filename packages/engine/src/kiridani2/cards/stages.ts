@@ -19,15 +19,17 @@ export const STAGES: StageDef[] = [
       opt([{ pay: { food: 1 } }, { train: 'def' }]),
       opt([{ craft: 'armor' }]),
     ],
-    text: '次のどれか：食料1で仲間1人の攻めの熟練+1／食料1で守りの熟練+1／防具を1つ作る。',
+    text: '次のどれか：食料1で選んだ仲間1人の攻めの熟練+1（3まで）／食料1で守りの熟練+1（2まで）／防具を1つ作る。',
   },
   {
     id: 'ruins', kind: 'stage', stage: 1, name: '遺跡の探索', engine: ['ruins'], mech: 'action',
     effects: [
-      opt([{ draw: { from: 'item', look: 3, take: 1 } }]),
+      opt([{ draw: { from: 'weapon', look: 3, take: 1 } }]),
+      opt([{ draw: { from: 'tool', look: 3, take: 1 } }]),
+      opt([{ draw: { from: 'spell', look: 3, take: 1 } }]),
       opt([{ draw: { from: 'ancient', look: 1, take: 1 } }]),
     ],
-    text: '次のどれか：品物の山から3枚見て1枚を手札に／古代の品を1枚引く。',
+    text: '次のどれか：武具・道具・秘術から山を1つ選び、3枚見て1枚を手札に／古代の品を1枚引く。',
   },
   // ---------------- 段階2（候補6から4枚）
   {
@@ -89,8 +91,8 @@ export const STAGES: StageDef[] = [
   },
   {
     id: 'drill', kind: 'stage', stage: 3, name: '若手の訓練', engine: ['fort', 'hunt'], mech: 'action',
-    effects: [opt([{ train: 'atk' }, { train: 'def' }])],
-    text: '仲間に攻めの熟練+1と守りの熟練+1をつける（別の仲間でもよい）。',
+    effects: [opt([{ train: 'atk', fresh: true }, { train: 'def', fresh: true }])],
+    text: 'まだ攻めの熟練がない仲間1人に攻め+1、まだ守りの熟練がない仲間1人に守り+1（1段階目だけ。別の仲間でもよい）。',
   },
   {
     id: 'tradepost', kind: 'stage', stage: 3, name: '交易所の拡張', engine: ['trade'], mech: 'accrue',

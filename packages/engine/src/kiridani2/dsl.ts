@@ -58,14 +58,15 @@ export function validateCond(c: Cond, where = 'if') {
   if (c.res_min) checkCost(c.res_min, `${where}.res_min`);
 }
 
-/** do の1要素のキー（build＋discount だけは2つ持てる） */
+/** do の1要素のキー（build＋discount と train＋fresh だけは2つ持てる） */
 export function opKey(op: Op, where = 'do'): string {
   const keys = Object.keys(op);
-  const main = keys.filter((k) => k !== 'discount');
+  const main = keys.filter((k) => k !== 'discount' && k !== 'fresh');
   if (main.length !== 1) throw new DslError(`${where}: an op must have exactly one key (got ${keys.join(',') || 'none'})`);
   const k = main[0];
   if (!OP_KEYS.has(k)) throw new DslError(`${where}: unknown op "${k}"`);
   if (keys.includes('discount') && k !== 'build') throw new DslError(`${where}: discount is only for build`);
+  if (keys.includes('fresh') && k !== 'train') throw new DslError(`${where}: fresh is only for train`);
   return k;
 }
 

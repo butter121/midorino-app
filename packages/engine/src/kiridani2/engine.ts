@@ -728,7 +728,8 @@ export class Game {
           if (!opts.some((x) => sameOpt(x, o))) throw new Error(`illegal option ${JSON.stringify(o)}`);
         }
         yield* this.apply(p, o);
-        yield* this.questsGen(p);
+        // 共闘などで他の人の条件も同時に満たすことがあるので、全員をいっしょに確かめる
+        yield* this.questsGen();
       }
     }
     // 待ち伏せのまま誰も来なかった巣は単独で戦う（ラウンドの終わり）
@@ -738,7 +739,7 @@ export class Game {
         nd.wait = null;
         const p = this.players[w.pid];
         yield* this.fight(nd, [{ p, idxs: w.idxs, mode: 'gamble' }]);
-        yield* this.questsGen(p);
+        yield* this.questsGen();
       }
     }
     if (this.bossOf[this.round]) yield* this.resolveLair();
@@ -763,7 +764,8 @@ export class Game {
       }
     }
     if (this.isWinter()) yield* this.winter();
-    for (const p of this.players) { yield* this.questsGen(p); p.history.push(p.acts); p.cardHist.push(this.activeCards(p)); }
+    yield* this.questsGen();
+    for (const p of this.players) { p.history.push(p.acts); p.cardHist.push(this.activeCards(p)); }
     if (this.nextFirst !== null && this.nextFirst !== this.first) { this.first = this.nextFirst; this.emit({ t: 'first_pass', seat: this.first }); }
     this.emit({ t: 'round_end', round: this.round });
   }
@@ -907,7 +909,7 @@ export class Game {
       if (b === 'facility' || b === 'any') for (const c of new Set(p.hand)) if (this.card(c).kind === 'tool' && this.prereqOk(p, c) && after(this.cardCost(p, c, d))) out.push(c);
     } else if (k === 'train') {
       const t = op.train!;
-      for (const s of ['atk', 'def'] as const) if ((t === s || t === 'any') && p.comps.some((c) => c[s] < D.MAX_SKILL)) out.push(s);
+      for (const s of ['atk', 'def'] as const) if ((t === s || t === 'any') && this.trainCands(p, s, !!op.fresh).length) out.push(s);
     } else if (k === 'exchange') {
       const q = this.marketQty(p);
       const sells: { r: Res; q: number }[] = [], buys: { r: Res; q: number }[] = [];
@@ -1120,8 +1122,12 @@ export class Game {
         }
         case 'train': {
           const s = (x === 'atk' || x === 'def' ? x : op.train === 'any' ? 'atk' : op.train) as 'atk' | 'def';
-          const idx = this.trainTarget(p, s);
-          if (idx === null) break;
+          const cands = this.trainCands(p, s, !!op.fresh);
+          if (!cands.length) break;
+          // 誰を鍛えるかは本人が選ぶ（いちばん熟練の低い仲間が先頭＝お任せのときの答え）
+          const idx: number = cands.length === 1 ? cands[0]
+            : Number(String(yield* this.ask({ k: 'pick', g: this, p, what: `train:${s}`, options: cands.map((i) => `tr:${i}`) })).slice(3));
+          if (!cands.includes(idx)) throw new Error('bad train target');
           p.comps[idx][s] += 1;
           p.acts.push('train');
           this.emit({ t: 'train', seat: p.pid, companion: idx, stat: s });
@@ -1248,10 +1254,11 @@ export class Game {
     }
   }
 
-  trainTarget(p: Player, s: 'atk' | 'def'): number | null {
-    let best: number | null = null;
-    p.comps.forEach((c, i) => { if (c[s] < D.MAX_SKILL && (best === null || c[s] < p.comps[best][s])) best = i; });
-    return best;
+  /** 熟練を上げられる仲間（いちばん熟練の低い仲間が先頭。fresh：まだその熟練がない仲間だけ） */
+  trainCands(p: Player, s: 'atk' | 'def', fresh = false): number[] {
+    const out: number[] = [];
+    p.comps.forEach((c, i) => { if (c[s] < D.MAX_SKILL[s] && (!fresh || c[s] === 0)) out.push(i); });
+    return out.sort((a, b) => p.comps[a][s] - p.comps[b][s] || a - b);
   }
 
   /** when に合う効果をすべて実行する（pay・convert を含む効果は使うかどうか聞く） */
@@ -1726,26 +1733,32 @@ export class Game {
   trade(a: Player, b: Player, give: Cost, get: Cost) { drive(this.tradeGen(a, b, give, get)); }
 
   // ------------------------------------------------------------ 依頼（§9）
-  /** 共通の依頼を確かめる（達成した数を返す。呼ぶ側が when 'quest' を出す） */
-  checkQuests(p: Player): number {
-    let done = 0;
+  /** 共通の依頼を確かめる（人ごとに達成した数を返す。呼ぶ側が when 'quest' を出す）。
+   *  同じときに条件を満たした人（主を共闘で倒した・同じ冬に満たした など）は同着：全員がその順位の名声を得る。
+   *  次に達成する人は、同着の人数ぶん後の順位になる（例：2人が同着1番なら、次の人は3番目の名声） */
+  checkQuests(ps: Player[]): number[] {
+    const done = ps.map(() => 0);
     for (const q of this.quests) {
-      if (q.done.includes(p.pid) || q.done.length >= D.QUEST_FAME.length) continue;
+      if (q.done.length >= D.QUEST_FAME.length) continue;
       const qd = this.quest.get(q.id)!;
-      if (!checkCond(qd.need, this.env(p))) continue;
+      const hit = ps.map((p, i) => [p, i] as const).filter(([p]) => !q.done.includes(p.pid) && checkCond(qd.need, this.env(p)));
+      if (!hit.length) continue;
       const fame = D.QUEST_FAME[q.done.length];
-      q.done.push(p.pid);
-      p.quests.push(q.id);
-      p.fame.quest += fame;
-      p.acts.push('quest');
-      this.emit({ t: 'quest_done', seat: p.pid, quest: q.id, fame });
-      done++;
+      for (const [p, i] of hit) {
+        q.done.push(p.pid);
+        p.quests.push(q.id);
+        p.fame.quest += fame;
+        p.acts.push('quest');
+        this.emit({ t: 'quest_done', seat: p.pid, quest: q.id, fame });
+        done[i]++;
+      }
     }
     return done;
   }
-  *questsGen(p: Player): Gen {
-    const n = this.checkQuests(p);
-    for (let i = 0; i < n; i++) yield* this.fire(p, 'quest', {});
+  /** 全員（手番の順）の依頼をいっしょに確かめる */
+  *questsGen(ps: Player[] = this.turnOrder()): Gen {
+    const n = this.checkQuests(ps);
+    for (let i = 0; i < ps.length; i++) for (let j = 0; j < n[i]; j++) yield* this.fire(ps[i], 'quest', {});
   }
 
   scoreRows(): ScoreRow[] {

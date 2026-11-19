@@ -281,3 +281,10 @@ button.kd2-slot { color: inherit; font: inherit; text-align: left; background: t
   .kd2 .kd-base-grid { grid-template-areas: 'c p' 'c wf' 'pl t' 'h h'; align-content: start; }
   .kd2 .kd2-bsec-wf { grid-area: wf; }
 }
+
+/* 交換所のトレイ（渡す ⇄ 受け取る の台） */
+.kd2-xstack { display: inline-flex; align-items: center; gap: 2px; min-height: 34px; padding: 2px 8px 2px 4px; border-radius: 10px; border: 1px solid var(--kd-line); background: var(--kd-panel2); color: inherit; font: inherit; cursor: pointer; animation: kd-tray-pop .3s cubic-bezier(.3,1.6,.5,1) both; }
+.kd2-xstack b { font-size: 14px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.kd2-xstack.is-fixed { cursor: default; border-style: dashed; }
+.kd2-xstack.is-card { font-size: 13px; font-weight: 700; padding: 2px 10px; }
+.kd2-market .kd-xverdict { font-size: 13px; }

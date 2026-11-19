@@ -215,7 +215,8 @@ export class AI implements Brain {
         const v = opsValue(req.ops);
         return v > -0.05 || this.level === 'random';
       }
-      case 'pick': return this.best(req.options, (x) => this.choiceValue(g, p, x));
+      // 誰を鍛えるか：いちばん熟練の低い仲間（エンジンが先頭に並べる）
+      case 'pick': return req.what.startsWith('train:') ? req.options[0] : this.best(req.options, (x) => this.choiceValue(g, p, x));
       case 'choose': return this.choose(g, p, req.opts);
     }
   }

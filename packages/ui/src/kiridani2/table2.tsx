@@ -318,7 +318,7 @@ export function Board2({ v, selectable, selected, onSelect, cur }: { v: View2; s
 }
 
 // ---------------------------------------------------------------- 拠点（仲間ごとの装備）
-function Pips({ n, max = DATA.MAX_SKILL, cls }: { n: number; max?: number; cls: string }) {
+function Pips({ n, max, cls }: { n: number; max: number; cls: string }) {
   return <span className={`kd-skill ${cls}`}>{Array.from({ length: max }, (_, i) => <i key={i} className={i < n ? 'is-on' : ''} />)}</span>;
 }
 
@@ -341,7 +341,7 @@ export function BaseView2({ p, v, cur, onEquip }: { p: PV2; v: View2; cur: Playi
             {p.comps.map((c, i) => (
               <div key={i} className={`kd2-comp${c.injured ? ' is-injured' : ''}${c.rest ? ' is-rest' : ''}${c.at ? ' is-out' : ''}`} data-kd={`comp:${p.seat}:${i}`}>
                 <span className="kd2-comp-who"><Token seat={p.seat} size={24} injured={c.injured} dim={!!c.at || c.rest} /><small>{c.leader ? 'リーダー' : `仲間${i + 1}`}</small><small className="kd-comp-st">{c.injured ? '負傷' : c.rest ? '休み' : c.at ? placeName(c.at).slice(0, 4) : '待機'}</small></span>
-                <span className="kd2-comp-sk"><span title="攻めの熟練"><KIcon name="power" size={14} /><Pips n={c.atk} cls="is-atk" /></span><span title="守りの熟練"><KIcon name="defense" size={14} /><Pips n={c.def} cls="is-def" /></span></span>
+                <span className="kd2-comp-sk"><span title="攻めの熟練"><KIcon name="power" size={14} /><Pips n={c.atk} max={DATA.MAX_SKILL.atk} cls="is-atk" /></span><span title="守りの熟練"><KIcon name="defense" size={14} /><Pips n={c.def} max={DATA.MAX_SKILL.def} cls="is-def" /></span></span>
                 <span className="kd2-slots">
                   {(['weapon', 'armor'] as const).map((sl) => {
                     const id = c[sl];
@@ -419,14 +419,14 @@ export function QuestsView2({ v, cur }: { v: View2; cur: Playing2 | null }) {
   const secret = me?.secret && me.secret !== '?' ? QUEST2[me.secret] : null;
   return (
     <div className="kd-quests">
-      <p className="kd-hint">共通の依頼：達成した順に名声 {DATA.QUEST_FAME.join('・')}</p>
+      <p className="kd-hint">共通の依頼：達成した順に名声 {DATA.QUEST_FAME.join('・')}（同時に達成した人は同じ名声）</p>
       {v.quests.map((q) => {
         const stamp = cur?.ev.t === 'quest_done' && cur.ev.quest === q.id;
         return (
           <div key={q.id} className={`kd-quest${stamp ? ' is-stamp' : ''}`} data-kd={`quest:${q.id}`} data-inspect={`card2:${q.id}`} style={msVar(cur)} role="button" tabIndex={0}>
             <span className="kd-quest-ic"><EffectArt id="quest-stamp" size={28} /></span>
             <strong>{QUEST2[q.id]?.name ?? q.id}<small className="kd2-qtext">{QUEST2[q.id]?.text}</small></strong>
-            <ol className="kd-quest-slots">{DATA.QUEST_FAME.map((f, i) => <li key={i}>{q.doneBy[i] !== undefined ? <Token seat={q.doneBy[i]} size={18} /> : <i />}<small>{f}</small></li>)}</ol>
+            <ol className="kd-quest-slots">{Array.from({ length: Math.max(DATA.QUEST_FAME.length, q.doneBy.length) }, (_, i) => <li key={i}>{q.doneBy[i] !== undefined ? <Token seat={q.doneBy[i]} size={18} /> : <i />}<small>{q.fames[i] ?? DATA.QUEST_FAME[i]}</small></li>)}</ol>
           </div>
         );
       })}

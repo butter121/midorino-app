@@ -8,7 +8,8 @@ export type Years = (typeof YEARS)[number];
 export const START = { comps: 2, beds: 3, food: 3, gold: 2, wood: 1, iron: 1 };
 export const SEAT_FOOD: Record<number, number[]> = { 2: [0, 1], 3: [0, 1, 1], 4: [0, 1, 1, 2], 5: [0, 1, 1, 2, 2], 6: [0, 1, 1, 2, 2, 3] };
 export const MAX_COMPS = 6;
-export const MAX_SKILL = 2;
+/** 熟練の上限（攻めは3まで、守りは2まで） */
+export const MAX_SKILL: Record<'atk' | 'def', number> = { atk: 3, def: 2 };
 export const UPKEEP = 2;
 /** 5人目からの仲間は維持費3（調整：大所帯を重くする） */
 export const UPKEEP_BIG = { from: 5, food: 3 };
