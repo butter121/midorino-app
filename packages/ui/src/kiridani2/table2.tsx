@@ -20,7 +20,7 @@ const TABS: { id: Tab2; label: string }[] = [{ id: 'board', label: '盤面' }, {
 /** いま自分に求められている、画面で答える選択（それ以外はシートで聞く） */
 export type Ask2 =
   | { kind: 'card'; why: string; cards: string[]; title: string; sub?: string }
-  | { kind: 'ratio'; ratios: { weapon: number; tool: number; spell: number }[] }
+  | { kind: 'ratio'; ratios: { weapon: number; armor: number; tool: number; spell: number }[] }
   | { kind: 'place'; options: string[] };
 
 export interface Table2Props {
@@ -133,7 +133,7 @@ const WHY_TITLE: Record<string, [string, string]> = {
   draw: ['カードを選ぶ', ''],
 };
 export const whyTitle = (why: string) => WHY_TITLE[why] ?? ['カードを選ぶ', ''];
-const SETUP_STEPS: [string, string][] = [['leader', 'リーダー'], ['occ', '職能×3'], ['ratio', '割合'], ['item', '品物×5'], ['start', '始めの2枚'], ['quest', '秘密依頼']];
+const SETUP_STEPS: [string, string][] = [['leader', 'リーダー'], ['occ', '職能×3'], ['ratio', '割合'], ['item', `品物×${DATA.ITEM_COUNT}`], ['start', '始めの2枚'], ['quest', '秘密依頼']];
 
 function setupStep(v: View2, ask: Ask2 | null | undefined): string {
   if (ask?.kind === 'ratio') return 'ratio';
@@ -204,34 +204,35 @@ export function CardPickScreen({ v, ask, onPick }: { v: View2; ask: Extract<Ask2
   );
 }
 
-const KINDS3: ['weapon' | 'tool' | 'spell', string, string][] = [['weapon', '武具', '武器・防具'], ['tool', '道具', '施設'], ['spell', '秘術', '使い切りの術']];
+const ITEM_N = DATA.ITEM_COUNT;
+const KINDS4: ['weapon' | 'armor' | 'tool' | 'spell', string, string][] = [['weapon', '武器', '戦力を上げる'], ['armor', '防具', '守り・反撃で効く'], ['tool', '道具', 'ずっと効く'], ['spell', '秘術', '使い切り・何度でも']];
 export function RatioScreen({ v, onPick }: { v: View2; onPick: (r: string) => void }) {
-  const [r, setR] = useState({ weapon: 2, tool: 2, spell: 1 });
-  const sum = r.weapon + r.tool + r.spell;
+  const [r, setR] = useState({ weapon: 2, armor: 1, tool: 2, spell: 1 });
+  const sum = r.weapon + r.armor + r.tool + r.spell;
   const me = v.players[v.me];
-  const bump = (k: keyof typeof r, d: number) => setR((x) => ({ ...x, [k]: Math.max(0, Math.min(5, x[k] + d)) }));
+  const bump = (k: keyof typeof r, d: number) => setR((x) => ({ ...x, [k]: Math.max(0, Math.min(ITEM_N, x[k] + d)) }));
   return (
     <div className="kd-screen kd-draft kd2-setup kd2-ratio">
       <header className="kd-screen-h">
-        <div><small>準備・品物の割合</small><h2>品物5枚の種類を決める（合計5）</h2></div>
+        <div><small>準備・品物の割合</small><h2>品物{ITEM_N}枚の種類を決める（合計{ITEM_N}）</h2></div>
         <ol className="kd-laps">{SETUP_STEPS.map(([k, l], i) => <li key={k} className={i < 2 ? 'is-done' : i === 2 ? 'is-now' : ''}>{l}</li>)}</ol>
       </header>
       <div className="kd2-ratio-rows">
-        {KINDS3.map(([k, jp, sub]) => (
+        {KINDS4.map(([k, jp, sub]) => (
           <div key={k} className={`kd2-ratio-row is-${k}`}>
             <span className="kd2-ratio-l"><b>{jp}</b><small>{sub}</small></span>
             <button type="button" className="kd-btn" aria-label={`${jp}を減らす`} onClick={() => bump(k, -1)} disabled={r[k] <= 0}>−</button>
             <b className="kd2-ratio-n" aria-live="polite">{r[k]}</b>
-            <button type="button" className="kd-btn" aria-label={`${jp}を増やす`} onClick={() => bump(k, 1)} disabled={r[k] >= 5 || sum >= 5}>＋</button>
+            <button type="button" className="kd-btn" aria-label={`${jp}を増やす`} onClick={() => bump(k, 1)} disabled={r[k] >= ITEM_N || sum >= ITEM_N}>＋</button>
             <span className="kd2-ratio-bar">{Array.from({ length: r[k] }, (_, i) => <i key={i} />)}</span>
           </div>
         ))}
-        <p className={`kd2-ratio-sum${sum === 5 ? ' is-ok' : ''}`}>合計 {sum} / 5</p>
+        <p className={`kd2-ratio-sum${sum === ITEM_N ? ' is-ok' : ''}`}>合計 {sum} / {ITEM_N}</p>
       </div>
       <div className="kd-draft-foot">
         <div className="kd-hand-mini" data-kd="hand"><small>手札</small>{me?.hand.map((id, i) => <CardChip2 key={id + i} id={id} />)}</div>
       </div>
-      <div className="kd-confirm"><button type="button" className="kd-btn is-primary" disabled={sum !== 5} onClick={() => onPick(`${r.weapon},${r.tool},${r.spell}`)}>この割合で品物を引く</button></div>
+      <div className="kd-confirm"><button type="button" className="kd-btn is-primary" disabled={sum !== ITEM_N} onClick={() => onPick(`${r.weapon},${r.armor},${r.tool},${r.spell}`)}>この割合で品物を引く</button></div>
     </div>
   );
 }
@@ -459,7 +460,7 @@ export function Everyone2({ v, onOpen }: { v: View2; onOpen?: (s: Seat) => void 
 
 // ---------------------------------------------------------------- 戦闘・冬
 const PART_ICON: Record<string, string> = { companion: '👤', familiar: '🐾', spell: '✷', mod: '★', weakness: '弱', card: '📜', boost: '➶', mode: '🛡' };
-const MODE_JP: Record<string, string> = { normal: '通常', safe: '確実に', gamble: '賭ける', chip: '削るだけ', wait: '待ち伏せ', guard: '守って戦う' };
+const MODE_JP: Record<string, string> = { normal: '通常', safe: '確実に', gamble: '賭ける', chip: '削るだけ', wait: '待ち伏せ', guard: '守って戦う', capture: '捕まえる' };
 
 export function CombatPanel2({ v, cur }: { v: View2; cur: Playing2 | null }) {
   const c = v.combat;
@@ -485,7 +486,6 @@ export function CombatPanel2({ v, cur }: { v: View2; cur: Playing2 | null }) {
           <span className="kd-mon-stats">
             <span className="kd-stat is-str">強さ{m.wounds ? <><s>{m.str}</s>→{m.str - m.wounds}</> : m.str}</span>
             <span className="kd-stat is-ctr">反撃{m.counter}</span>
-            {m.weak && <span className="kd-stat is-weak"><KIcon name={m.weak} size={14} />弱点</span>}
           </span>
         </div>
       </div>

@@ -5,7 +5,7 @@
 import * as D from './data';
 import { cardEffects } from './dsl';
 import {
-  ancientScore, costValue, drive, Game, Player, score, type Brain, type Choice, type Option, type Ratio, type Req,
+  ancientScore, costValue, drive, Game, ITEM_KINDS, Player, score, type Brain, type Choice, type Option, type Ratio, type Req,
 } from './engine';
 import { Rng } from './rng';
 import type { CardDef, Cost, EngineTag, Op, Res } from './types';
@@ -62,7 +62,7 @@ export const LOOPS: Record<EngineTag, string[][]> = {
   beast: [['tame', 'win', 'fight'], ['food', 'pay:food']],
   quest: [['board', 'donate', 'quest', 'gold'], ['win', 'build', 'craft', 'occ', 'fight', 'train']],
   ally: [['coop', 'trade', 'fight'], ['accum', 'sell', 'buy', 'food']],
-  ruins: [['draw', 'sp:ruins', 'sp:altar', 'sp:treasury'], ['sell', 'craft', 'build', 'occ', 'mana']],
+  ruins: [['draw', 'sp:ruins', 'sp:altar', 'sp:treasury', 'sp:dig', 'sp:curio'], ['sell', 'craft', 'build', 'occ', 'mana', 'spell']],
   boss: [['fight', 'train'], ['craft', 'heal', 'herb', 'iron', 'buy', 'pay:mat', 'build', 'trade']],
   bridge: [['build', 'craft', 'occ'], ['win', 'sell', 'buy']],
 };
@@ -70,12 +70,13 @@ export function loopDone(tag: EngineTag, acts: string[]): number {
   return LOOPS[tag].filter((grp) => grp.some((a) => acts.includes(a))).length;
 }
 
-const WEAPON_TAGS = new Set<EngineTag>(['hunt', 'smith', 'boss', 'beast', 'ally']);
-const TOOL_TAGS = new Set<EngineTag>(['fort', 'gather', 'family', 'trade', 'quest']);
+const WEAPON_TAGS = new Set<EngineTag>(['hunt', 'smith', 'boss', 'ally']);
+const ARMOR_TAGS = new Set<EngineTag>(['fort', 'boss', 'smith']);
+const TOOL_TAGS = new Set<EngineTag>(['fort', 'gather', 'family', 'trade', 'quest', 'beast']);
 const SPELL_TAGS = new Set<EngineTag>(['arcane', 'ruins']);
 const TAG_STAT: Record<EngineTag, string[]> = {
-  hunt: ['kills', 'races', 'weak'], gather: ['wood', 'herb'], trade: ['trades', 'gold'], fort: ['walls', 'facilities'], smith: ['gear'],
-  family: ['comps'], arcane: ['spells'], beast: ['pets'], quest: ['quests', 'gold'], ally: ['coop'], ruins: ['ancient'], boss: ['boss'], bridge: ['occs', 'races'],
+  hunt: ['kills', 'races'], gather: ['wood', 'herb'], trade: ['sold', 'gold', 'trades'], fort: ['walls', 'tools', 'facilities'], smith: ['gear', 'weapons', 'armors'],
+  family: ['comps', 'skills'], arcane: ['casts', 'spells'], beast: ['pets'], quest: ['quests', 'gold'], ally: ['coop'], ruins: ['ancient'], boss: ['boss'], bridge: ['occs', 'kinds'],
 };
 
 export function opsValue(ops: Op[]): number {
@@ -131,7 +132,8 @@ function cardValueRaw(c: CardDef, targets: EngineTag[]): number {
       v += Math.max(0.2, opsValue(e.do ?? []) * 0.5 * per) * (e.if ? 0.7 : 1);
     }
   }
-  if (c.rear) v += 0.3;
+  if (c.tome) v += 0.6 * c.tome.uses;
+  if (c.weight === 'heavy') v += 0.8;
   v -= 0.12 * costValue(c.cost ?? {});
   for (const t of c.engine) if (targets.includes(t)) v += 1.2;
   return v;
@@ -188,7 +190,7 @@ export class AI implements Brain {
         if (req.kind === 'ancient' || req.cards.every((id) => g.anc.has(id))) {
           return this.best(req.cards, (id) => { const q = p.clone(); q.ancient.push(id); return ancientScore(g, q); });
         }
-        const cs = req.cards.map((id) => ({ id, c: g.card(id) }));
+        const cs = req.cards.map((id) => ({ id, c: g.byId.get(id) }));
         if (req.why === 'leader') {
           const pick = this.forced ? (req.cards.find((id) => g.card(id).engine.includes(this.forced!)) ?? this.best(req.cards, () => 0)) : this.best(req.cards, (id) => cardValue(g.card(id)));
           this.note(g.card(pick).engine, 3);
@@ -196,23 +198,25 @@ export class AI implements Brain {
           return pick;
         }
         for (const { c } of cs) if (c && (req.why === 'occ' || req.why === 'item')) this.note(c.engine, 0.3);
-        const pick = this.best(req.cards, (id) => cardValue(g.card(id), this.targets) + (req.why === 'start_item' && g.card(id).kind !== 'spell' ? 0.5 : 0));
-        if (req.why === 'occ' || req.why === 'item') { this.note(g.card(pick).engine, 1); this.setTargets(p); }
+        const pick = this.best(req.cards, (id) => (id === 'skip' ? 1.6 : cardValue(g.card(id), this.targets) + (req.why === 'start_item' && g.card(id).kind !== 'spell' ? 0.5 : 0)));
+        if ((req.why === 'occ' || req.why === 'item') && pick !== 'skip') { this.note(g.card(pick).engine, 1); this.setTargets(p); }
         return pick;
       }
       case 'ratio': {
-        const want: Ratio = { weapon: 2, tool: 2, spell: 1 };
+        const want: Ratio = { weapon: 2, armor: 1, tool: 1.5, spell: 1 };
         for (const t of this.targets) {
           if (WEAPON_TAGS.has(t)) want.weapon += 1.5;
+          if (ARMOR_TAGS.has(t)) want.armor += 1.5;
           if (TOOL_TAGS.has(t)) want.tool += 1.5;
           if (SPELL_TAGS.has(t)) want.spell += 2;
         }
-        return this.best(req.options, (r) => -(Math.abs(r.weapon - want.weapon * 5 / (want.weapon + want.tool + want.spell)) + Math.abs(r.tool - want.tool * 5 / (want.weapon + want.tool + want.spell)) + Math.abs(r.spell - want.spell * 5 / (want.weapon + want.tool + want.spell))) * 3);
+        const tot = want.weapon + want.armor + want.tool + want.spell, N = D.ITEM_COUNT;
+        return this.best(req.options, (r) => -ITEM_KINDS.reduce((a, k) => a + Math.abs(r[k] - want[k] * N / tot), 0) * 3);
       }
       case 'kind': return this.best(req.options, (k) => req.left[k]);
       case 'heal': return g.round < g.R && p.res.herb >= (req.cost.herb ?? 0);
       case 'effect': {
-        const v = opsValue(req.ops);
+        const v = opsValue(req.ops) + 0.5 * req.ops.reduce((a, o) => a + (o.fame ?? 0), 0);
         return v > -0.05 || this.level === 'random';
       }
       // 誰を鍛えるか：いちばん熟練の低い仲間（エンジンが先頭に並べる）
@@ -379,7 +383,7 @@ export function evaluate(g: Game, p: Player, W: W, targets: EngineTag[] = []): n
     if (r === 'gold') continue;
     v += W.res[r] * Math.min(p.res[r], 8) * dec + 0.08 * Math.max(0, p.res[r] - 8) * dec;
   }
-  v += (p.res.gold % D.GOLD_PER_FAME) * 0.2 * (1 - dec) + W.res.gold * p.res.gold * dec;
+  v += (p.res.gold % D.GOLD_PER_FAME) * 0.2 * (1 - dec) + (W.res.gold * Math.min(p.res.gold, 12) + 0.03 * Math.max(0, p.res.gold - 12)) * dec;
   for (const f of p.future) v += 0.9 * costValue(f.gain);
   // 冬の食料
   const wl = wintersFrom(g, g.round);
@@ -403,7 +407,7 @@ export function evaluate(g: Game, p: Player, W: W, targets: EngineTag[] = []): n
   v -= W.act * p.comps.filter((c) => c.injured || c.rest).length * (rl > 0 ? 1 : 0);
   // 戦力・守り
   const mods = g.mods(p);
-  let pw = p.pets * (1 + mods.pet_power) + mods.power;
+  let pw = g.bringPets(p).reduce((a, i) => a + p.pets[i].power + mods.pet_power, 0) + mods.power + p.rage;
   let df = 0;
   for (const c of p.comps) {
     pw += c.atk + (c.weapon ? g.card(c.weapon).power ?? 0 : 0);
@@ -411,14 +415,14 @@ export function evaluate(g: Game, p: Player, W: W, targets: EngineTag[] = []): n
   }
   v += W.perm * pw * Math.min(rl, 10) / 4;
   v += W.defn * df * Math.min(rl, 10) / 4;
-  v += W.pet * p.pets * Math.min(rl, 12) / 12;
+  v += W.pet * p.pets.length * Math.min(rl, 12) / 12;
   const wAfter = wintersFrom(g, g.round + 1) + (g.isWinter() ? 1 : 0);
   v += W.wall * Math.min(g.homeGuard(p), 4) * Math.min(wAfter, 3) * 0.5;
   // カード
   for (const c of p.hand) v += W.hand * cardValue(g.card(c), targets) * Math.min(1, rl / 6);
   for (const c of g.activeCards(p)) v += W.played * cardValue(g.card(c), targets) * Math.min(rl, 12) / 12;
   for (const c of g.storage(p)) v += 0.3 * g.itemSell(c);
-  v += W.ancient * p.ancient.length;
+  v += W.ancient * p.ancient.length + W.ancient * 0.3 * p.shards;
   // 依頼の進み具合
   for (const q of g.quests) {
     if (q.done.includes(p.pid) || q.done.length >= D.QUEST_FAME.length) continue;

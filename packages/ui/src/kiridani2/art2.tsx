@@ -16,12 +16,12 @@ const S = { stroke: INK, strokeWidth: 1.7, strokeLinejoin: 'round' as const, str
 const N = { ...S, fill: 'none' };
 
 // ------------------------------------------------------------------ 種類の縁取り
-export type ArtKind = 'leader' | 'occ' | 'weapon' | 'armor' | 'gear' | 'tool' | 'spell' | 'stage' | 'quest' | 'ancient';
+export type ArtKind = 'leader' | 'occ' | 'weapon' | 'armor' | 'gear' | 'tool' | 'spell' | 'stage' | 'quest' | 'ancient' | 'pet';
 /** 種類の色。種類は縁の色だけで見分ける（絵の地は種類で変えない）ので、色相を散らして 44px でも見分けられるようにし、
  *  原色は避けてくすませる（彩度を抑え、明るさをそろえる）。リーダーは古い金のグラデーション＋飾りでいちばん目立たせる */
 export const KIND_COLOR: Record<ArtKind, string> = {
   leader: '#C4A462', weapon: '#B86F5A', gear: '#9A8063', tool: '#A39E5A', stage: '#6AA77E',
-  ancient: '#5AA6AC', occ: '#6E8CC0', spell: '#937CC0', quest: '#B86F98', armor: '#A0A8B4',
+  ancient: '#5AA6AC', occ: '#6E8CC0', spell: '#937CC0', quest: '#B86F98', armor: '#A0A8B4', pet: '#7FB5A0',
 };
 /** リーダーの縁の古い金（明・暗・つや） */
 const ANTIQUE = { lo: '#7A6338', mid: '#C4A462', hi: '#EEDDAA' };
@@ -38,6 +38,7 @@ const KIND_GLYPH: Record<ArtKind, ReactNode> = {
   stage: <><path d="M6 18V3" {...N} strokeWidth={1.8} /><path d="M6 4h10l-2 3 2 3H6z" fill="#FAF4E6" {...S} strokeWidth={1.3} /></>,
   quest: <><circle cx="10" cy="10" r="6.5" fill="#FAF4E6" {...S} strokeWidth={1.3} /><path d="M10 6.5v4.5M10 13.5v.2" {...N} strokeWidth={2} /></>,
   ancient: <path d="M10 2l6 6-6 10-6-10z" fill="#FAF4E6" {...S} strokeWidth={1.3} />,
+  pet: <><circle cx="10" cy="12.5" r="4" fill="#FAF4E6" {...S} strokeWidth={1.3} /><circle cx="4.5" cy="7.5" r="2" fill="#FAF4E6" {...S} strokeWidth={1.1} /><circle cx="8.5" cy="4.5" r="2" fill="#FAF4E6" {...S} strokeWidth={1.1} /><circle cx="12.5" cy="4.5" r="2" fill="#FAF4E6" {...S} strokeWidth={1.1} /><circle cx="16" cy="7.5" r="2" fill="#FAF4E6" {...S} strokeWidth={1.1} /></>,
 };
 
 /** 四隅の飾り（リーダー）。x,y は角、sx,sy は内向きの向き */

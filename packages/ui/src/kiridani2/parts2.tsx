@@ -22,8 +22,8 @@ export function endFameNote(id: string, years: number | undefined): string | nul
   return sc > 1 ? `${years}年の試合なので終わりの名声×${sc}（+${base}→+${base * sc}）` : null;
 }
 
-export const KIND2_JP: Record<string, string> = { leader: 'リーダー', occ: '職能', weapon: '武具', armor: '防具', tool: '道具', spell: '秘術', gear: '共通の装備', stage: '段階', ancient: '古代の品', quest: '依頼' };
-const KIND_CLASS: Record<string, string> = { leader: 'occ', occ: 'occ', weapon: 'weapon', armor: 'weapon', gear: 'weapon', tool: 'tool', spell: 'spell', stage: 'tool' };
+export const KIND2_JP: Record<string, string> = { leader: 'リーダー', occ: '職能', weapon: '武器', armor: '防具', tool: '道具', spell: '秘術', gear: '共通の装備', stage: '段階', ancient: '遺物', quest: '依頼', pet: '使い魔' };
+const KIND_CLASS: Record<string, string> = { leader: 'occ', occ: 'occ', weapon: 'weapon', armor: 'weapon', gear: 'weapon', tool: 'tool', spell: 'spell', stage: 'tool', pet: 'occ' };
 const hash = (s: string) => { let h = 7; for (const ch of s) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; };
 const pick = <T,>(xs: T[], id: string) => xs[hash(id) % xs.length];
 
@@ -51,7 +51,7 @@ export function CardFace2({ id, size = 'm', selected, onClick, disabled, anchor 
   const name = c?.name ?? q?.name ?? a?.name;
   const kind = c?.kind ?? (q ? 'quest' : 'ancient');
   const text = c?.text ?? q?.text ?? a?.text;
-  const stats = c ? [c.power ? `戦力+${c.power}` : '', c.guard ? `守り+${c.guard}` : '', c.rear ? '後衛' : '', c.two_hand ? '両手' : '', c.leader_only ? 'リーダー専用' : ''].filter(Boolean) : [];
+  const stats = c ? [c.power ? `戦力+${c.power}` : '', c.guard ? `守り+${c.guard}` : '', c.two_hand ? '両手' : '', c.leader_only ? 'リーダー専用' : ''].filter(Boolean) : [];
   const body = (
     <>
       <div className="kd-card-art"><CardArt2 id={id} size={size === 's' ? 44 : size === 'm' ? 76 : 104} /></div>
@@ -122,7 +122,6 @@ export function MonsterCard2({ m, compact, shadow, anchor }: { m: Monster; compa
       <div className="kd-mon-stats">
         <span className="kd-stat is-str" title="強さ">⚔{m.wounds ? <><s>{m.str}</s>{left}</> : m.str}</span>
         <span className="kd-stat is-ctr" title="反撃">↩{m.counter}</span>
-        {m.weak && <span className="kd-stat is-weak" title="弱点"><KIcon name={m.weak} size={14} /></span>}
         {!compact && <span className="kd-stat"><KIcon name={m.race} size={14} /></span>}
       </div>
       {!compact && <div className="kd-mon-loot"><CostRow cost={m.loot} size={14} /><span className="kd-fame-s">証{m.trophy}</span>{m.raid > 0 && <span className="kd-raid-s">襲撃{m.raid}</span>}</div>}

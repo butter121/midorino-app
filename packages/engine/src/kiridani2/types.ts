@@ -5,11 +5,9 @@
 export type Res = 'wood' | 'iron' | 'herb' | 'mana' | 'food' | 'gold' | 'mat';
 export type Cost = Partial<Record<Res, number>>;
 export type Season = 'spring' | 'summer' | 'autumn' | 'winter';
-export type Element = 'fire' | 'ice' | 'thunder' | 'light' | 'dark';
 export type Race = 'beast' | 'spirit' | 'undead' | 'humanoid' | 'dragon';
 export const RES: Res[] = ['wood', 'iron', 'herb', 'mana', 'food', 'gold', 'mat'];
 export const RACES: Race[] = ['beast', 'spirit', 'undead', 'humanoid', 'dragon'];
-export const ELEMENTS: Element[] = ['fire', 'ice', 'thunder', 'light', 'dark'];
 
 /** 強い動き（engine タグ） */
 export type EngineTag =
@@ -19,7 +17,7 @@ export const ENGINES: EngineTag[] = ['hunt', 'gather', 'trade', 'fort', 'smith',
 /** 効果の型 */
 export type Mech = 'boost' | 'instead' | 'combat' | 'accrue' | 'convert' | 'social' | 'endfame' | 'action';
 
-export type CardKind = 'occ' | 'weapon' | 'armor' | 'tool' | 'spell' | 'leader' | 'gear' | 'stage' | 'ancient' | 'quest';
+export type CardKind = 'occ' | 'weapon' | 'armor' | 'tool' | 'spell' | 'leader' | 'gear' | 'stage' | 'ancient' | 'quest' | 'pet';
 
 // ------------------------------------------------------------ 効果 DSL（§8）
 /**
@@ -31,7 +29,9 @@ export type CardKind = 'occ' | 'weapon' | 'armor' | 'tool' | 'spell' | 'leader' 
  * - `build` / `hire` / `craft` / `sell` / `buy` / `trade` / `donate` / `spell` / `tame`
  * - `occ`（ギルドなどで職能を出した）/ `quest`（共通の依頼を達成した）
  * - `other:<space>` 他の人がそのマスを使ったとき
- * - `play` 秘術：手番の前に手札から使う（使い切り）
+ * - `play` 秘術：手番の前に手札から使う（使い切りは捨てる、tome の秘術は身につけたあと何度でも）
+ * - `hit` 反撃で負傷する分（反撃−守り）が1以上だった（stat `dmg` がその値）
+ * - `injure` 仲間が負傷した（1人ごと）
  * - `passive` 常に効く修正（do の代わりに mod）
  */
 export type When =
@@ -40,7 +40,7 @@ export type When =
   | 'fight' | 'win' | 'lose' | `win_race:${Race}`
   | 'round_start' | 'round_end' | 'winter' | 'game_end' | 'setup'
   | 'build' | 'hire' | 'craft' | 'sell' | 'buy' | 'trade' | 'donate' | 'spell' | 'tame'
-  | 'occ' | 'quest'
+  | 'occ' | 'quest' | 'hit' | 'injure'
   | `other:${string}`
   | 'play'
   | 'passive';
@@ -48,8 +48,21 @@ export type When =
 /** 数で見る条件の対象（min / max に使う） */
 export type StatKey =
   | 'comps' | 'occs' | 'walls' | 'beds' | 'facilities' | 'gear' | 'pets' | 'kills' | 'races' | 'trophies'
-  | 'hand' | 'ancient' | 'quests' | 'skills' | 'injured' | 'boss' | 'coop' | 'weak' | 'spells' | 'donations' | 'trades'
-  | 'year' | 'round';
+  | 'hand' | 'ancient' | 'quests' | 'skills' | 'injured' | 'boss' | 'coop' | 'spells' | 'donations' | 'trades'
+  | 'year' | 'round'
+  // ---- 再設計で足したもの
+  /** 持たせた武器・防具の数、建てた道具の数、身につけた秘術の数、唱えた回数（使い切り＋何度でも） */
+  | 'weapons' | 'armors' | 'tools' | 'tomes' | 'casts'
+  /** 遺物の欠片、使っている品物の種類（武器・防具・道具・秘術のうち 0〜4）、売った回数、金貨 */
+  | 'shards' | 'kinds' | 'sold' | 'gold'
+  /** 仲間の攻め・守りの熟練の合計 */
+  | 'atk' | 'def'
+  /** 直前の反撃で負傷する分（hit の効果の中で） */
+  | 'dmg'
+  /** 戦闘中だけ：送った仲間の攻めの熟練の合計・武器の戦力の合計・人数、守りを超える反撃（守りが足りない分） */
+  | 'sent_atk' | 'sent_wpow' | 'sent_k' | 'exposed'
+  /** このラウンドに唱えた回数 */
+  | 'casts_round';
 
 /** 効果の条件（すべて満たしたら効く）。知らないキーはエンジンが例外にする */
 export interface Cond {
@@ -66,8 +79,6 @@ export interface Cond {
   k_max?: number;
   /** 戦闘中：主（古竜を含む） */
   boss?: boolean;
-  /** 戦闘中：弱点を突いている */
-  weak?: boolean;
   /** そのカードを持っている（出した職能・建てた道具・装備・リーダー） */
   has?: string;
   res_min?: Cost;
@@ -95,7 +106,7 @@ export interface Op {
   place_again?: boolean;
   ignore_full?: boolean;
   future?: { rounds: number[]; gain: Cost };
-  draw?: { from: 'occ' | 'item' | 'weapon' | 'tool' | 'spell' | 'ancient'; look: number; take: number };
+  draw?: { from: 'occ' | 'item' | 'equip' | 'weapon' | 'armor' | 'tool' | 'spell' | 'ancient'; look: number; take: number };
   hire?: number;
   hire_free?: number;
   tame?: boolean;
@@ -125,6 +136,21 @@ export interface Op {
   gain_per?: { stat: StatKey; per: number; gain: Cost; max?: number };
   /** 他の人全員が得る（施し・おすそ分け。軽い対人） */
   others_gain?: Cost;
+  // ---- 再設計で足したもの
+  /** 戦闘中：数に応じた戦力 floor(stat / per) × mult（max まで。mult は省略 1、負もよい） */
+  power_per?: { stat: StatKey; per: number; mult?: number; max?: number };
+  /** 資源を失う（足りなければあるだけ） */
+  lose?: Cost;
+  /** 自分の仲間を負傷させる（負傷していない仲間から） */
+  injure?: number;
+  /** 建てた道具を1つ壊す（山の下へ戻る）。gain_per_cost：壊した道具の費用1つにつき得るもの */
+  scrap?: { gain_per_cost?: Cost; card?: string };
+  /** 遺物の欠片を得る */
+  shard?: number;
+  /** 掘り出し市：並んだ品物から count 枚まで、1枚 price 金貨で手札に */
+  buy_card?: { count: number; price: number };
+  /** 山を選んでから引く（look 枚見て take 枚。from は選べる山） */
+  draw_any?: { from: ('occ' | 'weapon' | 'armor' | 'tool' | 'spell')[]; look: number; take: number };
 }
 
 /** passive の修正（mod）。知らないキーはエンジンが例外にする */
@@ -148,6 +174,43 @@ export interface Mod {
   sell_bonus?: number;
   /** 寝床の数を足す（寝床として数える） */
   bed_cap?: number;
+  // ---- 再設計で足したもの
+  /** 費用を上げる（cost_discount の逆） */
+  cost_extra?: { kind: 'weapon' | 'armor' | 'tool' | 'spell' | 'occ' | 'gear' | 'bed' | 'wall' | 'any'; res: Cost };
+  /** 使い魔を持てる数（基本3） */
+  pet_cap?: number;
+  /** 戦闘に連れて行ける使い魔の数（基本1） */
+  pet_bring?: number;
+  /** 捕まえにくさを下げる */
+  capture_ease?: number;
+  /** 魔石の代わりに金貨を払える（魔石1につき金貨この数） */
+  gold_mana?: number;
+  /** 終わりの金貨の名声の上限を足す（5年の値。年数の倍率がかかる） */
+  gold_cap?: number;
+  /** 終わりの金貨の名声を割る（2＝半分） */
+  gold_div?: number;
+  /** 売値＝買値 */
+  sell_full?: boolean;
+  /** 遺物1枚に要る欠片の数を減らす（基本3） */
+  shard_need?: number;
+  /** 遺物を引くとき余分に見る枚数 */
+  ancient_look?: number;
+  /** 使い切りの秘術を唱えたあと、魔石1で手札に戻せる（ラウンドにこの枚数まで） */
+  spell_return?: number;
+  /** 仲間の上限を変える（負で減る） */
+  comp_cap?: number;
+  /** 職能を出す食料を足す */
+  occ_food?: number;
+  /** 両手武器を持っても防具を持てる */
+  two_hand_armor?: boolean;
+  /** 反撃で負傷しない。負傷する分を「怒り」としてため、次の戦闘で戦力に足す（rage まで） */
+  rage?: number;
+  /** 攻めの熟練を上げられない */
+  no_atk_train?: boolean;
+  /** 道具の効果で資源を得るとき、いちばん多い資源を1つ多く得る */
+  tool_yield?: number;
+  /** 武器を持てるのはリーダー以外 */
+  leader_no_weapon?: boolean;
 }
 
 export interface Effect {
@@ -179,14 +242,13 @@ export interface CardDef {
   fame?: number;
   slot?: 'weapon' | 'armor' | null;
   two_hand?: boolean;
-  /** 後衛：反撃の対象にならない */
-  rear?: boolean;
   leader_only?: boolean;
   power?: number;
   guard?: number;
-  /** 'any' は属性を選べる（魔石の杖） */
-  el?: Element | 'any' | null;
-  vs_race?: Race | null;
+  /** 何度でも使える秘術：手札から learn を払って身につけ、そのあとは cost（唱える費用）を払えば1手番に uses 回まで使える */
+  tome?: { learn: Cost; uses: number };
+  /** 重さ（点検とAI用。light / mid / heavy / curse） */
+  weight?: 'light' | 'mid' | 'heavy' | 'curse';
   effects: Effect[];
   /** passive の修正の短縮形（effects に {when:'passive', mod} を書くのと同じ） */
   mods?: Mod;
@@ -199,7 +261,7 @@ export interface CardDef {
 export interface GearDef extends CardDef {
   kind: 'gear';
   /** 作る場所 */
-  place: 'forge' | 'training';
+  place: 'forge';
   /** 4人での数（3人は−1、5〜6人は+1） */
   count: number;
 }
@@ -215,14 +277,14 @@ export interface StageDef extends CardDef {
   // effects の `use` / `use:<自分の id>` は「このマスでできること」。複数あれば選択肢（どれか1つ）
 }
 
-/** 古代の品（4種×各3枚） */
+/** 古代の品（遺物。5種×各4枚） */
 export interface AncientDef {
   id: string;
   kind: 'ancient';
   name: string;
-  /** 種類（4種） */
+  /** 種類（5種） */
   group: string;
-  /** 枚数（省略は3） */
+  /** 枚数（省略は4） */
   copies?: number;
   text: string;
 }
@@ -245,8 +307,11 @@ export interface CardSet {
   leaders: CardDef[];
   occupations: CardDef[];
   weapons: CardDef[];
+  armors: CardDef[];
   tools: CardDef[];
   spells: CardDef[];
+  /** 使い魔（魔物の型ごと。id は pet_<型>） */
+  pets: CardDef[];
   gear: GearDef[];
   stages: StageDef[];
   quests: QuestDef[];
@@ -258,7 +323,6 @@ export interface MonsterType {
   id: string;
   name: string;
   race: Race;
-  weak: Element | null;
   /** 戦利品の種類（個数はくじで決まり、ここに並べた順に配る） */
   loot: Res[];
   /** 格（−1/0/+1、主は+3） */
@@ -271,7 +335,6 @@ export interface Monster {
   type: string;
   name: string;
   race: Race;
-  weak: Element | null;
   str: number;
   counter: number;
   loot: Cost;
@@ -287,8 +350,12 @@ export interface SpaceDef {
   id: string;
   name: string;
   accum?: Cost;
+  /** たまるマス：毎ラウンド足す遺物の欠片 */
+  shards?: number;
   /** 定員（省略1、0＝無制限） */
   cap?: number;
+  /** 4人以上のときの定員 */
+  cap4?: number;
   min_p?: number;
   /** 置いたときにすること（どれか1つを選ぶ。1つなら選ぶ必要なし） */
   options: Op[][];
@@ -296,7 +363,7 @@ export interface SpaceDef {
 
 // ------------------------------------------------------------ 出来事（画面はこれを見る）
 export type Seat = number;
-export type FightMode = 'normal' | 'safe' | 'gamble' | 'chip' | 'wait' | 'guard';
+export type FightMode = 'normal' | 'safe' | 'gamble' | 'chip' | 'wait' | 'guard' | 'capture';
 
 export interface PowerPart { kind: string; label: string; value: number; seat?: Seat; ref?: string }
 
@@ -346,7 +413,12 @@ export type GameEvent =
   | { t: 'heal'; seat: Seat; companion: number; cost: Cost }
   | { t: 'loot'; seat: Seat; gain: Cost }
   | { t: 'trophy'; seat: Seat; monster: string; fame: number }
-  | { t: 'tame'; seat: Seat; monster: string }
+  | { t: 'tame'; seat: Seat; monster: string; power?: number }
+  | { t: 'release'; seat: Seat; monster: string }
+  | { t: 'learn'; seat: Seat; card: string }
+  | { t: 'shards'; seat: Seat; amount: number; total: number }
+  | { t: 'curio'; cards: string[] }
+  | { t: 'scrap'; seat: Seat; card: string }
   | { t: 'wait'; seat: Seat; nest: string }
   | { t: 'combat_end' }
   | { t: 'winter_start' }

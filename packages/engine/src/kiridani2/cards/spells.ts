@@ -1,393 +1,97 @@
-// 霧谷の冒険者団 v2 — 秘術カード（60 枚。強い動き 1 つにつき主に 5 枚）
-// 使い方：自分の手番の前に手札から 1 枚、cost（魔石など）を払って使う（when: 'play'、使い切り）。
-// 'play' 以外のタイミングの秘術は「その時に手札から使う」もので、limit: 'game'（使い切り）を付ける。
-// 手札から使えるのは 'play' と 'fight'（戦闘の後押しとして自動で選ばれる）だけ。
-// 戦闘の op（power など）を 'play' で使ったときは、そのラウンドの自分の戦闘に効く。
+// 霧谷の冒険者団 v2 — 秘術（80 枚：使い切り50・何度でも30）。手番を使わず、1手番に何枚でも唱えられる。
+// 唱える魔石は1〜3（重いほど強い）。使い切りは唱えたあと山の下へ戻る。
+// 何度でもの秘術（tome）は、身につける費用を払って手札から出し、そのあとは唱える魔石だけで1手番に1〜3回まで使える。
 import type { CardDef } from '../types';
+import { S, TM, fight, play, powPer, famePer } from './mk';
+import { withText } from './text';
 
-export const SPELLS: CardDef[] = [
-  // ---- hunt ----
-  {
-    id: 's_lure', kind: 'spell', name: '誘いの香', engine: ['hunt'], mech: 'action',
-    cost: { mana: 1, herb: 1 },
-    effects: [{ when: 'play', do: [{ ignore_full: true }, { str: -1 }] }],
-    text: 'このラウンド、定員の埋まった巣にも仲間を置ける。そのラウンドの自分の戦闘で魔物の強さ−1。',
-  },
-  // ---- gather ----
-  {
-    id: 's_harvest', kind: 'spell', name: '豊穣の祈り', engine: ['gather'], mech: 'accrue',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ future: { rounds: [1, 2, 3], gain: { wood: 1, herb: 1 } } }] }],
-    text: '次の3ラウンドの始めに、木材1と薬草1が届く。',
-  },
-  // ---- trade ----
-  {
-    id: 's_haggle', kind: 'spell', name: '値切りの呪い', engine: ['trade'], mech: 'convert',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ convert: { from: { mat: 2 }, to: { gold: 5 } } }, { exchange: true }] }],
-    text: '素材2を金貨5に替えてよい。そのあと交換所で売るか買うを1回してよい（マスに置かずに）。',
-  },
-  // ---- fort ----
-  {
-    id: 's_ward', kind: 'spell', name: '迎撃の結界', engine: ['fort'], mech: 'convert',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ build: 'wall', discount: { wood: 2, iron: 1 } }, { fame: 1 }] }],
-    text: '防壁を1つ建てる（木材2・鉄1安い）。名声+1。',
-  },
-  // ---- family ----
-  {
-    id: 's_horn', kind: 'spell', name: '召集の角笛', engine: ['family'], mech: 'action',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ pay: { food: 5 } }, { hire_free: 1 }] }],
-    text: '食料5を払い、寝床なしで仲間を1人増やす。',
-  },
-  // ---- arcane ----
-  {
-    id: 's_teleport', kind: 'spell', name: '転移の符', engine: ['arcane'], mech: 'action',
-    cost: { mana: 2 },
-    effects: [{ when: 'play', do: [{ place_again: true }] }],
-    text: 'この手番、すでに自分が使ったマスにもう一度置ける（定員を無視）。',
-  },
-  {
-    id: 's_hourglass', kind: 'spell', name: '時渡りの砂時計', engine: ['arcane', 'family'], mech: 'action',
-    cost: { mana: 3 },
-    effects: [{ when: 'play', do: [{ extra_worker: 1 }] }],
-    text: 'このラウンド、仲間をもう1人ぶん置ける。',
-  },
-  // ---- beast ----
-  {
-    id: 's_call', kind: 'spell', name: '獣寄せの笛', engine: ['beast'], mech: 'instead',
-    cost: { mana: 1, food: 1 },
-    effects: [{ when: 'play', do: [{ tame: true }] }],
-    text: '巣にいる獣1体を、戦わずに使い魔にする（仲間を置かなくてよい）。',
-  },
-  // ---- quest ----
-  {
-    id: 's_writ', kind: 'spell', name: '依頼の代行状', engine: ['quest'], mech: 'convert',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', if: { min: { quests: 1 } }, do: [{ pay: { gold: 3 } }, { fame: 3 }] }],
-    text: '依頼を1つ以上達成していれば、金貨3を払って名声+3。',
-  },
-  {
-    id: 's_reward', kind: 'spell', name: '報奨の約束', engine: ['quest', 'trade'], mech: 'accrue',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ future: { rounds: [1, 2, 3, 4], gain: { gold: 1 } } }] }],
-    text: '次の4ラウンドの始めに、金貨1ずつ届く。',
-  },
-  // ---- ally ----
-  {
-    id: 's_pact', kind: 'spell', name: '盟約の印', engine: ['ally', 'boss'], mech: 'combat',
-    cost: { mana: 1 },
-    effects: [{ when: 'fight', if: { coop: true }, do: [{ power: 3 }, { trophy: 1 }], limit: 'game' }],
-    text: '共闘の戦闘中に手札から使う：戦力+3、勝てば証+1。使い切り。',
-  },
-  // ---- ruins ----
-  {
-    id: 's_decipher', kind: 'spell', name: '解読の呪文', engine: ['ruins', 'arcane'], mech: 'action',
-    cost: { mana: 2 },
-    effects: [{ when: 'play', do: [{ draw: { from: 'ancient', look: 3, take: 1 } }] }],
-    text: '古代の品の山から3枚見て1枚取る。',
-  },
-  {
-    id: 's_compass', kind: 'spell', name: '古代の羅針盤', engine: ['ruins'], mech: 'action',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ draw: { from: 'item', look: 4, take: 1 } }, { gain: { mat: 1 } }] }],
-    text: '品物の山（武具・道具・秘術）から4枚見て1枚を手札に。素材+1。',
-  },
-  // ---- boss ----
-  {
-    id: 's_dragonbane', kind: 'spell', name: '竜殺しの秘薬', engine: ['boss'], mech: 'combat',
-    cost: { mana: 2, herb: 2 },
-    effects: [{ when: 'fight', if: { boss: true }, do: [{ power: 6 }], limit: 'game' }],
-    text: '主・古竜との戦闘中に手札から使う：戦力+6。使い切り。',
-  },
-  {
-    id: 's_barrier', kind: 'spell', name: '結界', engine: ['boss', 'fort'], mech: 'combat',
-    cost: { mana: 2 },
-    effects: [{ when: 'play', do: [{ counter: -9 }, { no_injury: 2 }] }],
-    text: 'このラウンドの自分の戦闘で、反撃をすべて0にし、負傷を2人まで防ぐ。',
-  },
-  // ================================================================ v2 拡張（45 枚）
-  // ---- hunt ----
-  {
-    id: 's_bloodlust', kind: 'spell', name: '血の昂ぶり', engine: ['hunt'], mech: 'combat',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ power: 3 }] }],
-    text: 'このラウンドの自分の戦闘で戦力+3。',
-  },
-  {
-    id: 's_war_cry', kind: 'spell', name: '鬨の声', engine: ['hunt', 'ally'], mech: 'combat',
-    cost: { mana: 1 },
-    effects: [{ when: 'fight', do: [{ power: 2 }, { loot: 2 }], limit: 'game' }],
-    text: '戦闘中に手札から使う：戦力+2、勝てば戦利品+2。使い切り。',
-  },
-  {
-    id: 's_flash', kind: 'spell', name: '閃光の符', engine: ['hunt'], mech: 'combat',
-    cost: { mana: 1, herb: 1 },
-    effects: [{ when: 'play', do: [{ str: -2 }, { counter: -1 }] }],
-    text: 'このラウンドの自分の戦闘で、魔物の強さ−2・反撃−1。',
-  },
-  {
-    id: 's_second_blade', kind: 'spell', name: '二の太刀', engine: ['hunt', 'boss'], mech: 'action',
-    cost: { mana: 2 },
-    effects: [{ when: 'play', do: [{ extra_worker: 1 }, { ignore_full: true }] }],
-    text: 'このラウンド、仲間をもう1人ぶん置ける。定員の埋まったマス・巣にも1回置ける。',
-  },
-  // ---- gather ----
-  {
-    id: 's_sprout_song', kind: 'spell', name: '芽吹きの歌', engine: ['gather'], mech: 'accrue',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ gain: { wood: 2, herb: 2 } }] }],
-    text: '木材2と薬草2を得る。',
-  },
-  {
-    id: 's_kind_rain', kind: 'spell', name: '慈雨', engine: ['gather', 'family'], mech: 'accrue',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ future: { rounds: [1, 2], gain: { food: 2 } } }] }],
-    text: '次の2ラウンドの始めに、食料2ずつ届く。',
-  },
-  {
-    id: 's_ore_sense', kind: 'spell', name: '鉱脈探し', engine: ['gather', 'smith'], mech: 'accrue',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ gain: { iron: 3 } }] }],
-    text: '鉄3を得る。',
-  },
-  {
-    id: 's_abundance', kind: 'spell', name: '豊作', engine: ['gather'], mech: 'accrue',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ gain_per: { stat: 'facilities', per: 1, gain: { wood: 1, herb: 1 }, max: 3 } }] }],
-    text: '施設1つにつき木材1・薬草1を得る（最大3回）。',
-  },
-  // ---- trade ----
-  {
-    id: 's_golden_touch', kind: 'spell', name: '黄金の手', engine: ['trade', 'smith'], mech: 'convert',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ convert: { from: { iron: 2 }, to: { gold: 6 } } }] }],
-    text: '鉄2を金貨6に替えてよい。',
-  },
-  {
-    id: 's_market_day', kind: 'spell', name: '市の日', engine: ['trade'], mech: 'action',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ exchange: true }, { exchange: true }] }],
-    text: '交換所と同じく、売るか買うを2回してよい（マスに置かずに）。',
-  },
-  {
-    id: 's_smuggle', kind: 'spell', name: '抜け荷', engine: ['trade', 'ally'], mech: 'accrue',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ gain: { mat: 2, gold: 2 } }] }],
-    text: '素材2と金貨2を得る。',
-  },
-  {
-    id: 's_appraisal', kind: 'spell', name: '鑑定の呪文', engine: ['trade', 'ruins'], mech: 'action',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ gain: { gold: 2 } }, { draw: { from: 'item', look: 2, take: 1 } }] }],
-    text: '金貨2を得て、品物の山から2枚見て1枚を手札に。',
-  },
-  // ---- fort ----
-  {
-    id: 's_stoneskin', kind: 'spell', name: '石の肌', engine: ['fort', 'boss'], mech: 'combat',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ guard: 3 }, { no_injury: 1 }] }],
-    text: 'このラウンドの自分の戦闘で守り+3、負傷を1人防ぐ。',
-  },
-  {
-    id: 's_earthwork', kind: 'spell', name: '土塁起こし', engine: ['fort'], mech: 'action',
-    cost: { mana: 2 },
-    effects: [{ when: 'play', do: [{ build: 'wall', discount: { wood: 2, iron: 1 } }, { build: 'wall', discount: { wood: 2 } }] }],
-    text: '防壁を1つ建てる（木材2・鉄1安い）。続けて、もう1つ建ててよい（木材2安い）。',
-  },
-  {
-    id: 's_sanctuary', kind: 'spell', name: '聖域', engine: ['fort', 'quest'], mech: 'endfame',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ fame_per: { stat: 'walls', per: 2, max: 3 } }] }],
-    text: '防壁2つにつき名声+1（最大3）。',
-  },
-  {
-    id: 's_reinforce', kind: 'spell', name: '補強工事', engine: ['fort', 'gather'], mech: 'action',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ build: 'any', discount: { wood: 2 } }] }],
-    text: '寝床・防壁・施設を1つ建てる（木材2安い）。',
-  },
-  // ---- smith ----
-  {
-    id: 's_quench', kind: 'spell', name: '焼き入れの秘法', engine: ['smith'], mech: 'action',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ craft: 'any' }, { fame: 1 }] }],
-    text: '装備を1つ作る（費用は払う。マスに置かずに）。名声+1。',
-  },
-  {
-    id: 's_forge_fire', kind: 'spell', name: '炉の火', engine: ['smith', 'gather'], mech: 'accrue',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ gain: { iron: 2 } }, { future: { rounds: [1, 2], gain: { iron: 1 } } }] }],
-    text: '鉄2を得る。次の2ラウンドの始めに鉄1ずつ届く。',
-  },
-  {
-    id: 's_enchant', kind: 'spell', name: '付与術', engine: ['smith', 'arcane'], mech: 'action',
-    cost: { mana: 2 },
-    effects: [{ when: 'play', do: [{ draw: { from: 'weapon', look: 3, take: 1 } }, { power: 2 }] }],
-    text: '武具の山から3枚見て1枚を手札に。このラウンドの自分の戦闘で戦力+2。',
-  },
-  {
-    id: 's_mend', kind: 'spell', name: '修繕の呪文', engine: ['smith', 'fort'], mech: 'action',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ craft: 'armor' }, { heal: 1 }] }],
-    text: '防具を1つ作る（費用は払う。マスに置かずに）。負傷した仲間1人を回復。',
-  },
-  {
-    id: 's_masterstroke', kind: 'spell', name: '会心の一打', engine: ['smith', 'hunt'], mech: 'combat',
-    cost: { mana: 1 },
-    effects: [{ when: 'fight', if: { min: { gear: 3 } }, do: [{ power: 4 }], limit: 'game' }],
-    text: '持たせた装備が3つ以上のとき、戦闘中に手札から使う：戦力+4。使い切り。',
-  },
-  // ---- family ----
-  {
-    id: 's_feast', kind: 'spell', name: '宴', engine: ['family', 'ally'], mech: 'social',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ gain: { food: 4 } }, { others_gain: { food: 1 } }] }],
-    text: '食料4を得る。他の人全員も食料1を得る。',
-  },
-  {
-    id: 's_blessing', kind: 'spell', name: '子宝の祈り', engine: ['family'], mech: 'action',
-    cost: { mana: 2 },
-    effects: [{ when: 'play', do: [{ pay: { food: 4 } }, { hire: 1 }] }],
-    text: '食料4を払い、仲間を1人雇う（寝床が要る）。',
-  },
-  {
-    id: 's_lullaby', kind: 'spell', name: '子守唄', engine: ['family', 'boss'], mech: 'action',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ heal: 2 }, { gain: { food: 1 } }] }],
-    text: '負傷した仲間を2人まで回復する。食料1を得る。',
-  },
-  {
-    id: 's_tutelage', kind: 'spell', name: '手ほどき', engine: ['family', 'fort'], mech: 'action',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ train: 'any' }, { train: 'any' }] }],
-    text: '仲間に熟練+1を2回つける（攻めか守り。同じ仲間でもよい）。',
-  },
-  // ---- arcane ----
-  {
-    id: 's_mana_surge', kind: 'spell', name: '魔力の奔流', engine: ['arcane'], mech: 'convert',
-    cost: { herb: 2 },
-    effects: [{ when: 'play', do: [{ gain: { mana: 3 } }] }],
-    text: '薬草2で使う。魔石3を得る。',
-  },
-  {
-    id: 's_scry', kind: 'spell', name: '遠見の術', engine: ['arcane', 'ruins'], mech: 'action',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ draw: { from: 'spell', look: 3, take: 2 } }] }],
-    text: '秘術の山から3枚見て2枚を手札に。',
-  },
-  {
-    id: 's_magic_bolt', kind: 'spell', name: '魔弾', engine: ['arcane'], mech: 'combat',
-    cost: { mana: 2 },
-    effects: [{ when: 'fight', do: [{ power: 4 }], limit: 'game' }],
-    text: '戦闘中に手札から使う：戦力+4。使い切り。',
-  },
-  // ---- beast ----
-  {
-    id: 's_beast_speech', kind: 'spell', name: '獣の言葉', engine: ['beast'], mech: 'instead',
-    cost: { mana: 2 },
-    effects: [{ when: 'play', do: [{ tame: true }, { gain: { mat: 1 } }] }],
-    text: '巣にいる獣1体を、戦わずに使い魔にする。素材1を得る。',
-  },
-  {
-    id: 's_pack_howl', kind: 'spell', name: '群れの遠吠え', engine: ['beast'], mech: 'combat',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', if: { min: { pets: 1 } }, do: [{ power: 3 }, { counter: -1 }] }],
-    text: '使い魔がいるときに使える。このラウンドの自分の戦闘で戦力+3・反撃−1。',
-  },
-  {
-    id: 's_wild_bounty', kind: 'spell', name: '獣の恵み', engine: ['beast', 'gather'], mech: 'accrue',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ gain_per: { stat: 'pets', per: 1, gain: { food: 1, mat: 1 }, max: 3 } }] }],
-    text: '使い魔1体につき食料1・素材1を得る（最大3回）。',
-  },
-  {
-    id: 's_beast_heart', kind: 'spell', name: '獣の心', engine: ['beast'], mech: 'combat',
-    cost: { mana: 1 },
-    effects: [{ when: 'fight', if: { race: 'beast' }, do: [{ power: 3 }, { counter: -2 }], limit: 'game' }],
-    text: '獣との戦闘中に手札から使う：戦力+3・反撃−2。使い切り。',
-  },
-  // ---- quest ----
-  {
-    id: 's_contract', kind: 'spell', name: '契約書', engine: ['quest', 'trade'], mech: 'accrue',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ gain: { gold: 3 } }, { future: { rounds: [2], gain: { gold: 2 } } }] }],
-    text: '金貨3を得る。2ラウンド後の始めに金貨2が届く。',
-  },
-  {
-    id: 's_recommendation', kind: 'spell', name: '推薦状', engine: ['quest', 'family'], mech: 'action',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ occ: 1 }, { gain: { food: 1 } }] }],
-    text: '手札の職能を1枚出す（費用は払う。マスに置かずに）。食料1を得る。',
-  },
-  {
-    id: 's_bounty_mark', kind: 'spell', name: '賞金の印', engine: ['quest'], mech: 'combat',
-    cost: { mana: 1 },
-    effects: [{ when: 'fight', do: [{ trophy: 2 }, { power: 1 }], limit: 'game' }],
-    text: '戦闘中に手札から使う：戦力+1、勝てば証+2。使い切り。',
-  },
-  // ---- ally ----
-  {
-    id: 's_rally', kind: 'spell', name: '結集の号令', engine: ['ally'], mech: 'combat',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ power: 2 }, { guard: 2 }] }],
-    text: 'このラウンドの自分の戦闘で戦力+2・守り+2。',
-  },
-  {
-    id: 's_kinship', kind: 'spell', name: '絆の誓い', engine: ['ally', 'family'], mech: 'combat',
-    cost: { mana: 1 },
-    effects: [{ when: 'fight', if: { coop: true }, do: [{ power: 3 }, { no_injury: 2 }], limit: 'game' }],
-    text: '共闘の戦闘中に手札から使う：戦力+3、負傷を2人まで防ぐ。使い切り。',
-  },
-  {
-    id: 's_gift', kind: 'spell', name: '贈り物', engine: ['ally', 'trade'], mech: 'social',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ gain: { gold: 2, food: 2 } }, { others_gain: { food: 1 } }, { fame: 1 }] }],
-    text: '金貨2・食料2を得て名声+1。他の人全員も食料1を得る。',
-  },
-  {
-    id: 's_shared_sight', kind: 'spell', name: '共有の視界', engine: ['ally', 'quest'], mech: 'action',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', do: [{ ignore_full: true }, { power: 1 }] }],
-    text: 'このラウンド、定員の埋まったマス・巣にも1回置ける。自分の戦闘で戦力+1。',
-  },
-  // ---- ruins ----
-  {
-    id: 's_unseal', kind: 'spell', name: '封印解き', engine: ['ruins'], mech: 'action',
-    cost: { mana: 1, herb: 1 },
-    effects: [{ when: 'play', do: [{ draw: { from: 'ancient', look: 1, take: 1 } }, { gain: { gold: 2 } }] }],
-    text: '古代の品を1枚引き、金貨2を得る。',
-  },
-  {
-    id: 's_echo', kind: 'spell', name: '古の残響', engine: ['ruins', 'arcane'], mech: 'endfame',
-    cost: { mana: 1 },
-    effects: [{ when: 'play', if: { min: { ancient: 2 } }, do: [{ fame_per: { stat: 'ancient', per: 1, max: 3 } }] }],
-    text: '古代の品を2つ以上持っているときに使える。古代の品1つにつき名声+1（最大3）。',
-  },
-  {
-    id: 's_ward_breaker', kind: 'spell', name: '結界破り', engine: ['ruins', 'boss'], mech: 'combat',
-    cost: { mana: 1 },
-    effects: [{ when: 'fight', if: { race: ['undead', 'spirit'] }, do: [{ str: -3 }], limit: 'game' }],
-    text: '不死・精霊との戦闘中に手札から使う：魔物の強さ−3。使い切り。',
-  },
-  // ---- boss ----
-  {
-    id: 's_heroic_oath', kind: 'spell', name: '英雄の誓い', engine: ['boss'], mech: 'combat',
-    cost: { mana: 1 },
-    effects: [{ when: 'fight', if: { boss: true }, do: [{ power: 4 }, { trophy: 1 }], limit: 'game' }],
-    text: '主・古竜との戦闘中に手札から使う：戦力+4、勝てば証+1。使い切り。',
-  },
-  {
-    id: 's_last_stand', kind: 'spell', name: '背水の陣', engine: ['boss', 'fort'], mech: 'combat',
-    cost: { mana: 1 },
-    effects: [{ when: 'fight', if: { boss: true }, do: [{ guard: 3 }, { no_injury: 2 }, { power: 2 }], limit: 'game' }],
-    text: '主・古竜との戦闘中に手札から使う：戦力+2・守り+3、負傷を2人まで防ぐ。使い切り。',
-  },
-  {
-    id: 's_holy_light', kind: 'spell', name: '聖なる光', engine: ['boss', 'arcane'], mech: 'combat',
-    cost: { mana: 2 },
-    effects: [{ when: 'fight', if: { race: ['undead', 'dragon'] }, do: [{ power: 4 }], limit: 'game' }],
-    text: '不死・竜との戦闘中に手札から使う：戦力+4。使い切り。',
-  },
-];
+export const SPELLS: CardDef[] = withText([
+  // ================= 使い切り（50）
+  // ---- 魔石1
+  S('s_spark', '火花', ['arcane', 'hunt'], { mana: 1 }, [fight([{ power: 2 }])], { weight: 'light' }),
+  S('s_stone_skin', '石の肌', ['arcane', 'fort'], { mana: 1 }, [fight([{ guard: 2 }])], { weight: 'light' }),
+  S('s_slow', '鈍足の呪い', ['arcane', 'boss'], { mana: 1 }, [fight([{ counter: -2 }])], { weight: 'light' }),
+  S('s_illusion', '幻影', ['arcane'], { mana: 1 }, [fight([{ power: 1 }, { counter: -1 }])], { weight: 'light' }),
+  S('s_plunder', '略奪の呪文', ['hunt', 'trade'], { mana: 1 }, [fight([{ loot: 2 }])], { weight: 'light' }),
+  S('s_heal', '癒やしの光', ['boss', 'family'], { mana: 1 }, [play([{ heal: 2 }])], { weight: 'light' }),
+  S('s_growth', '森の恵み', ['gather'], { mana: 1 }, [play([{ gain: { wood: 3 } }])], { weight: 'light' }),
+  S('s_transmute', '錬成', ['smith', 'gather'], { mana: 1 }, [play([{ gain: { iron: 2 } }])], { weight: 'light' }),
+  S('s_bounty', '豊穣', ['family', 'gather'], { mana: 1 }, [play([{ gain: { food: 3 } }])], { weight: 'light' }),
+  S('s_scry', '先見', ['arcane', 'bridge'], { mana: 1 }, [play([{ draw: { from: 'item', look: 3, take: 1 } }])], { weight: 'light' }),
+  S('s_quick_study', '速習', ['arcane'], { mana: 1 }, [play([{ draw: { from: 'spell', look: 2, take: 1 } }])], { weight: 'light' }),
+  S('s_recruit', '勧誘の術', ['bridge', 'family'], { mana: 1 }, [play([{ draw: { from: 'occ', look: 2, take: 1 } }])], { weight: 'light' }),
+  S('s_market_charm', '商いの呪い', ['trade'], { mana: 1 }, [play([{ exchange: true }])], { weight: 'light' }),
+  S('s_first_strike', '先制', ['ally', 'quest'], { mana: 1 }, [play([{ first: true }, { gain: { food: 1 } }])], { weight: 'light' }),
+  S('s_pet_frenzy', '獣の昂り', ['beast'], { mana: 1 }, [fight([powPer('pets', 1, 2, 4)])], { weight: 'light' }),
+  S('s_armor_glow', '鎧の輝き', ['fort', 'arcane'], { mana: 1 }, [fight([powPer('armors', 1, 1, 3)])], { weight: 'light' }),
+  S('s_tool_magic', '道具の目覚め', ['fort', 'gather'], { mana: 1 }, [play([{ gain_per: { stat: 'tools', per: 1, gain: { mat: 1 }, max: 3 } }])], { weight: 'light' }),
+  S('s_mana_tide', '魔力の潮', ['arcane'], { mana: 1 }, [play([{ gain: { mana: 2 } }])], { weight: 'light' }),
+  S('s_relic_whisper', '遺物のささやき', ['ruins'], { mana: 1, herb: 1 }, [play([{ shard: 1 }])], { weight: 'light' }),
+  // ---- 魔石2
+  S('s_haste', '疾風', ['arcane', 'family'], { mana: 2 }, [play([{ extra_worker: 1 }])], { weight: 'mid' }),
+  S('s_fireball', '火球', ['arcane', 'hunt'], { mana: 2 }, [fight([{ power: 4 }])], { weight: 'mid' }),
+  S('s_weaken', '弱体の呪い', ['arcane', 'boss'], { mana: 2 }, [fight([{ str: -2 }])], { weight: 'mid' }),
+  S('s_mass_heal', '大いなる癒やし', ['boss'], { mana: 2 }, [play([{ heal: 6 }, { gain: { herb: 1 } }])], { weight: 'mid' }),
+  S('s_gold_touch', '黄金の指', ['trade'], { mana: 2 }, [play([{ gain: { gold: 4 } }])], { weight: 'mid' }),
+  S('s_train', '鍛錬の加護', ['family', 'hunt'], { mana: 2 }, [play([{ train: 'any' }])], { weight: 'mid' }),
+  S('s_ward', '護りの結界', ['fort', 'boss'], { mana: 2 }, [fight([{ no_injury: 2 }, { guard: 1 }])], { weight: 'mid' }),
+  S('s_glory', '栄光の歌', ['hunt', 'quest'], { mana: 2 }, [fight([{ trophy: 1 }])], { weight: 'mid' }),
+  S('s_beast_call', '獣寄せ', ['beast'], { mana: 2 }, [play([{ tame: true }])], { weight: 'mid' }),
+  S('s_relic_sense', '遺物探知', ['ruins'], { mana: 2 }, [play([{ shard: 1 }, { gain: { mana: 1 } }])], { weight: 'mid' }),
+  S('s_forge_spark', '鍛冶の火', ['smith'], { mana: 2 }, [play([{ craft: 'any' }])], { weight: 'mid' }),
+  S('s_build_spell', '建築の術', ['fort'], { mana: 2 }, [play([{ build: 'any' }])], { weight: 'mid' }),
+  S('s_recall', '呼び戻し', ['bridge', 'gather'], { mana: 2 }, [play([{ place_again: true }])], { weight: 'mid' }),
+  S('s_boss_bane', '主殺しの印', ['boss'], { mana: 2 }, [fight([{ power: 5 }], { boss: true })], { weight: 'mid' }),
+  S('s_dragon_ward', '竜除け', ['boss'], { mana: 2 }, [fight([{ counter: -3 }], { boss: true })], { weight: 'mid' }),
+  S('s_blade_dance', '剣の舞', ['hunt', 'smith'], { mana: 2 }, [fight([powPer('sent_wpow', 2, 1, 4)])], { weight: 'mid' }),
+  S('s_coin_storm', '金貨の嵐', ['trade', 'hunt'], { mana: 2 }, [fight([powPer('gold', 3, 1, 4)])], { weight: 'mid' }),
+  S('s_feast', '宴', ['family'], { mana: 2 }, [play([{ gain: { food: 5 } }])], { weight: 'mid' }),
+  S('s_last_rites', '最後の祈り', ['boss', 'gather'], { mana: 2 }, [play([{ heal: 2 }, { gain: { herb: 2 } }])], { weight: 'mid' }),
+  // ---- 魔石3
+  S('s_meteor', '隕石落とし', ['arcane', 'boss'], { mana: 3 }, [fight([{ power: 6 }])], { weight: 'heavy' }),
+  S('s_curse_doom', '破滅の呪詛', ['arcane', 'boss'], { mana: 3 }, [fight([{ str: -4 }])], { weight: 'heavy' }),
+  S('s_summon_ally', '呼び声', ['family'], { mana: 3, food: 2 }, [play([{ hire_free: 1 }])], { weight: 'heavy' }),
+  S('s_blessing', '祝福', ['arcane', 'quest'], { mana: 3 }, [play([{ fame: 2 }])], { weight: 'heavy' }),
+  S('s_excavate', '発掘の術', ['ruins'], { mana: 3 }, [play([{ shard: 2 }])], { weight: 'heavy' }),
+  S('s_time_loop', '時の輪', ['arcane'], { mana: 3 }, [play([{ future: { rounds: [1, 2, 3], gain: { mana: 1 } } }])], { weight: 'heavy' }),
+  S('s_fame_echo', '名声のこだま', ['arcane'], { mana: 3 }, [play([famePer('casts_round', 1, 3)])], { weight: 'heavy' }),
+  // ---- 呪い（守りを下げる・仲間が傷つく代わりに強い）
+  S('s_rage_spell', '狂乱', ['hunt', 'boss'], { mana: 1 }, [fight([{ power: 3 }, { guard: -2 }])], { weight: 'curse' }),
+  S('s_blood_pact', '血の盟約', ['arcane', 'boss'], { mana: 1 }, [play([{ injure: 1 }, { gain: { mana: 3 } }])], { weight: 'curse' }),
+  S('s_dark_bargain', '闇の取引', ['trade', 'boss'], { mana: 2 }, [play([{ injure: 1 }, { gain: { gold: 5 } }])], { weight: 'curse' }),
+  S('s_frenzy', '我を忘れて', ['hunt'], { mana: 2 }, [fight([{ power: 5 }, { counter: 2 }])], { weight: 'curse' }),
+  S('s_sacrifice', '生贄', ['boss', 'arcane'], { mana: 2 }, [fight([powPer('injured', 1, 3, 6)])], { weight: 'curse' }),
+
+  // ================= 何度でも（30）：身につける費用・1手番の回数・唱える費用
+  TM('tm_firebolt', '炎の矢', ['arcane', 'hunt'], { mana: 2, mat: 1 }, 2, { mana: 1 }, [fight([{ power: 2 }])], { weight: 'mid', fame: 1 }),
+  TM('tm_shield', '守りの印', ['arcane', 'fort'], { mana: 2 }, 2, { mana: 1 }, [fight([{ guard: 2 }])], { weight: 'mid', fame: 1 }),
+  TM('tm_mend', '手当ての術', ['boss', 'family'], { mana: 2, herb: 1 }, 1, { mana: 1 }, [play([{ heal: 1 }])], { weight: 'mid', fame: 1 }),
+  TM('tm_harvest', '収穫の詩', ['family', 'gather'], { mana: 3 }, 1, { mana: 1 }, [play([{ gain: { food: 2 } }])], { weight: 'mid', fame: 1 }),
+  TM('tm_lumber', '森の囁き', ['gather'], { mana: 2, wood: 1 }, 1, { mana: 1 }, [play([{ gain: { wood: 2 } }])], { weight: 'mid', fame: 1 }),
+  TM('tm_ore', '鉱脈の声', ['smith', 'gather'], { mana: 3 }, 1, { mana: 1 }, [play([{ gain: { iron: 1, mat: 1 } }])], { weight: 'mid', fame: 1 }),
+  TM('tm_goldsmith', '金細工の術', ['trade'], { mana: 3, gold: 2 }, 2, { mana: 1 }, [play([{ gain: { gold: 2 } }])], { weight: 'mid', fame: 1 }),
+  TM('tm_lightning', '稲妻', ['arcane', 'hunt'], { mana: 3, mat: 1 }, 1, { mana: 2 }, [fight([{ power: 4 }])], { weight: 'mid', fame: 1 }),
+  TM('tm_starfall', '星落とし', ['arcane', 'boss'], { mana: 4, mat: 2 }, 1, { mana: 3 }, [fight([{ power: 5 }])], { weight: 'heavy', fame: 2 }),
+  TM('tm_hex', '衰弱の呪い', ['arcane', 'boss'], { mana: 3 }, 1, { mana: 2 }, [fight([{ str: -2 }])], { weight: 'mid', fame: 1 }),
+  TM('tm_bulwark', '城壁の結界', ['fort', 'boss'], { mana: 3, iron: 1 }, 1, { mana: 1 }, [fight([{ no_injury: 1 }, { counter: -1 }])], { weight: 'mid', fame: 1 }),
+  TM('tm_scholar', '学究', ['arcane', 'bridge'], { mana: 3 }, 1, { mana: 2 }, [play([{ draw: { from: 'spell', look: 2, take: 1 } }])], { weight: 'mid', fame: 1 }),
+  TM('tm_chant', '詠唱', ['arcane'], { mana: 2 }, 3, { mana: 1 }, [play([{ gain: { herb: 1 } }])], { weight: 'light' }),
+  TM('tm_glory', '凱歌', ['arcane', 'quest'], { mana: 4, gold: 2 }, 1, { mana: 3 }, [play([{ fame: 1 }])], { weight: 'heavy', fame: 2 }),
+  TM('tm_beast_bond', '獣の絆', ['beast'], { mana: 2, food: 2 }, 1, { mana: 1 }, [fight([powPer('pets', 1, 1, 3)])], { weight: 'mid', fame: 1 }),
+  TM('tm_tame', '調伏の呪文', ['beast'], { mana: 3, food: 2 }, 1, { mana: 2 }, [play([{ tame: true }])], { weight: 'heavy', fame: 2 }),
+  TM('tm_relic_call', '遺物の呼び声', ['ruins'], { mana: 4, mat: 2 }, 1, { mana: 2 }, [play([{ shard: 1 }])], { weight: 'heavy', fame: 2 }),
+  TM('tm_appraisal', '目利きの術', ['trade'], { mana: 2, gold: 2 }, 1, { mana: 1 }, [play([{ exchange: true }])], { weight: 'mid', fame: 1 }),
+  TM('tm_forge', '炉の加護', ['smith'], { mana: 3, iron: 2 }, 1, { mana: 2 }, [play([{ craft: 'any' }])], { weight: 'heavy', fame: 2 }),
+  TM('tm_build', '築城の術', ['fort'], { mana: 3, wood: 2 }, 1, { mana: 2 }, [play([{ build: 'any' }])], { weight: 'heavy', fame: 2 }),
+  TM('tm_blade', '刃の祝福', ['smith', 'hunt'], { mana: 2, iron: 1 }, 2, { mana: 1 }, [fight([powPer('sent_wpow', 2, 1, 2)])], { weight: 'mid', fame: 1 }),
+  TM('tm_aegis', '鎧の加護', ['fort'], { mana: 2, mat: 1 }, 2, { mana: 1 }, [fight([powPer('armors', 2, 1, 2)])], { weight: 'mid', fame: 1 }),
+  TM('tm_tool', '道具の歌', ['fort', 'gather'], { mana: 2, wood: 1 }, 1, { mana: 1 }, [play([{ gain_per: { stat: 'tools', per: 2, gain: { mat: 1 }, max: 2 } }])], { weight: 'mid', fame: 1 }),
+  TM('tm_courage', '勇気の歌', ['ally', 'family'], { mana: 2, food: 1 }, 1, { mana: 1 }, [fight([{ power: 3 }], { k_min: 2 })], { weight: 'mid', fame: 1 }),
+  TM('tm_ward_boss', '主への守り', ['boss'], { mana: 3 }, 1, { mana: 2 }, [fight([{ counter: -3 }, { power: 2 }], { boss: true })], { weight: 'mid', fame: 1 }),
+  TM('tm_echo', '残響', ['arcane'], { mana: 3, mat: 1 }, 1, { mana: 2 }, [play([famePer('casts_round', 2, 2)])], { weight: 'heavy', fame: 2 }),
+  TM('tm_merchant', '商人の口上', ['trade'], { mana: 2, gold: 3 }, 1, { mana: 1 }, [play([{ convert: { from: { mat: 2 }, to: { gold: 5 } } }])], { weight: 'mid', fame: 1 }),
+  TM('tm_mana_font', '魔力の泉', ['arcane', 'gather'], { mana: 4, mat: 1 }, 1, { mana: 1, herb: 2 }, [play([{ gain: { mana: 3 } }])], { weight: 'heavy', fame: 2 }),
+  // 呪い
+  TM('tm_blood', '血の詠唱', ['arcane', 'boss'], { mana: 1 }, 3, { mana: 1 }, [play([{ injure: 1 }, { gain: { mana: 2 } }])], { weight: 'curse' }),
+  TM('tm_fury', '怒りの火', ['hunt', 'boss'], { mana: 2 }, 2, { mana: 1 }, [fight([{ power: 3 }, { guard: -2 }])], { weight: 'curse' }),
+]);

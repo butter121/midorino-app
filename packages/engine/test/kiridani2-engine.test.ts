@@ -64,16 +64,18 @@ describe('kiridani2 名声', () => {
     expect(DATA.tableFor(15).kills).toEqual([2, 8, 14, 20]);
     expect(DATA.tableFor(15).races).toEqual([1, 3, 4, 5]);
   });
-  it('古代の品：同じ種類2つ＝2、3つ＝5、4種そろい＝6（重複なし）', () => {
+  it('遺物：同じ種類2つ＝3、3つ＝6、4つ＝9、5種そろい＝6（重複なし）', () => {
     const g = new Game(2, [null, null], { cards: CARD_SET });
     const p = g.players[0];
     const ids = [...g.anc.values()];
     const grp = (k: string) => ids.filter((a) => a.group === k).map((a) => a.id);
     const groups = [...new Set(ids.map((a) => a.group))];
     p.ancient = grp(groups[0]).slice(0, 2);
-    expect(ancientScore(g, p)).toBe(2);
+    expect(ancientScore(g, p)).toBe(3);
     p.ancient = grp(groups[0]).slice(0, 3);
-    expect(ancientScore(g, p)).toBe(5);
+    expect(ancientScore(g, p)).toBe(6);
+    p.ancient = grp(groups[0]).slice(0, 4);
+    expect(ancientScore(g, p)).toBe(9);
     p.ancient = groups.map((k) => grp(k)[0]);
     expect(ancientScore(g, p)).toBe(6);
     p.ancient = [...groups.map((k) => grp(k)[0]), grp(groups[0])[1]];

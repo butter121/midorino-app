@@ -6,11 +6,11 @@ import { CARD_SET } from '@midorino/engine/src/kiridani2';
 import { CardPicture, KIND_COLOR, kindOf } from '../src/kiridani2/art2';
 import { CardFace2 } from '../src/kiridani2/parts2';
 
-const ALL = [...CARD_SET.leaders, ...CARD_SET.occupations, ...CARD_SET.weapons, ...CARD_SET.tools, ...CARD_SET.spells, ...CARD_SET.gear, ...CARD_SET.stages, ...CARD_SET.quests, ...CARD_SET.ancient];
+const ALL = [...CARD_SET.leaders, ...CARD_SET.occupations, ...CARD_SET.weapons, ...CARD_SET.armors, ...CARD_SET.tools, ...CARD_SET.spells, ...CARD_SET.gear, ...CARD_SET.stages, ...CARD_SET.quests, ...CARD_SET.ancient, ...CARD_SET.pets];
 
 describe('霧谷 v2：カードの絵', () => {
   it('全カードに種類があり、種類の色が決まっている', () => {
-    expect(ALL.length).toBe(346);
+    expect(ALL.length).toBe(584);
     for (const c of ALL) {
       const k = kindOf(c.id);
       expect(k, c.id).toBeTruthy();

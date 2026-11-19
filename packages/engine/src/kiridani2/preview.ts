@@ -67,7 +67,7 @@ export function previewFight(g0: Game, p0: Player, o: Option): FightPreview | nu
       fateOf = q;
     }
   }
-  const need0 = mon.str - mon.wounds;
+  const need0 = mode === 'capture' ? g.captureNeed(p, mon) : mon.str - mon.wounds;
   const idxs = g.compsFor(p, o);
   const pl = g.makePlan(p, mon, idxs, mode === 'wait' ? 'wait' : mode, coop, need0 - acc, mode === 'wait' ? undefined : o.use);
   const strength = need0 + accStr + pl.str;
@@ -86,7 +86,7 @@ export function previewFight(g0: Game, p0: Player, o: Option): FightPreview | nu
   } else for (const [v, pr] of fate) if (total + v >= strength) pwin += pr;
   const guard = g.defense(p, pl);
   const counter = Math.max(0, mon.counter + pl.counter);
-  const injuries = pl.rearAll ? 0 : Math.max(0, Math.min(idxs.length, counter - guard - pl.noInj));
+  const injuries = g.mods(p).rage > 0 ? 0 : Math.max(0, Math.min(idxs.length, counter - guard - pl.noInj));
   return {
     monster: mon, power: pl.power, partner: acc, need: strength, pwin, cost: pl.cost, boosts: pl.boosts, counter, guard, injuries, idxs,
     short: !canPay(p, pl.cost), chips: pl.chips ?? [], keys: pl.keys ?? [], parts: pl.parts, fate, fateNeed: strength - total,
@@ -126,6 +126,10 @@ export function optionLabel(g: Game, p: Player | null, o: Option): { title: stri
   if (o.s === '@spell') {
     const c = g.card(o.card!);
     return { title: `${c.name}を使う`, detail: c.text, card: o.card, cost: p ? g.cardCost(p, o.card!) : c.cost };
+  }
+  if (o.s === '@learn') {
+    const c = g.card(o.card!);
+    return { title: `${c.name}を身につける`, detail: c.text, card: o.card, cost: p ? g.learnCost(p, o.card!) : c.tome?.learn };
   }
   if (o.i === -1 && o.card) {
     const c = g.card(o.card);

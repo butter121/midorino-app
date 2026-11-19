@@ -157,7 +157,7 @@ export function decodeGame(s: Snapshot): Game {
   g.cs = CARD_SET; g.byId = m.byId; g.quest = m.quest; g.anc = m.anc;
   const hidden = (n: number) => Array.from({ length: n }, () => '?');
   const ds = deckSizes ?? {};
-  g.decks = { leader: hidden(ds.leader ?? 0), occ: hidden(ds.occ ?? 0), weapon: hidden(ds.weapon ?? 0), tool: hidden(ds.tool ?? 0), spell: hidden(ds.spell ?? 0), ancient: hidden(ds.ancient ?? 0), secret: hidden(ds.secret ?? 0) };
+  g.decks = { leader: hidden(ds.leader ?? 0), occ: hidden(ds.occ ?? 0), weapon: hidden(ds.weapon ?? 0), armor: hidden(ds.armor ?? 0), tool: hidden(ds.tool ?? 0), spell: hidden(ds.spell ?? 0), ancient: hidden(ds.ancient ?? 0), secret: hidden(ds.secret ?? 0) };
   g.players = players.map((o) => {
     const p = Object.create(Player.prototype) as Player;
     const { isAI: _a, ...fields } = o;
@@ -497,7 +497,7 @@ export class ShadowSession implements SeatSession2 {
     switch (pr.k) {
       case 'card': this.waiting = { k: 'card', g, p, why: pr.why ?? 'draw', cards: pr.cards ?? [], ...(pr.kind ? { kind: pr.kind } : {}) }; break;
       case 'ratio': this.waiting = { k: 'ratio', g, p, options: pr.ratios ?? [] }; break;
-      case 'kind': this.waiting = { k: 'kind', g, p, options: pr.kinds ?? [], left: pr.ratioLeft ?? { weapon: 0, tool: 0, spell: 0 } }; break;
+      case 'kind': this.waiting = { k: 'kind', g, p, options: pr.kinds ?? [], left: pr.ratioLeft ?? { weapon: 0, armor: 0, tool: 0, spell: 0 } }; break;
       case 'choose': this.waiting = { k: 'choose', g, p, opts: pr.opts ?? [] }; break;
       case 'heal': this.waiting = { k: 'heal', g, p, comp: pr.comp ?? 0, cost: pr.cost ?? {} }; break;
       case 'effect': this.waiting = { k: 'effect', g, p, card: pr.card ?? '', when: pr.when ?? '', ops: (pr.ops ?? []) as never, ei: pr.ei }; break;
