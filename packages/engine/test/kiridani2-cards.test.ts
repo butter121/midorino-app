@@ -170,4 +170,12 @@ describe('kiridani2 cards', () => {
     const names = PLAYABLE.map((c) => c.name);
     expect(names.filter((n, i) => names.indexOf(n) !== i)).toEqual([]);
   });
+  it('説明文は決まった言い方（英字なし・かっこが重ならない・【いつ】で始まる効果）', () => {
+    for (const c of [...PLAYABLE, ...PETS, ...GEAR]) {
+      expect(c.text, c.id).not.toMatch(/[A-Za-z]/);
+      expect(c.text, c.id).not.toMatch(/）（/);
+      expect(c.text, c.id).not.toMatch(/につき/);
+      if (c.effects.length) expect(c.text, c.id).toMatch(/【/);
+    }
+  });
 });

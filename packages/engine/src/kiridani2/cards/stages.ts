@@ -144,7 +144,7 @@ export const STAGES: StageDef[] = [
       opt([{ shard: 2 }]),
       { when: 'use' as const, do: [{ pay: { mana: 2 } }, { fame: 2 }], limit: 'year' as const },
     ],
-    text: '次のどれか：遺物の欠片+2／魔石2を捧げて名声2（1年に1回）。',
+    text: '次のどれか：遺物の欠片+2／魔石2を捧げて名声2（1年1回）。',
   },
   {
     id: 'pilgrim', kind: 'stage', stage: 4, name: '巡礼路', engine: ['quest', 'boss'], mech: 'action',
