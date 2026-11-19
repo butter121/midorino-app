@@ -15,17 +15,17 @@ export const OCCUPATIONS: CardDef[] = withText([
   O('o_runesmith', '刻印師', ['smith', 'arcane'], [fight([powPer('sent_wpow', 2, 1, 2)], { min: { casts_round: 1 } })]),
   O('o_spellblade', '魔法剣士', ['arcane', 'hunt'], [fight([powPer('weapons', 1, 1, 2)], { min: { tomes: 1 } })]),
   // ---- 防具と組む
-  O('o_shieldbearer', '盾持ち', ['fort'], [fight([powPer('armors', 1, 1, 3)])]),
+  O('o_shieldbearer', '盾持ち', ['fort'], [fight([powPer('armors', 1, 1, 3), { guard: 1 }])]),
   O('o_martyr', '殉教者', ['boss', 'quest'], [on('injure', [{ fame: 1 }])]),
   O('o_thorn_knight', '茨の騎士', ['boss', 'fort'], [hit([famePer('dmg', 1, 2)])]),
-  O('o_armorer', '防具職人', ['smith', 'fort'], [passive({ cost_discount: { kind: 'armor', res: { iron: 1 } } }), end([famePer('armors', 2, 3)])]),
+  O('o_armorer', '防具職人', ['smith', 'fort'], [passive({ cost_discount: { kind: 'armor', res: { iron: 1 } } }), end([famePer('armors', 1, 4)])]),
   O('o_sentinel', '番兵', ['fort'], [fight([{ guard: 1 }]), hit([{ gain: { herb: 1 } }])]),
   O('o_berserker', '狂戦士', ['hunt', 'boss'], [passive({ rage: 3 }), fight([{ guard: -1 }])], { weight: 'curse' }),
   // ---- 道具と組む
   O('o_engineer', '技師', ['fort', 'gather'], [on('build', [{ fame: 1 }])]),
   O('o_inventor', '発明家', ['fort', 'gather'], [passive({ cost_discount: { kind: 'tool', res: { wood: 1 } } }), end([famePer('tools', 2, 3)])]),
   O('o_quartermaster', '補給係', ['gather'], [passive({ tool_yield: 1 })]),
-  O('o_trapper', '罠師', ['fort', 'hunt'], [fight([powPer('tools', 2, 1, 2)])]),
+  O('o_trapper', '罠師', ['fort', 'hunt'], [fight([powPer('tools', 1, 1, 3)])]),
   O('o_toolmaster', '道具の匠', ['fort', 'arcane'], [on('build', [{ gain: { mana: 1 } }])]),
   // ---- 秘術と組む
   O('o_sage', '賢者', ['arcane'], [end([famePer('casts', 3, 6)])]),

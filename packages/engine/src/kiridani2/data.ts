@@ -39,7 +39,7 @@ export const GUARD_MODE = { power: -2, counter: -2 };
 export const MORALE: [Cost, number] = [{ food: 1 }, 1];
 export const POTION: [Cost, number] = [{ herb: 2 }, 1];
 /** ギルドで職能を出す費用（1枚目・2枚目から） */
-export const OCC_FOOD = [1, 2, 2, 3, 3, 4];
+export const OCC_FOOD = [1, 2, 3, 3, 4, 5];
 export const QUEST_FAME = [4, 3, 2];
 export const SECRET_FAME = 5;
 /** 古竜：主と同じ式で t=1・格 grade・per[年数]（調整：仕様は強さ20固定）。証 trophy を割合で分け、参加者に join、負けると全員 −fail */
@@ -58,7 +58,7 @@ export const sellPrice = (r: Res) => Math.max(1, BUY[r] - 1);
 // ---- 古代の品（遺物）の組：同じ種類 2つ＝2、3つ＝5、4つ＝8。5種そろい（各1つ以上）＝6
 export const ANCIENT_SAME = [0, 0, 3, 6, 9];
 /** 遺物の組の名声の年数の倍率（遺物は20枚しかないので、長い試合でも数が伸びにくい分を補う） */
-export const ANCIENT_SCALE: Record<number, number> = { 5: 1, 10: 1.3, 15: 1.8 };
+export const ANCIENT_SCALE: Record<number, number> = { 5: 1, 10: 1.4, 15: 2.2 };
 export const ANCIENT_ALL = 6;
 /** 遺物1枚に要る欠片の数 */
 export const SHARD_NEED = 3;
@@ -69,7 +69,7 @@ export const SHARD_RACES: string[] = ['undead', 'spirit'];
 /** 準備で取る品物の数（武器・防具・道具・秘術の割合の合計） */
 export const ITEM_COUNT = 6;
 /** 使い魔：捕まえにくさ（格 −1/0/+1）・捕まえる食料＝強さ÷foodDiv（切り上げ）・戦力＝強さ÷powerDiv（切り上げ）・持てる数・連れて行ける数 */
-export const CAPTURE = { ease: { '-1': 1, '0': 2, '1': 4 } as Record<string, number>, foodDiv: 4, powerDiv: 4, powerMax: 5, cap: 3, bring: 1 };
+export const CAPTURE = { ease: { '-1': 1, '0': 2, '1': 4 } as Record<string, number>, foodDiv: 4, powerDiv: 4, powerMax: 4, cap: 3, bring: 1 };
 /** 傭兵（戦闘の後押し）：金貨2で戦力+1、送った人数まで */
 export const MERC: [Cost, number] = [{ gold: 2 }, 1];
 /** 足りない資源を金貨で：作る・建てる・職能を出すとき、1回に max 個まで、買値+premium の金貨で */
@@ -104,7 +104,7 @@ export const TABLE_SCALE: Record<number, number> = { 5: 1, 10: 1.6, 15: 2 };
 /** 終わりの点（分野表の点・仲間の点・金貨の上限）の倍率。試合中の名声はラウンド数に比例して増えるので、年数に比例させる（調整） */
 export const POINT_SCALE: Record<number, number> = { 5: 1, 10: 2, 15: 3 };
 /** 種族は5種しかない・使い魔は持てる数が決まっているので伸ばさない */
-export const TABLE_NOSCALE = new Set(['races', 'pets']);
+export const TABLE_NOSCALE = new Set(['races', 'pets', 'boss', 'quests', 'ancient']);
 const tableCache = new Map<number, Record<string, number[]>>();
 export function tableFor(years: number): Record<string, number[]> {
   let t = tableCache.get(years);

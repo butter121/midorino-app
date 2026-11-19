@@ -35,7 +35,7 @@ export const ENGINE_W: Partial<Record<EngineTag, (w: W) => void>> = {
   hunt: (w) => { w.perm += 0.12; w.res.iron += 0.1; },
   gather: (w) => { for (const r of ['wood', 'iron', 'herb', 'mat'] as Res[]) w.res[r] += 0.1; },
   trade: (w) => { w.res.gold += 0.1; w.res.mat += 0.1; },
-  fort: (w) => { w.wall += 0.5; w.res.wood += 0.1; },
+  fort: (w) => { w.wall += 0.5; w.res.wood += 0.1; w.res.food += 0.15; },
   smith: (w) => { w.res.iron += 0.15; w.perm += 0.08; },
   family: (w) => { w.res.food += 0.05; },
   arcane: (w) => { w.res.mana += 0.3; },
@@ -43,7 +43,7 @@ export const ENGINE_W: Partial<Record<EngineTag, (w: W) => void>> = {
   quest: (w) => { w.quest += 0.5; w.res.gold += 0.05; },
   ally: (w) => { w.perm += 0.05; },
   ruins: (w) => { w.ancient += 0.5; w.res.mana += 0.1; },
-  boss: (w) => { w.defn += 0.1; w.perm += 0.1; w.res.herb += 0.1; w.res.food += 0.1; },
+  boss: (w) => { w.defn += 0.1; w.perm += 0.1; w.res.herb += 0.05; w.res.food += 0.3; },
   bridge: (w) => { w.played += 0.2; },
 };
 

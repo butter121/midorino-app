@@ -1994,7 +1994,8 @@ export class Game {
         yield* this.addPet(p, mon);
       } else if (win) {
         // 勝ったときの効果（loot / trophy を足すものもあるので先に）
-        yield* this.fire(p, 'win', { plan: pl }, fenv, pl.idxs);
+        // 主・古竜は年数によらず数が決まっているので、主に勝ったときの名声は年数の倍率をかける
+        yield* this.fire(p, 'win', { plan: pl, ...(boss ? { fameScale: D.POINT_SCALE[this.years] ?? 1 } : {}) }, fenv, pl.idxs);
         yield* this.fire(p, `win_race:${mon.race}`, { plan: pl }, fenv, pl.idxs);
         // 戦利品（共闘は戦力の割合で分ける。端数は後から来た人）
         const units: Res[] = [];
