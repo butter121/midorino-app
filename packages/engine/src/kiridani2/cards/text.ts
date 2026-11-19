@@ -124,7 +124,7 @@ export function opJP(op: Op, scaled = false): string {
     case 'first': return '先手になる';
     case 'donate': { const d = v as { pay: Cost; fame: number }; return `${costText(d.pay)}を寄進して名声+${d.fame}`; }
     case 'fame_per': { const f = v as { stat: StatKey; per: number; max?: number }; return `${n_(f.stat, f.per)}ごとに名声+1${paren([f.max !== undefined && `最大${f.max}`, yr])}`; }
-    case 'gain_per': { const g = v as { stat: StatKey; per: number; gain: Cost; max?: number }; return `${n_(g.stat, g.per)}ごとに${costText(g.gain)}を得る${paren([g.max !== undefined && `最大${g.max}回`])}`; }
+    case 'gain_per': { const g = v as { stat: StatKey; per: number; gain: Cost; max?: number }; const tot = g.max !== undefined ? Object.fromEntries(Object.entries(g.gain).map(([r, n]) => [r, (n as number) * g.max!])) as Cost : undefined; return `${n_(g.stat, g.per)}ごとに${costText(g.gain)}を得る${paren([tot && `1度に最大${costText(tot)}`])}`; }
     case 'others_gain': return `ほかの人全員が${costText(v)}を得る`;
     case 'power_per': { const p = v as { stat: StatKey; per: number; mult?: number; max?: number }; return `${n_(p.stat, p.per)}ごとに戦力${sign(p.mult ?? 1)}${paren([p.max !== undefined && `最大${p.max}`])}`; }
     case 'lose': return `${costText(v)}を失う`;
