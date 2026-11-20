@@ -18,6 +18,8 @@ const SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter'];
 /** 定員を無視して置く効果が使えないマス（取り合いのマスを独り占めしないように） */
 const NO_IGNORE_FULL = new Set(['market', 'market2', 'ruins', 'dig', 'curio']);
 export const ITEM_KINDS = ['weapon', 'armor', 'tool', 'spell'] as const;
+/** 準備のドラフトの束（cards：残り、taken：誰かが1枚取った、held：持ったことのある席） */
+export interface Pack { cards: string[]; taken: boolean; held: number[] }
 export type ItemKind = (typeof ITEM_KINDS)[number];
 export type Ratio = Record<ItemKind, number>;
 
@@ -677,10 +679,14 @@ export class Game {
     this.emit({ t: 'first_player', seat: this.first });
     const order = this.turnOrder();
     // 準備段階の選択は全員が同時に選ぶ（オンラインでは同時に聞く。カードは先手から順に配る）
-    // 1. リーダー：山から1人 per 枚ずつ配る（リーダーは12人なので、人数が多いと見られる枚数が減る）
+    // 1. リーダー：1人に戦闘1枚・探索1枚を見せる（ほかの人と同じカードは見えない）。戦闘・探索が足りないときは残りから
     {
-      const per = Math.max(1, Math.min(5, Math.floor(this.decks.leader.length / this.n)));
-      const shows = order.map((p) => { const show = this.decks.leader.splice(0, per); this.emit({ t: 'leader_offer', seat: p.pid, cards: [...show] }); return show; });
+      const take = (role: 'fight' | 'explore') => {
+        const d = this.decks.leader;
+        const i = d.findIndex((c) => this.card(c).role === role);
+        return i >= 0 ? d.splice(i, 1) : d.splice(0, 1);
+      };
+      const shows = order.map((p) => { const show = [...take('fight'), ...take('explore')]; this.emit({ t: 'leader_offer', seat: p.pid, cards: [...show] }); return show; });
       const picks: string[] = yield* this.askAll(order.map((p, i) => ({ k: 'card', g: this, p, why: 'leader', cards: shows[i] }) as Req));
       order.forEach((p, i) => {
         const c = picks[i];
@@ -691,8 +697,10 @@ export class Game {
       });
       rng.shuffle(this.decks.leader);
     }
-    // 2. 職能×3：1周ごとに先手から5枚ずつ配り、全員が同時に1枚選ぶ。残りは山に戻して混ぜ、次の周は配り直す
-    for (let lap = 0; lap < 3; lap++) yield* this.draftAll(order, order.map(() => 'occ' as const), 'occ');
+    // 2. 職能×3：山を5枚の束6つに分け、1周ごとに1人1束ずつ渡して全員同時に1枚。
+    //    自分が持った束は二度と渡さず、まだ誰も取っていない束を先に渡す。残りは最後に山に戻す
+    const packs: Partial<Record<'occ' | ItemKind, Pack[]>> = { occ: this.makePacks('occ') };
+    for (let lap = 0; lap < 3; lap++) yield* this.draftPacks(order, order.map(() => 'occ' as const), packs, 'occ');
     // 3〜4. 割合と品物×ITEM_COUNT（武器・防具・道具・秘術）
     const ratios: Ratio[] = [];
     const N = D.ITEM_COUNT;
@@ -700,12 +708,13 @@ export class Game {
     const ras: Ratio[] = yield* this.askAll(order.map((p) => ({ k: 'ratio', g: this, p, options: ratios }) as Req));
     order.forEach((p, i) => { p.ratio = { ...ras[i] }; this.emit({ t: 'ratio', seat: p.pid, ratio: { ...ras[i] } }); });
     const left = new Map(order.map((p) => [p.pid, { ...p.ratio }]));
+    for (const k of ITEM_KINDS) packs[k] = this.makePacks(k);
     for (let j = 0; j < D.ITEM_COUNT; j++) {
       // どの種類を取るか（全員同時）→ その種類の山から5枚ずつ配って全員同時に1枚
       const who: Player[] = [], reqs: Req[] = [], kindsOf: ItemKind[][] = [];
       for (const p of order) {
         const lf = left.get(p.pid)!;
-        const kinds = ITEM_KINDS.filter((k) => lf[k] > 0 && this.decks[k].length > 0);
+        const kinds = ITEM_KINDS.filter((k) => lf[k] > 0 && this.packFor(p, k, packs));
         if (!kinds.length) continue;
         who.push(p); kindsOf.push(kinds);
         reqs.push({ k: 'kind', g: this, p, options: kinds, left: { ...lf } });
@@ -715,8 +724,9 @@ export class Game {
       const ans: ItemKind[] = yield* this.askAll(many.map((i) => reqs[i]));
       const kinds = who.map((_, i) => (kindsOf[i].length > 1 ? ans[many.indexOf(i)] : kindsOf[i][0]));
       who.forEach((p, i) => { if (!kindsOf[i].includes(kinds[i])) throw new Error('bad kind'); left.get(p.pid)![kinds[i]] -= 1; });
-      yield* this.draftAll(who, kinds, 'item');
+      yield* this.draftPacks(who, kinds, packs, 'item');
     }
+    this.returnPacks(packs);
     // 5. 始めの2枚（費用なし）：職能を全員同時に選んで出し、次に品物を全員同時に選んで出す
     {
       const who = order.filter((p) => p.hand.some((c) => this.card(c).kind === 'occ'));
@@ -780,41 +790,70 @@ export class Game {
     if (k === 'weapon' || k === 'armor' || k === 'tool' || k === 'spell' || k === 'occ') this.decks[k].push(id);
   }
 
-  /** 何人かに山から5枚ずつ配り（先手から順に）、全員同時に1枚選ぶ。残りは山に戻して混ぜる */
-  private *draftAll(ps: Player[], decks: ('occ' | ItemKind)[], why: CardWhy): Gen {
-    const shows = ps.map((p, i) => {
-      const d = this.decks[decks[i]];
-      const show = d.splice(0, Math.min(5, d.length));
-      if (show.length) this.emit({ t: 'draft_offer', seat: p.pid, kind: decks[i], cards: p.pid === this.me || this.me < 0 ? [...show] : show.map(() => '?') });
-      return show;
-    });
-    const idx = ps.map((_, i) => i).filter((i) => shows[i].length);
-    const picks: string[] = yield* this.askAll(idx.map((i) => ({ k: 'card', g: this, p: ps[i], why, cards: shows[i], kind: decks[i] }) as Req));
+  /** 山を混ぜて5枚の束を最大 PACKS 個作る（山からは抜く。returnPacks で戻す） */
+  private makePacks(kind: 'occ' | ItemKind): Pack[] {
+    const d = this.rng.shuffle(this.decks[kind]);
+    const out: Pack[] = [];
+    while (out.length < D.PACKS && d.length) out.push({ cards: d.splice(0, D.PACK_SIZE), taken: false, held: [] });
+    return out;
+  }
+  /** 束に残ったカードを全部山に戻して混ぜる */
+  private returnPacks(packs: Partial<Record<'occ' | ItemKind, Pack[]>>) {
+    for (const [k, ps] of Object.entries(packs) as ['occ' | ItemKind, Pack[]][]) {
+      for (const pk of ps) this.decks[k].push(...pk.cards);
+      this.rng.shuffle(this.decks[k]);
+    }
+  }
+  /** p がまだ持っていない、カードの残っている束があるか */
+  private packFor(p: Player, kind: 'occ' | ItemKind, packs: Partial<Record<'occ' | ItemKind, Pack[]>>): boolean {
+    return (packs[kind] ?? []).some((pk) => pk.cards.length && !pk.held.includes(p.pid));
+  }
+  /** 束の割り当て：1人1束・同じ束は2人に渡さない・自分が持った束は渡さない。
+   *  まだ誰も取っていない束をできるだけ多く使う（同じ数ならくじ）。渡せない人は null */
+  private assignPacks(ps: Player[], packs: Pack[]): (Pack | null)[] {
+    const order = this.rng.shuffle(packs.map((_, i) => i));
+    let best: (number | null)[] = ps.map(() => null), bestScore = -1;
+    const cur: (number | null)[] = [];
+    const used = new Set<number>();
+    const score = () => cur.reduce<number>((a, i) => a + (i === null ? 0 : 100 + (packs[i].taken ? 0 : 1)), 0);
+    const dfs = (j: number) => {
+      if (j === ps.length) { const sc = score(); if (sc > bestScore) { bestScore = sc; best = [...cur]; } return; }
+      // まだ取られていない束から試す
+      const cand = order.filter((i) => !used.has(i) && packs[i].cards.length && !packs[i].held.includes(ps[j].pid)).sort((a, b) => Number(packs[a].taken) - Number(packs[b].taken));
+      for (const i of cand) { used.add(i); cur.push(i); dfs(j + 1); cur.pop(); used.delete(i); }
+      cur.push(null); dfs(j + 1); cur.pop();
+    };
+    dfs(0);
+    return best.map((i) => (i === null ? null : packs[i]));
+  }
+  /** 何人かに束を1つずつ渡し（種類ごとに割り当て）、全員同時に1枚選ぶ。選ばれたカードは束から抜ける */
+  private *draftPacks(ps: Player[], kinds: ('occ' | ItemKind)[], packs: Partial<Record<'occ' | ItemKind, Pack[]>>, why: CardWhy): Gen {
+    const got: (Pack | null)[] = ps.map(() => null);
+    for (const k of new Set(kinds)) {
+      const idx = ps.map((_, i) => i).filter((i) => kinds[i] === k);
+      const a = this.assignPacks(idx.map((i) => ps[i]), packs[k] ?? []);
+      idx.forEach((i, j) => { got[i] = a[j]; });
+    }
+    const idx = ps.map((_, i) => i).filter((i) => got[i]);
+    for (const i of idx) {
+      const p = ps[i], pk = got[i]!;
+      pk.held.push(p.pid);
+      this.emit({ t: 'draft_offer', seat: p.pid, kind: kinds[i], cards: p.pid === this.me || this.me < 0 ? [...pk.cards] : pk.cards.map(() => '?') });
+    }
+    const picks: string[] = yield* this.askAll(idx.map((i) => ({ k: 'card', g: this, p: ps[i], why, cards: [...got[i]!.cards], kind: kinds[i] }) as Req));
     idx.forEach((i, j) => {
-      const p = ps[i], c = picks[j];
-      if (!shows[i].includes(c)) throw new Error('bad pick');
+      const p = ps[i], pk = got[i]!, c = picks[j];
+      const at = pk.cards.indexOf(c);
+      if (at < 0) throw new Error('bad pick');
+      pk.cards.splice(at, 1);
+      pk.taken = true;
       p.hand.push(c);
       p.picked.push(c);
-      this.decks[decks[i]].push(...shows[i].filter((x) => x !== c));
-      this.emit({ t: 'draft_pick', seat: p.pid, kind: decks[i], card: p.pid === this.me || this.me < 0 ? c : '?' });
+      this.emit({ t: 'draft_pick', seat: p.pid, kind: kinds[i], card: p.pid === this.me || this.me < 0 ? c : '?' });
     });
-    for (const k of new Set(idx.map((i) => decks[i]))) this.rng.shuffle(this.decks[k]);
   }
 
-  /** 山から5枚見て1枚（残りは戻して混ぜる） */
-  private *draftOne(p: Player, deck: 'occ' | ItemKind, why: CardWhy): Gen {
-    const d = this.decks[deck];
-    const show = d.splice(0, Math.min(5, d.length));
-    if (!show.length) return;
-    this.emit({ t: 'draft_offer', seat: p.pid, kind: deck, cards: p.pid === this.me || this.me < 0 ? [...show] : show.map(() => '?') });
-    const c: string = yield* this.ask({ k: 'card', g: this, p, why, cards: show, kind: deck });
-    if (!show.includes(c)) throw new Error('bad pick');
-    p.hand.push(c);
-    p.picked.push(c);
-    d.push(...show.filter((x) => x !== c));
-    this.rng.shuffle(d);
-    this.emit({ t: 'draft_pick', seat: p.pid, kind: deck, card: p.pid === this.me || this.me < 0 ? c : '?' });
-  }
+
 
   // ------------------------------------------------------------ ラウンドの始め（§3.1）
   *startRound(): Gen {
@@ -835,15 +874,26 @@ export class Game {
         this.emit({ t: 'boss_reveal', boss: { ...this.bossOf[wr] }, round: wr });
       }
       if (D.REFILL_YEARS[this.years].includes(y)) {
-        for (const p of this.turnOrder()) {
-          yield* this.draftOne(p, 'occ', 'refill_occ');
-          for (let j = 0; j < 2; j++) {
-            const kinds = ITEM_KINDS.filter((k) => this.decks[k].length > 0);
-            if (!kinds.length) break;
-            const kind: ItemKind = kinds.length === 1 ? kinds[0] : yield* this.ask({ k: 'kind', g: this, p, options: kinds, left: { weapon: 1, armor: 1, tool: 1, spell: 1 } });
-            yield* this.draftOne(p, kind, 'refill_item');
+        // 品物を2枚足す（職能は足さない）。準備と同じく、種類も1枚も全員同時に選び、束で配る
+        const ps = this.turnOrder();
+        const packs: Partial<Record<'occ' | ItemKind, Pack[]>> = {};
+        for (const k of ITEM_KINDS) packs[k] = this.makePacks(k);
+        for (let j = 0; j < 2; j++) {
+          const who: Player[] = [], reqs: Req[] = [], kindsOf: ItemKind[][] = [];
+          for (const p of ps) {
+            const kinds = ITEM_KINDS.filter((k) => this.packFor(p, k, packs));
+            if (!kinds.length) continue;
+            who.push(p); kindsOf.push(kinds);
+            reqs.push({ k: 'kind', g: this, p, options: kinds, left: { weapon: 1, armor: 1, tool: 1, spell: 1 } });
           }
+          if (!who.length) break;
+          const many = reqs.map((_, i) => (kindsOf[i].length > 1 ? i : -1)).filter((i) => i >= 0);
+          const ans: ItemKind[] = yield* this.askAll(many.map((i) => reqs[i]));
+          const kinds = who.map((_, i) => (kindsOf[i].length > 1 ? ans[many.indexOf(i)] : kindsOf[i][0]));
+          who.forEach((_, i) => { if (!kindsOf[i].includes(kinds[i])) throw new Error('bad kind'); });
+          yield* this.draftPacks(who, kinds, packs, 'refill_item');
         }
+        this.returnPacks(packs);
       }
     }
     // 段階カード

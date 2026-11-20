@@ -243,6 +243,8 @@ export interface CardDef {
   slot?: 'weapon' | 'armor' | null;
   two_hand?: boolean;
   leader_only?: boolean;
+  /** リーダーの種類：戦闘（fight）か探索（explore）。準備では1人に1枚ずつ見せる */
+  role?: 'fight' | 'explore';
   power?: number;
   guard?: number;
   /** 何度でも使える秘術：手札から learn を払って身につけ、そのあとは cost（唱える費用）を払えば1手番に uses 回まで使える */

@@ -120,6 +120,9 @@ export function tableFor(years: number): Record<string, number[]> {
 
 // ---- 主・補充の時期（年）
 export const BOSS_YEARS: Record<number, number[]> = { 5: [1, 2, 3, 4], 10: [2, 4, 6, 8], 15: [3, 6, 9, 12] };
+/** 準備のドラフト：束の数と1束の枚数（職能・品物の種類ごとに 5枚×6束） */
+export const PACKS = 6;
+export const PACK_SIZE = 5;
 export const REFILL_YEARS: Record<number, number[]> = { 5: [3], 10: [4, 7], 15: [4, 7, 10, 13] };
 
 // ---- 行動マス（始めから＋人数で増える）

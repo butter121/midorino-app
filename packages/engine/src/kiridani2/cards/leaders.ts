@@ -4,7 +4,14 @@ import type { CardDef } from '../types';
 import { L, fight, win, on, end, passive, powPer, famePer } from './mk';
 import { withText } from './text';
 
-export const LEADERS: CardDef[] = withText([
+/** リーダーの種類（戦闘6人・探索6人）。準備では1人に戦闘1枚と探索1枚を見せる */
+export const LEADER_ROLE: Record<string, 'fight' | 'explore'> = {
+  l_akane: 'fight', l_doran: 'fight', l_gareth: 'fight', l_haru: 'fight', l_mina: 'fight', l_goro: 'fight',
+  l_kai: 'explore', l_popo: 'explore', l_miro: 'explore', l_iska: 'explore', l_jin: 'explore', l_momo: 'explore',
+};
+function withRole(cs: CardDef[]): CardDef[] { for (const c of cs) c.role = LEADER_ROLE[c.id]; return cs; }
+
+export const LEADERS: CardDef[] = withRole(withText([
   // 武器で討伐：武器を持たせた仲間ほど強く、勝つたびに名声
   L('l_akane', '双剣のアカネ', ['hunt', 'smith'], [on('setup', [{ draw: { from: 'weapon', look: 3, take: 1 } }]), fight([powPer('sent_wpow', 2, 1, 3)]), win([{ fame: 1 }], undefined, 'round')]),
   // 主狩り：主にめっぽう強く、主に勝つと大きな名声
@@ -29,4 +36,5 @@ export const LEADERS: CardDef[] = withText([
   L('l_momo', '鍋番のモモ', ['family'], [passive({ upkeep: -1, bed_cap: 1 }), on('hire', [{ gain: { food: 2 } }]), on('round_end', [{ fame: 1 }], { min: { comps: 4 } })]),
   // 防壁：防壁が戦力と食料に。建てるたびに名声
   L('l_goro', '城塞の騎士ゴロウ', ['fort'], [fight([powPer('walls', 1, 1, 4)]), passive({ cost_discount: { kind: 'wall', res: { wood: 1 } } }), on('build', [{ fame: 1 }], { min: { walls: 1 } }, 'round'), on('winter', [{ gain_per: { stat: 'walls', per: 1, gain: { food: 1 }, max: 3 } }])]),
-]);
+]));
+
