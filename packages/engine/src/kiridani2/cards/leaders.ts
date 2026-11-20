@@ -1,40 +1,75 @@
-// 霧谷の冒険者団 v2 — リーダー（12 人）。1人1つの「強い動き」を持ち、その動きをするたびに名声が入る（永続の名声）。
-// 職能・品物はこの12の動きを助けるように選んである。ほかの人の動きを止める効果は持たせない。
-import type { CardDef } from '../types';
-import { L, fight, win, on, end, passive, powPer, famePer } from './mk';
-import { withText } from './text';
+// 霧谷の冒険者団 v2 — リーダー（12 人。K さんの案）。戦闘6人・探索6人。
+// 効果の決まりは engine.ts（LEAD と is(p, …) の場所）にあり、数字は data.ts の LEADER で変える。
+// 効果はリーダー本人だけでなく、その人の駒（仲間）全員に効く。ここではカードの名前・種類・説明だけを持つ。
+import { LEADER as V } from '../data';
+import type { CardDef, EngineTag } from '../types';
+import { L } from './mk';
 
 /** リーダーの種類（戦闘6人・探索6人）。準備では1人に戦闘1枚と探索1枚を見せる */
 export const LEADER_ROLE: Record<string, 'fight' | 'explore'> = {
-  l_akane: 'fight', l_doran: 'fight', l_gareth: 'fight', l_haru: 'fight', l_mina: 'fight', l_goro: 'fight',
-  l_kai: 'explore', l_popo: 'explore', l_miro: 'explore', l_iska: 'explore', l_jin: 'explore', l_momo: 'explore',
+  l_akane: 'fight', l_jin: 'fight', l_mina: 'fight', l_gareth: 'fight', l_haru: 'fight', l_doran: 'fight',
+  l_iska: 'explore', l_goro: 'explore', l_popo: 'explore', l_momo: 'explore', l_kai: 'explore', l_miro: 'explore',
 };
-function withRole(cs: CardDef[]): CardDef[] { for (const c of cs) c.role = LEADER_ROLE[c.id]; return cs; }
 
-export const LEADERS: CardDef[] = withRole(withText([
-  // 武器で討伐：武器を持たせた仲間ほど強く、勝つたびに名声
-  L('l_akane', '双剣のアカネ', ['hunt', 'smith'], [on('setup', [{ draw: { from: 'weapon', look: 3, take: 1 } }]), fight([powPer('sent_wpow', 2, 1, 3)]), win([{ fame: 1 }], undefined, 'round')]),
-  // 主狩り：主にめっぽう強く、主に勝つと大きな名声
-  L('l_doran', '竜騎士ドラン', ['boss', 'hunt'], [fight([{ power: 5 }, { counter: -2 }], { boss: true }), win([{ fame: 4 }], { boss: true }), win([{ fame: 1 }], undefined, 'year')]),
-  // 守り：防具の数がそのまま戦力に。反撃を受け止めるたびに名声
-  L('l_gareth', '鉄壁のガレス', ['fort'], [fight([powPer('armors', 1, 1, 4)]), passive({ base_guard: 1 }), win([{ fame: 1 }], { min: { armors: 2 } }, 'round')]),
-  // 鍛冶：鍛冶場で2つ作れる。作るたびに名声
-  L('l_kai', '鍛冶師カイ', ['smith'], [on('use:forge', [{ craft: 'any' }]), passive({ cost_discount: { kind: 'weapon', res: { iron: 1 } } }), on('craft', [{ fame: 1 }], undefined, 'round')]),
-  // 道具：工房で2つ建てられる。建てるたびに名声
-  L('l_popo', '小さな発明家ポポ', ['gather', 'fort'], [on('setup', [{ draw: { from: 'tool', look: 3, take: 1 } }]), on('use:workshop', [{ build: 'facility' }]), passive({ cost_discount: { kind: 'tool', res: { wood: 1 } } }), on('build', [{ fame: 1 }], undefined, 'round')]),
-  // 秘術：毎ラウンド魔石。使い切りの秘術を手札に戻せる。唱えるたびに名声
-  L('l_mina', '魔女ミナ', ['arcane'], [on('round_start', [{ gain: { mana: 1 } }]), passive({ spell_return: 1 }), on('spell', [{ fame: 1 }], undefined, 'round')]),
-  // 獣使い：狩場で獣を仲間にできる。使い魔が強く、仲間にするたびに名声
-  L('l_haru', '獣王ハル', ['beast'], [on('use:hunt', [{ tame: true }]), passive({ pet_power: 1, pet_cap: 1 }), on('tame', [{ fame: 1 }])]),
-  // 商い：売値＝買値、扱える数+1。売るたびに名声
-  L('l_miro', '大商人ミロ', ['trade'], [passive({ sell_full: true, market_qty: 1, gold_cap: 4 }), on('sell', [{ fame: 1 }], undefined, 'round')]),
-  // 遺物集め：欠片が少なくてすむ。遺物の数だけ名声
-  L('l_iska', '発掘王女イスカ', ['ruins'], [passive({ shard_need: 1, ancient_look: 1 }), on('setup', [{ shard: 1 }]), on('use:dig', [{ shard: 1 }]), end([famePer('ancient', 1, 5)])]),
-  // 依頼：依頼を達成すると大きく得る。依頼板を使うたびに名声
-  L('l_jin', '賞金首のジン', ['quest', 'hunt'], [on('quest', [{ gain: { gold: 3 } }, { fame: 2 }]), on('use:board', [{ fame: 1 }], undefined, 'round'), win([{ gain: { gold: 1 } }], undefined, 'round')]),
-  // 大所帯：維持費が安く寝床がいらない分だけ人を増やせる。人数が多いと毎ラウンド名声
-  L('l_momo', '鍋番のモモ', ['family'], [passive({ upkeep: -1, bed_cap: 1 }), on('hire', [{ gain: { food: 2 } }]), on('round_end', [{ fame: 1 }], { min: { comps: 4 } })]),
-  // 防壁：防壁が戦力と食料に。建てるたびに名声
-  L('l_goro', '城塞の騎士ゴロウ', ['fort'], [fight([powPer('walls', 1, 1, 4)]), passive({ cost_discount: { kind: 'wall', res: { wood: 1 } } }), on('build', [{ fame: 1 }], { min: { walls: 1 } }, 'round'), on('winter', [{ gain_per: { stat: 'walls', per: 1, gain: { food: 1 }, max: 3 } }])]),
-]));
+const x = (n: number) => (n === 2 ? '2倍' : n === 3 ? '3倍' : `${n}倍`);
+const def = (id: string, name: string, engine: EngineTag[], lines: string[]): CardDef => ({ ...L(id, name, engine, []), role: LEADER_ROLE[id], text: lines.join('\n') });
 
+export const LEADERS: CardDef[] = [
+  // ---- 戦闘
+  def('l_akane', '戦闘の天才', ['hunt', 'smith'], [
+    `武器の戦力と、武器の効果が${x(V.genius.weaponMult)}。`,
+    `戦闘に勝ったとき、得る証が${x(V.genius.trophyMult)}。`,
+  ]),
+  def('l_jin', '無限の努力家', ['hunt'], [
+    `熟練の上限+${V.striver.skillCap}。熟練の効き目が${x(V.striver.skillMult)}。`,
+    `戦闘に勝ったとき、送った仲間全員の熟練の合計÷${V.striver.fameDiv}の名声。`,
+  ]),
+  def('l_mina', '最高の魔術師', ['arcane'], [
+    `秘術を使ったあと、魔石${V.mage.mana}を得るか、秘術を${V.mage.draw}枚引く（1ラウンド${V.mage.perRound}回まで）。`,
+    `戦闘に勝ったとき、その戦闘で使った秘術の数だけ名声。`,
+  ]),
+  def('l_gareth', '盾の勇者', ['fort'], [
+    '守りを戦力として数える。',
+    '運命カードの影響を受けない。',
+    `戦闘に勝ったとき、守りが反撃を上回った数÷${V.shield.fameDiv}の名声。`,
+  ]),
+  def('l_haru', '孤高のテイマー', ['beast'], [
+    '巣の魔物を倒せない。巣の魔物と戦うかわりに、好物をあげて使い魔にできる（主・古竜は倒せる）。',
+    `好物は魔物ごとに決まった食料・資源・素材で、強さ÷${V.tamer.favDiv}（切り上げ）個いる。`,
+    'ラウンドの終わりに、使い魔の数だけ名声。',
+  ]),
+  def('l_doran', '巨人狩り山田', ['boss', 'hunt'], [
+    '両手武器しか持てない。',
+    `主・古竜と戦うとき、戦力${x(V.giant.bossMult)}。`,
+    `主にいちばん貢献して勝ったとき名声+${V.giant.bossFame}、古竜なら名声+${V.giant.dragonFame}。`,
+  ]),
+  // ---- 探索
+  def('l_iska', '偉大な探検家', ['ruins', 'quest'], [
+    `冬に要る食料−${V.explorer.upkeep}。`,
+    `冒険のマスに置くと、その効果が${x(V.explorer.mult)}。`,
+    `試合の終わりに、古代の遺物の数×${V.explorer.ancientFame}の名声。`,
+  ]),
+  def('l_goro', '自宅警備員', ['fort'], [
+    '毎ラウンドの始めに、費用を払って防壁を作れる。',
+    '冬に防いだ襲撃の数だけ名声。',
+    `試合の終わりに、防壁の数だけ名声（防いだ襲撃の合計が${V.guard.lowBlocked}以下なら${x(V.guard.lowMult)}）。`,
+  ]),
+  def('l_popo', '採集家', ['gather'], [
+    `マスで集める資源が${x(V.gatherer.mult)}。`,
+    `ラウンドの終わりに、持っている資源の数÷${V.gatherer.fameDiv}の名声。`,
+  ]),
+  def('l_momo', '詐欺師', ['trade'], [
+    '取引に相手の了承がいらない（出す数と受け取る数は同じ）。',
+    '試合の終わりに、取引した回数だけ名声。',
+  ]),
+  def('l_kai', '器用な職人', ['gather', 'fort'], [
+    '工房にほかの人がいても使える。',
+    `道具を作る費用が、資源・素材あわせて${V.crafter.discount}少ない。`,
+    `道具を作るたびに名声+${V.crafter.fame}。`,
+  ]),
+  def('l_miro', '伝説の商人', ['trade'], [
+    `試合の始めに、資源・素材を${V.merchant.start}個ずつ持つ。`,
+    `資源・素材の売値+${V.merchant.sellBonus}。`,
+    `試合の終わりに、持っている金貨÷${V.merchant.goldDiv}の名声。`,
+  ]),
+];

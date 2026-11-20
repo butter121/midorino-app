@@ -128,7 +128,9 @@ describe('kiridani2 試合', () => {
     // 職能の1巡目は先手から
     expect(ev.filter((e) => e.t === 'draft_offer').slice(0, 4).map((e) => (e as { seat: number }).seat)).toEqual([2, 3, 0, 1]);
     // 食料の追加は手番の順（先手が 0）
-    const food = ev.filter((e) => e.t === 'grant' && (e as { reason: string }).reason === '開始時').map((e) => [(e as { seat: number }).seat, (e as { gain: { food: number } }).gain.food]);
+    // 伝説の商人は始めに資源を LEADER.merchant.start 個ずつ多く持つので、その分を引いて比べる
+    const merch = (seat: number) => (s.g.players[seat].leader === 'l_miro' ? DATA.LEADER.merchant.start : 0);
+    const food = ev.filter((e) => e.t === 'grant' && (e as { reason: string }).reason === '開始時').map((e) => [(e as { seat: number }).seat, (e as { gain: { food: number } }).gain.food - merch((e as { seat: number }).seat)]);
     expect(Object.fromEntries(food)).toEqual({ 2: DATA.START.food + 0, 3: DATA.START.food + 1, 0: DATA.START.food + 1, 1: DATA.START.food + 2 });
     // 1ラウンド目の先手・最初の手番
     const rs = ev.find((e) => e.t === 'round_start') as { first: number };

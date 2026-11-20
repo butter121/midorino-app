@@ -57,15 +57,9 @@ export const placeName = (id: string) => DATA.SPACE[id]?.name ?? CARD2[id]?.name
  * 行動マスのまとまり（盤面で同じ役割のマスを並べる）。段階カードのマスも出たらここで分ける。
  * 載っていない id（新しい段階カードなど）はカードの強い動きの種類で分け、それも無ければ「冒険」。
  */
-export const SPACE_GROUPS: { id: string; jp: string; ids: string[] }[] = [
-  { id: 'gather', jp: '資源を集める', ids: ['forest', 'grove', 'mine', 'deepmine', 'meadow', 'herb2', 'spring', 'hunt', 'plaza', 'lodge', 'bazaar', 'explore'] },
-  { id: 'craft', jp: '作る・建てる', ids: ['forge', 'workshop', 'training', 'drill', 'walls', 'upgrade', 'bigforge', 'clearing'] },
-  { id: 'trade', jp: '取引・お金', ids: ['market', 'market2', 'peddler', 'outpost', 'caravan', 'tradepost', 'temple', 'envoy', 'treasury'] },
-  { id: 'people', jp: '仲間・家族', ids: ['guild', 'hall', 'tavern', 'family', 'hero', 'recommend'] },
-  { id: 'adventure', jp: '冒険', ids: ['board', 'ruins', 'library', 'altar', 'kennel', 'raid', 'pilgrim', 'prepare', 'infirmary', 'triumph'] },
-];
+export const SPACE_GROUPS = DATA.SPACE_GROUPS;
 const GROUP_OF: Record<string, string> = Object.fromEntries(SPACE_GROUPS.flatMap((g) => g.ids.map((id) => [id, g.id])));
-const GROUP_BY_TAG: Record<string, string> = { gather: 'gather', smith: 'craft', fort: 'craft', trade: 'trade', family: 'people', bridge: 'people' };
+const GROUP_BY_TAG = DATA.SPACE_GROUP_BY_TAG;
 export function spaceGroupOf(id: string): string {
   if (GROUP_OF[id]) return GROUP_OF[id];
   const tags = (CARD2[id] as { engine?: string[] } | undefined)?.engine ?? [];

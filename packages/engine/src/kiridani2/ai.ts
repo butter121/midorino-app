@@ -237,6 +237,9 @@ export class AI implements Brain {
   choiceValue(g: Game, p: Player, x: Choice): number {
     if (typeof x === 'string') {
       if (x === 'bed') return p.comps.length >= g.bedCap(p) ? 2 : 0.5;
+      if (x === 'mage:draw') return 1.2;
+      if (x === 'mage:mana') return 1;
+      if (x === 'skip') return 0;
       if (x === 'wall') return 1.5 + (this.targets.includes('fort') ? 1 : 0);
       if (x === 'atk') return 1 + (this.targets.some((t) => WEAPON_TAGS.has(t)) ? 0.5 : 0);
       if (x === 'def') return 0.8;
@@ -350,6 +353,12 @@ export class AI implements Brain {
     if (need <= 0 || toW > 1) return;
     const surplus = (['wood', 'iron', 'herb', 'mat', 'mana'] as Res[]).filter((r) => p.res[r] >= 3).sort((a, b) => p.res[b] - p.res[a]);
     if (!surplus.length) return;
+    // 詐欺師：了承なしに、同じ数で食料と取り替える（食料のいちばん多い相手から）
+    if (g.is(p, 'swindler')) {
+      const k = Math.min(need, p.res[surplus[0]]);
+      const q = g.players.filter((x) => x !== p && x.res.food >= k).sort((a, b) => b.res.food - a.res.food)[0];
+      if (q && k > 0 && !g.tradeOk(p, q, { [surplus[0]]: k }, { food: k })) { g.trade(p, q, { [surplus[0]]: k }, { food: k }); return; }
+    }
     for (const q of g.players) {
       if (q === p || !(q.ai instanceof AI) || !q.ai.trade_on) continue;
       const give: Cost = { [surplus[0]]: 2 }, get: Cost = { food: Math.min(2, need) };

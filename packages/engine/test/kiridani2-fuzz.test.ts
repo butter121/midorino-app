@@ -162,7 +162,7 @@ describe('kiridani2 でたらめな人の答えで回す', () => {
 
 describe('kiridani2 エンジンが答えの途中で例外を出しても試合は止まらない', () => {
   it('例外のあと、答える前の場面に戻り（同じ問い・同じ盤面）、続けて正しく答えられる', () => {
-    const mk = () => { const s = new Kiridani2Session({ n: 3, seed: 5, human: 0 }); s.start(); return s; };
+    const mk = () => { const s = new Kiridani2Session({ n: 3, seed: 1, human: 0 }); s.start(); return s; };
     const a = mk(), b = mk();
     const rng = new Rng(3);
     // 置く番まで同じ答えで進める

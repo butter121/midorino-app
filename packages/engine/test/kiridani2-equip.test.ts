@@ -39,31 +39,24 @@ describe('kiridani2 装備を自分で持たせる', () => {
     expect(() => g.equip(p, 9, 'weapon', 'g_sword')).toThrow();
   });
 
-  it('両手武器を持つと防具は倉庫へ・持っている間は防具を持てない。リーダー専用はリーダーだけ', () => {
+  it('両手武器を持つと防具は倉庫へ・持っている間は防具を持てない', () => {
     const { g, p } = bare();
-    p.items = ['w_trophy_axe', 'g_leather', 'w_king_sword'];
+    p.items = ['w_trophy_axe', 'g_leather'];
     g.equip(p, 1, 'armor', 'g_leather');
     g.equip(p, 1, 'weapon', 'w_trophy_axe');
     expect(p.comps[1].armor).toBeNull();
     expect(() => g.equip(p, 1, 'armor', 'g_leather')).toThrow();
     expect(g.equipTargets(p, 'g_leather')).not.toContain(1);
-    expect(() => g.equip(p, 2, 'weapon', 'w_king_sword')).toThrow(/リーダー/);
-    expect(g.equipTargets(p, 'w_king_sword')).toEqual([0]);
-    g.equip(p, 0, 'weapon', 'w_king_sword');
-    expect(p.comps[0].weapon).toBe('w_king_sword');
   });
 
-  it('両手武器でも防具を持てるリーダー（巨人オルガ）、武器を持てないリーダー（獣王ハル）', () => {
+  it('巨人狩り山田：駒はみな両手武器しか持てない', () => {
     const { g, p } = bare();
-    p.leader = 'l_orga';
-    p.items = ['w_trophy_axe', 'g_leather'];
+    p.leader = 'l_doran';
+    p.items = ['w_trophy_axe', 'g_sword'];
+    expect(() => g.equip(p, 1, 'weapon', 'g_sword')).toThrow(/両手武器しか/);
+    expect(g.equipTargets(p, 'g_sword')).toEqual([]);
     g.equip(p, 1, 'weapon', 'w_trophy_axe');
-    g.equip(p, 1, 'armor', 'g_leather');
-    expect(p.comps[1].armor).toBe('g_leather');
-    p.leader = 'l_haru';
-    p.items.push('g_sword');
-    expect(() => g.equip(p, 0, 'weapon', 'g_sword')).toThrow(/リーダーは武器/);
-    expect(g.equipTargets(p, 'g_sword')).not.toContain(0);
+    expect(p.comps[1].weapon).toBe('w_trophy_axe');
   });
 
   it('手に入れたときに誰に持たせるか聞く（空いている枠・熟練の高い順、最後に倉庫）。AI の席は自動のまま', () => {

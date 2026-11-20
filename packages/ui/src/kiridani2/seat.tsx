@@ -446,6 +446,8 @@ export function routeAnswer2(w: NonNullable<SeatSession2['waiting']>, c: string)
   if (w.k === 'choose') {
     const os = w.opts.filter((o) => o.s === c && !isSpellOpt(o));
     if (!os.length) return { k: 'none' };
+    // 孤高のテイマー：巣の魔物は好物で使い魔にするだけ（戦闘のトレイは開かない）
+    if (isFight(c) && os.every((o) => o.mode === 'capture')) return { k: 'sub', sid: c, opts: os };
     if (isFight(c)) return { k: 'fight', sid: c };
     // 選べるものが1つでも、選ぶ要素のあるマス（建てる・作る・売り買い・できることが複数）は中身を見せてから決める。
     // 何も選ばないマス（金貨+2 など）だけ、そのまま置く

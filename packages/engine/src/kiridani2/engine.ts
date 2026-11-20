@@ -18,6 +18,12 @@ const SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter'];
 /** 定員を無視して置く効果が使えないマス（取り合いのマスを独り占めしないように） */
 const NO_IGNORE_FULL = new Set(['market', 'market2', 'ruins', 'dig', 'curio']);
 export const ITEM_KINDS = ['weapon', 'armor', 'tool', 'spell'] as const;
+/** リーダーの効果（K さんの案。効果は変えず、数字だけ data.ts の LEADER で変える）。値はカードの id */
+export const LEAD = {
+  genius: 'l_akane', striver: 'l_jin', mage: 'l_mina', shield: 'l_gareth', tamer: 'l_haru', giant: 'l_doran',
+  explorer: 'l_iska', guard: 'l_goro', gatherer: 'l_popo', swindler: 'l_momo', crafter: 'l_kai', merchant: 'l_miro',
+} as const;
+export type LeadKey = keyof typeof LEAD;
 /** 準備のドラフトの束（cards：残り、taken：誰かが1枚取った、held：持ったことのある席） */
 export interface Pack { cards: string[]; taken: boolean; held: number[] }
 export type ItemKind = (typeof ITEM_KINDS)[number];
@@ -91,7 +97,7 @@ export function drive<T>(gen: Gen<T>): T {
 export interface Comp { atk: number; def: number; weapon: string | null; armor: string | null; leader: boolean; injured: boolean; rest: boolean; used: boolean }
 /** 使い魔（捕まえた魔物）。power＝戦闘に連れて行ったときの戦力、card＝固有の効果のカード（pet_<type>） */
 export interface Pet { type: string; name: string; str: number; power: number; card: string }
-export type FameSrc = 'trophy' | 'quest' | 'donate' | 'card' | 'effect' | 'dragon' | 'absent';
+export type FameSrc = 'trophy' | 'quest' | 'donate' | 'card' | 'effect' | 'dragon' | 'absent' | 'leader';
 
 export class Player {
   pid: number;
@@ -119,12 +125,12 @@ export class Player {
   lastDmg = 0;
   kills = 0;
   races: Race[] = [];
-  st = { boss: 0, coop: 0, spells: 0, donations: 0, trades: 0, fights: 0, wins: 0, casts: 0, castsRound: 0, sold: 0, returns: 0 };
+  st = { boss: 0, coop: 0, spells: 0, donations: 0, trades: 0, fights: 0, wins: 0, casts: 0, castsRound: 0, sold: 0, returns: 0, mageRound: 0, blocked: 0 };
   quests: string[] = [];
   secret: string | null = null;
   discontent = 0;
   raidLoss = 0;
-  fame: Record<FameSrc, number> = { trophy: 0, quest: 0, donate: 0, card: 0, effect: 0, dragon: 0, absent: 0 };
+  fame: Record<FameSrc, number> = { trophy: 0, quest: 0, donate: 0, card: 0, effect: 0, dragon: 0, absent: 0, leader: 0 };
   fate: number[] = [];
   limits: Record<string, number> = {};
   future: { round: number; gain: Cost }[] = [];
@@ -337,7 +343,7 @@ export class Game {
   /** 手番の順の何番目か（先手＝0） */
   turnPos(pid: number): number { return (pid - this.first + this.n) % this.n; }
   /** 次の冬に要る食料（仲間の数・カードの修正込み） */
-  upkeepNeed(p: Player): number { return Math.max(0, D.upkeepOf(p.comps.length) + this.mods(p).upkeep); }
+  upkeepNeed(p: Player): number { return Math.max(0, D.upkeepOf(p.comps.length) + this.mods(p).upkeep - (this.is(p, 'explorer') ? D.LEADER.explorer.upkeep : 0)); }
 
   // ------------------------------------------------------------ 段階カードの予定（§4）
   private scheduleStages() {
@@ -438,8 +444,28 @@ export class Game {
   bringPets(p: Player): number[] {
     return p.pets.map((_, i) => i);
   }
-  petCap(p: Player) { return D.CAPTURE.cap + this.mods(p).pet_cap; }
+  petCap(p: Player) { return D.CAPTURE.cap + this.mods(p).pet_cap + (this.is(p, 'tamer') ? D.LEADER.tamer.petCap : 0); }
   /** マスの定員（0＝定員なし） */
+  /** p のリーダーが k か */
+  is(p: Player, k: LeadKey): boolean { return p.leader === LEAD[k]; }
+  /** リーダーの効果で名声を得る */
+  leadFame(p: Player, n: number, why: string) {
+    if (n <= 0) return;
+    p.fame.leader += n;
+    this.emit({ t: 'fame', seat: p.pid, amount: n, reason: why });
+  }
+  /** 冒険マスか（盤面のまとまり「冒険」） */
+  isAdventure(id: string): boolean {
+    for (const g of D.SPACE_GROUPS) if (g.ids.includes(id)) return g.id === 'adventure';
+    const tags = this.byId.has(id) ? this.card(id).engine : [];
+    for (const t of tags) if (D.SPACE_GROUP_BY_TAG[t]) return false;
+    return true;
+  }
+  /** テイマーの好物（魔物の種類ごとに決まった1種類） */
+  favRes(mon: Monster): Res {
+    const i = D.MONSTERS.findIndex((m) => m.id === mon.type);
+    return D.FAV_RES[(i < 0 ? 0 : i) % D.FAV_RES.length] as Res;
+  }
   capOf(s: SpaceSt) { return this.n >= 4 && s.def.cap4 !== undefined ? s.def.cap4 : s.def.cap ?? 1; }
   /** 使っている品物の種類（持たせた武器・防具、建てた道具、唱えた秘術） */
   kinds(p: Player) {
@@ -547,7 +573,17 @@ export class Game {
     // 何度でもの秘術：手札にあるうちは身につける費用ではなく唱える費用（cost）で数える
     const kinds = [c.kind];
     if (c.kind === 'gear') { const sl = slotOf(c); if (sl) kinds.push(sl); }
-    return subCost(this.adjust(p, c.cost ?? {}, kinds), extraDiscount);
+    const out = subCost(this.adjust(p, c.cost ?? {}, kinds), extraDiscount);
+    // 職人：道具の費用を資源・素材あわせて discount 減らす（多いものから）
+    if (c.kind === 'tool' && this.is(p, 'crafter')) {
+      for (let k = 0; k < D.LEADER.crafter.discount; k++) {
+        const r = (Object.keys(out) as Res[]).filter((x) => x !== 'gold' && (out[x] ?? 0) > 0).sort((a2, b2) => (out[b2] ?? 0) - (out[a2] ?? 0))[0];
+        if (!r) break;
+        out[r] = (out[r] ?? 0) - 1;
+      }
+      return cleanCost(out);
+    }
+    return out;
   }
   learnCost(p: Player, id: string): Cost { return this.adjust(p, this.card(id).tome?.learn ?? {}, ['spell']); }
   /** ギルドで職能を出す費用（食料1、2枚目から2。カードの cost はその上乗せ） */
@@ -602,7 +638,7 @@ export class Game {
   compCap(p: Player) { return D.MAX_COMPS + this.mods(p).comp_cap; }
   /** 交換所で扱える数（交換所に2人目として置いたときは −1。sp を渡す） */
   marketQty(p: Player, sp?: SpaceSt) { return Math.max(1, D.MARKET_QTY + this.mods(p).market_qty - (sp && sp.id === 'market' && sp.occ.some((x) => x !== p.pid) ? 1 : 0)); }
-  sellPrice(p: Player, r: Res) { const m = this.mods(p); return (m.sell_full ? D.BUY[r] : D.sellPrice(r)) + m.sell_bonus; }
+  sellPrice(p: Player, r: Res) { const m = this.mods(p); return (m.sell_full ? D.BUY[r] : D.sellPrice(r)) + m.sell_bonus + (this.is(p, 'merchant') ? D.LEADER.merchant.sellBonus : 0); }
   itemSell(id: string) {
     const c = this.card(id);
     if (c.sell !== undefined) return c.sell;
@@ -762,6 +798,7 @@ export class Game {
       for (let i = 0; i < D.START.comps; i++) p.comps.push(newComp(i === 0));
       p.beds = D.START.beds;
       const g0: Cost = { food: D.START.food + (D.SEAT_FOOD[this.n][this.turnPos(p.pid)] ?? 0), gold: D.START.gold, wood: D.START.wood, iron: D.START.iron };
+      if (this.is(p, 'merchant')) for (const r of RES) g0[r] = (g0[r] ?? 0) + D.LEADER.merchant.start;
       gainRes(p, g0);
       this.emit({ t: 'grant', seat: p.pid, gain: g0, reason: '開始時' });
       if (p.ai) this.autoEquip(p);
@@ -915,7 +952,7 @@ export class Game {
     for (const s of this.spaces) s.occ = [];
     this.refillCurio();
     for (const p of this.players) {
-      p.extra = 0; p.ignoreFull = false; p.tradesUsed = 0; p.acts = []; p.rbuf = emptyBuf(); p.lastSpace = null; p.st.castsRound = 0; p.st.returns = 0;
+      p.extra = 0; p.ignoreFull = false; p.tradesUsed = 0; p.acts = []; p.rbuf = emptyBuf(); p.lastSpace = null; p.st.castsRound = 0; p.st.returns = 0; p.st.mageRound = 0;
       for (const c of p.comps) c.used = false;
       // 蓄積効果
       const due = p.future.filter((f) => f.round === r);
@@ -923,6 +960,11 @@ export class Game {
       for (const f of due) { gainRes(p, f.gain); this.emit({ t: 'future', seat: p.pid, gain: f.gain }); }
       this.autoEquip(p);
       yield* this.fire(p, 'round_start', {});
+      // 自宅警備員：毎ラウンドの始めに防壁を作れる（費用は払う）
+      if (this.is(p, 'guard') && this.goldPlan(p, this.wallCost(p))) {
+        const x: string = yield* this.ask({ k: 'pick', g: this, p, what: 'guard', options: ['wall', 'skip'] });
+        if (x === 'wall') yield* this.runOps(p, [{ build: 'wall' }], { x: 'wall' });
+      }
     }
     // 魔物の出現（予告されていたもの）と次の予告
     for (const nd of this.nests) {
@@ -979,7 +1021,11 @@ export class Game {
 
   // ------------------------------------------------------------ ラウンドの終わり（§3.4）
   *endRound(): Gen {
-    for (const p of this.players) yield* this.fire(p, 'round_end', {});
+    for (const p of this.players) {
+      yield* this.fire(p, 'round_end', {});
+      if (this.is(p, 'tamer')) this.leadFame(p, p.pets.length * D.LEADER.tamer.fame, '孤高のテイマー');
+      if (this.is(p, 'gatherer')) this.leadFame(p, Math.floor(RES.reduce((a, r) => a + p.res[r], 0) / D.LEADER.gatherer.fameDiv), '採集家');
+    }
     // 仲間が戻る。負傷の回復判定（薬草2で即回復、払わなければ次のラウンド休み）
     for (const p of this.players) {
       for (const c of p.comps) { c.used = false; c.rest = false; }
@@ -1024,6 +1070,8 @@ export class Game {
     if (this.bossFailedYear.has(y)) raid += this.bossOf[this.round]?.raid ?? 0;
     for (const p of this.players) {
       const blocked = Math.min(raid, this.homeGuard(p));
+      p.st.blocked += blocked;
+      if (this.is(p, 'guard')) this.leadFame(p, blocked * D.LEADER.guard.blockedFame, '自宅警備員');
       const dmg = raid - blocked;
       p.raidLoss += dmg;
       if (raid) this.emit({ t: 'raid', seat: p.pid, damage: dmg, blocked });
@@ -1064,7 +1112,7 @@ export class Game {
     for (const s of this.spaces) {
       const cap = this.capOf(s);
       // 定員を無視して置く効果は、交換所・遺跡の探索・発掘場には使えない（取り合いのマスを独り占めしないように）
-      if (cap > 0 && s.occ.length >= cap && (!p.ignoreFull || NO_IGNORE_FULL.has(s.id))) continue;
+      if (cap > 0 && s.occ.length >= cap && (!p.ignoreFull || NO_IGNORE_FULL.has(s.id)) && !(s.id === 'workshop' && this.is(p, 'crafter'))) continue;
       s.def.options.forEach((ops, i) => {
         const eff = s.optEffects?.[i];
         if (eff) {
@@ -1082,6 +1130,11 @@ export class Game {
     if (hasComp) {
       for (const nd of this.nests) {
         if (!nd.mon) continue;
+        // 孤高のテイマー：巣の魔物は倒せない。好物を払って使い魔にする（主・古竜は倒せる）
+        if (this.is(p, 'tamer')) {
+          if ((nd.groups < D.NEST_CAP || p.ignoreFull) && canPay(p, this.captureCost(nd.mon, p))) out.push({ s: nd.id, i: 0, k: 1, mode: 'capture' });
+          continue;
+        }
         if (nd.wait) {
           if (nd.wait.pid === p.pid) continue;
           for (let k = 1; k <= Math.min(D.MAX_SEND, nfree); k++) for (const mode of ['normal', 'safe', 'gamble', 'guard'] as FightMode[]) out.push({ s: nd.id, i: 0, k, mode, join: true });
@@ -1205,6 +1258,7 @@ export class Game {
     if (o.i >= 0) p.lastSpace = { s: sp.id, i: o.i };
     if (sp.id === 'board') p.acts.push('board');
     if (sp.id === 'plaza') p.acts.push('plaza');
+    const adv = this.is(p, 'explorer') && this.isAdventure(sp.id);
     if (o.i === -1) {
       const e = this.card(o.card!).effects[o.e!];
       this.markLimit(p, o.card!, o.e!, e.limit);
@@ -1215,6 +1269,9 @@ export class Game {
         const bonus = this.mods(p).accum_bonus;
         const got: Cost = { ...sp.stock };
         for (const r of Object.keys(sp.def.accum)) if (bonus[sp.id]) got[r as Res] = (got[r as Res] ?? 0) + (bonus[sp.id] ?? 0);
+        // 採集家は集める量が倍、探検家は冒険マスの効果が倍
+        const gm = (this.is(p, 'gatherer') ? D.LEADER.gatherer.mult : 1) * (adv ? D.LEADER.explorer.mult : 1);
+        if (gm > 1) for (const r of Object.keys(got)) got[r as Res] = (got[r as Res] ?? 0) * gm;
         sp.stock = {};
         gainRes(p, got);
         this.emit({ t: 'gather', seat: p.pid, space: sp.id, gain: got });
@@ -1222,7 +1279,7 @@ export class Game {
         p.acts.push('accum');
       }
       if (sp.def.shards) {
-        const n = sp.shards ?? 0;
+        const n = (sp.shards ?? 0) * (adv ? D.LEADER.explorer.mult : 1);
         sp.shards = 0;
         p.acts.push('accum');
         if (n) yield* this.gainShards(p, n);
@@ -1231,7 +1288,7 @@ export class Game {
       if (eff) this.markLimit(p, sp.id, o.i, eff.limit);
       // 「試合で1回」の名声は年数の倍率をかける（凱旋など）
       const fameScale = eff?.limit === 'game' ? D.POINT_SCALE[this.years] ?? 1 : undefined;
-      yield* this.runOps(p, sp.def.options[o.i], { space: sp.id, x: o.x, card: sp.stage, opIndex: o.i, ...(fameScale ? { fameScale } : {}) });
+      for (let t = 0; t < (adv ? D.LEADER.explorer.mult : 1); t++) yield* this.runOps(p, sp.def.options[o.i], { space: sp.id, x: o.x, card: sp.stage, opIndex: o.i, ...(fameScale ? { fameScale } : {}) });
     }
     yield* this.fire(p, `use:${sp.id}`, { space: sp.id });
     if (sp.def.accum) yield* this.fire(p, 'use:any_accum', { space: sp.id });
@@ -1282,8 +1339,12 @@ export class Game {
   }
   compPower(p: Player, i: number) {
     const c = p.comps[i];
-    return D.POWER_PER + c.atk + (c.weapon ? this.card(c.weapon).power ?? 0 : 0);
+    return D.POWER_PER + c.atk * this.skillMult(p) + (c.weapon ? (this.card(c.weapon).power ?? 0) * this.weaponMult(p) : 0);
   }
+  /** 熟練の効き目（努力家は倍） */
+  skillMult(p: Player) { return this.is(p, 'striver') ? D.LEADER.striver.skillMult : 1; }
+  /** 武器の戦力の倍率（天才は倍） */
+  weaponMult(p: Player) { return this.is(p, 'genius') ? D.LEADER.genius.weaponMult : 1; }
 
   /** 測定用の手順の印：得た資源の種類 */
   actGain(p: Player, c: Cost) {
@@ -1466,6 +1527,7 @@ export class Game {
             if (!c) break;
             this.spend(p, c);
             yield* this.playItem(p, what, true);
+            if (this.is(p, 'crafter')) this.leadFame(p, D.LEADER.crafter.fame, '職人');
           } else break;
           p.acts.push('build');
           yield* this.fire(p, 'build', {});
@@ -1583,7 +1645,8 @@ export class Game {
   trainCands(p: Player, s: 'atk' | 'def', fresh = false): number[] {
     const out: number[] = [];
     if (s === 'atk' && this.mods(p).no_atk_train) return out;
-    p.comps.forEach((c, i) => { if (c[s] < D.MAX_SKILL[s] && (!fresh || c[s] === 0)) out.push(i); });
+    const cap = D.MAX_SKILL[s] + (this.is(p, 'striver') ? D.LEADER.striver.skillCap : 0);
+    p.comps.forEach((c, i) => { if (c[s] < cap && (!fresh || c[s] === 0)) out.push(i); });
     return out.sort((a, b) => p.comps[a][s] - p.comps[b][s] || a - b);
   }
 
@@ -1604,9 +1667,28 @@ export class Game {
       const x = xs.length === 1 && xs[0] === undefined ? undefined : yield* this.askOne(p, xs, { k: 'pick', g: this, p, what: card, options: xs as Choice[] });
       this.markLimit(p, card, ei, e.limit);
       this.emit({ t: 'effect', seat: p.pid, card, when });
-      yield* this.runOps(p, ops, { ...ctx, card, x, ...(fight ? { fenv: fight } : {}) });
+      for (let t = 0; t < this.effMult(p, card); t++) yield* this.runOps(p, ops, { ...ctx, card, x, ...(fight ? { fenv: fight } : {}) });
     }
   }
+  /** 戦闘に勝ったときのリーダーの名声（努力家・魔術師・盾の勇者・巨人狩り） */
+  private *leadWin(p: Player, mon: Monster, pl: Plan, plans: Plan[], boss: boolean): Gen {
+    const L = D.LEADER;
+    if (this.is(p, 'striver')) this.leadFame(p, Math.floor(pl.idxs.reduce((a, i) => a + p.comps[i].atk + p.comps[i].def, 0) / L.striver.fameDiv), '無限の努力家');
+    if (this.is(p, 'mage')) this.leadFame(p, (pl.spells.length + Object.values(pl.tomeUse).reduce((a, n) => a + n, 0)) * L.mage.fame, '最高の魔術師');
+    if (this.is(p, 'shield')) this.leadFame(p, Math.floor(Math.max(0, this.defense(p, pl) - Math.max(0, mon.counter + pl.counter)) / L.shield.fameDiv), '盾の勇者');
+    if (this.is(p, 'giant') && boss && plans.every((q) => q === pl || q.power < pl.power)) this.leadFame(p, mon.type === D.ANCIENT_DRAGON.id ? L.giant.dragonFame : L.giant.bossFame, '巨人狩り');
+  }
+  /** 秘術を使ったあと（魔術師：魔石か秘術1枚。1ラウンド perRound 回まで） */
+  private *mageAfter(p: Player): Gen {
+    const L = D.LEADER.mage;
+    if (!this.is(p, 'mage') || p.st.mageRound >= L.perRound) return;
+    p.st.mageRound += 1;
+    const x: string = this.decks.spell.length ? yield* this.ask({ k: 'pick', g: this, p, what: 'mage', options: ['mage:mana', 'mage:draw'] }) : 'mage:mana';
+    if (x === 'mage:draw' && this.decks.spell.length) yield* this.runOps(p, [{ draw: { from: 'spell', look: L.draw, take: L.draw } }], {});
+    else { const g: Cost = { mana: L.mana }; gainRes(p, g); this.emit({ t: 'gain', seat: p.pid, gain: g, reason: '最高の魔術師' }); }
+  }
+  /** カードの効果を何回かけるか（天才：武器の効果は倍） */
+  effMult(p: Player, card: string): number { return this.is(p, 'genius') && this.byId.has(card) && this.card(card).kind === 'weapon' ? D.LEADER.genius.effectMult : 1; }
 
   // ------------------------------------------------------------ カードを出す
   *playOcc(p: Player, id: string, _free: boolean): Gen {
@@ -1650,6 +1732,7 @@ export class Game {
     yield* this.runOps(p, e.do ?? [], { card: id, x, again: false });
     if (!tome) this.spentSpell(p, id);
     yield* this.fire(p, 'spell', {});
+    yield* this.mageAfter(p);
   }
   private countCast(p: Player) { p.st.spells += 1; p.st.casts += 1; p.st.castsRound += 1; p.acts.push('spell'); }
   /** 使い切りの秘術を使い終えた：spell_return があれば魔石1で手札に戻す（ラウンドにその枚数まで）、なければ山の下へ */
@@ -1678,7 +1761,11 @@ export class Game {
 
   // ------------------------------------------------------------ 使い魔・遺物の欠片
   /** 捕まえる食料（強さ÷foodDiv の切り上げ） */
-  captureCost(mon: Monster): Cost { return { food: Math.ceil(mon.str / D.CAPTURE.foodDiv) }; }
+  captureCost(mon: Monster, p?: Player): Cost {
+    // 孤高のテイマー：魔物ごとの好物を、強さに応じた数だけ
+    if (p && this.is(p, 'tamer')) return { [this.favRes(mon)]: Math.max(1, Math.ceil(mon.str / D.LEADER.tamer.favDiv)) };
+    return { food: Math.ceil(mon.str / D.CAPTURE.foodDiv) };
+  }
   /** 捕まえるのに要る戦力（残りの強さ＋格ごとの捕まえにくさ − capture_ease） */
   captureNeed(p: Player, mon: Monster): number {
     const g = D.MON[mon.type]?.grade ?? 0;
@@ -1690,7 +1777,7 @@ export class Game {
   canTame(mon: Monster) { return mon.race === 'beast' && !mon.boss; }
   /** 使い魔にする（食料を払う。持てる数を超えたらいちばん弱い使い魔を放す） */
   *addPet(p: Player, mon: Monster): Gen {
-    const cost = this.captureCost(mon);
+    const cost = this.captureCost(mon, p);
     if (!canPay(p, cost)) return;
     this.spend(p, cost);
     this.emit({ t: 'pay', seat: p.pid, cost, reason: 'tame' });
@@ -1790,6 +1877,7 @@ export class Game {
       .filter((i) => {
         const c = p.comps[i];
         if (sl === 'weapon' && m.leader_no_weapon && c.leader) return false;
+        if (sl === 'weapon' && this.is(p, 'giant') && !cd.two_hand) return false;
         return (!cd.leader_only || c.leader) && (m.two_hand_armor || !(sl === 'armor' && c.weapon && this.card(c.weapon).two_hand));
       })
       .sort((a, b) => +!!p.comps[a][sl] - +!!p.comps[b][sl] || p.comps[b][sk] - p.comps[a][sk] || a - b);
@@ -1802,7 +1890,7 @@ export class Game {
     if (typeof id !== 'string' || !this.byId.has(id) || slotOf(this.card(id)) !== slot) return 'その枠には持てない';
     if (c[slot] === id) return 'もう持っている';
     if (!this.storage(p).includes(id) && !p.comps.some((x, j) => j !== ci && x[slot] === id)) return '倉庫にない';
-    if (!this.equipTargets(p, id).includes(ci)) return this.card(id).leader_only ? 'リーダーだけが持てる' : slot === 'weapon' ? 'リーダーは武器を持てない' : '両手武器を持っていると防具は持てない';
+    if (!this.equipTargets(p, id).includes(ci)) return this.card(id).leader_only ? 'リーダーだけが持てる' : slot === 'weapon' && this.is(p, 'giant') ? '両手武器しか持てない' : slot === 'weapon' ? 'リーダーは武器を持てない' : '両手武器を持っていると防具は持てない';
     return null;
   }
   /** 持たせる・はずす・持ち替える（無料）。前に持っていたものは倉庫へ。two_hand の武器を持たせると防具は倉庫へ */
@@ -1828,14 +1916,16 @@ export class Game {
   }
 
   // ------------------------------------------------------------ 戦闘（§5・§6）
-  fateMin(p: Player) { return p.fate.length ? Math.min(...p.fate) : Math.min(...D.FATE_DECK); }
+  fateMin(p: Player) { if (this.is(p, 'shield')) return 0; return p.fate.length ? Math.min(...p.fate) : Math.min(...D.FATE_DECK); }
   fateDist(p: Player): [number, number][] {
+    if (this.is(p, 'shield')) return [[0, 1]];
     const deck = p.fate.length ? p.fate : D.FATE_DECK;
     const m = new Map<number, number>();
     for (const v of deck) m.set(v, (m.get(v) ?? 0) + 1 / deck.length);
     return [...m.entries()];
   }
   drawFate(p: Player): number {
+    if (this.is(p, 'shield')) return 0;
     if (!p.fate.length) p.fate = this.rng.shuffle([...D.FATE_DECK]);
     if (this.forceFate !== null) {
       const i = p.fate.indexOf(this.forceFate);
@@ -1862,7 +1952,7 @@ export class Game {
     for (const i of idxs) {
       const c = p.comps[i];
       const w = c.weapon ? this.card(c.weapon) : null;
-      const v = D.POWER_PER + c.atk + (w?.power ?? 0);
+      const v = D.POWER_PER + c.atk * this.skillMult(p) + (w?.power ?? 0) * this.weaponMult(p);
       pl.power += v;
       pl.parts.push({ kind: 'companion', label: `仲間${i + 1}`, value: v, seat: p.pid, ...(w ? { ref: w.id } : {}) });
     }
@@ -1891,9 +1981,9 @@ export class Game {
       if (p.tomes.includes(card)) continue;
       const ops = e.do ?? [];
       const pays = sumPays(ops);
-      if (costUnits(pays)) { optional.push({ name: card, cost: pays, ops, card, e: ei, spell: false }); continue; }
+      if (costUnits(pays)) { optional.push({ name: card, cost: pays, ops: this.effMult(p, card) > 1 ? Array.from({ length: this.effMult(p, card) }, () => ops).flat() : ops, card, e: ei, spell: false }); continue; }
       const before = pl.power;
-      applyFightOps(pl, ops, env);
+      for (let t = 0; t < this.effMult(p, card); t++) applyFightOps(pl, ops, env);
       pl.used.push(`${card}#${ei}`);
       if (pl.power !== before) pl.parts.push({ kind: 'card', label: this.card(card).name, value: pl.power - before, seat: p.pid, ref: card });
     }
@@ -1959,13 +2049,23 @@ export class Game {
       if (o.e >= 0) pl.used.push(`${o.card}#${o.e}`);
       pl.parts.push({ kind: o.spell ? 'spell' : o.card ? 'card' : 'boost', label: labelOf(o), value: pl.power - before, seat: p.pid, ...(o.card ? { ref: o.card } : {}) });
     }
+    // 盾の勇者：守りを戦力として数える
+    if (this.is(p, 'shield') && idxs.length) {
+      const v = (this.defenseOf(p, idxs) + pl.guard) * D.LEADER.shield.guardMult;
+      pl.power += v; pl.parts.push({ kind: 'mod', label: '盾の勇者（守り）', value: v, seat: p.pid });
+    }
+    // 巨人狩り：主・古竜には戦力 bossMult 倍
+    if (this.is(p, 'giant') && mon.boss && pl.power > 0) {
+      const v = pl.power * (D.LEADER.giant.bossMult - 1);
+      pl.power += v; pl.parts.push({ kind: 'mod', label: '巨人狩り', value: v, seat: p.pid });
+    }
     pl.cost = cost;
     return pl;
   }
 
   defenseOf(p: Player, idxs: number[]): number {
     let d = this.fightGuardBase(p);
-    for (const i of idxs) { const c = p.comps[i]; d += D.GUARD_PER + c.def + (c.armor ? this.card(c.armor).guard ?? 0 : 0) + (c.weapon ? this.card(c.weapon).guard ?? 0 : 0); }
+    for (const i of idxs) { const c = p.comps[i]; d += D.GUARD_PER + c.def * this.skillMult(p) + (c.armor ? this.card(c.armor).guard ?? 0 : 0) + (c.weapon ? this.card(c.weapon).guard ?? 0 : 0); }
     return d;
   }
   defense(p: Player, pl: Plan): number { return this.defenseOf(p, pl.idxs) + pl.guard; }
@@ -1981,6 +2081,14 @@ export class Game {
     if (o.s === 'lair') { this.lairQ.push({ pid: p.pid, idxs, mode: o.mode ?? 'normal', ...(o.use ? { use: [...o.use] } : {}) }); return; }
     const nd = this.nest(o.s)!;
     nd.groups += 1;
+    if (o.mode === 'capture' && this.is(p, 'tamer') && nd.mon) {
+      const mon = nd.mon;
+      for (const i of idxs) p.comps[i].used = true;
+      nd.mon = null;
+      yield* this.addPet(p, mon);
+      yield* this.fire(p, 'use:nest', { nest: nd.id });
+      return;
+    }
     if (o.i === -1) {
       const e = this.card(o.card!).effects[o.e!];
       this.markLimit(p, o.card!, o.e!, e.limit);
@@ -2067,6 +2175,10 @@ export class Game {
       p.st.fights += 1;
       if (!p.acts.includes('fight')) p.acts.push('fight');
     });
+    for (let j = 0; j < ps.length; j++) {
+      const n = plans[j].spells.length + Object.values(plans[j].tomeUse).reduce((a, k) => a + k, 0);
+      for (let u = 0; u < n; u++) yield* this.mageAfter(ps[j]);
+    }
     this.emit({ t: 'power', parts: plans.flatMap((pl) => pl.parts), total });
     // 運命：主の巣は全員が1枚ずつ、巣は置いた人（共闘なら待っていた人）が1枚
     const flips = boss ? ps : [ps[0]];
@@ -2108,11 +2220,12 @@ export class Game {
         gainRes(p, loot);
         this.actGain(p, loot);
         if (costUnits(loot)) this.emit({ t: 'loot', seat: p.pid, gain: loot });
-        const tro = Math.max(1, Math.round((mon.trophy + pl.trophy) * (coop ? Math.max(share, boss ? D.MON_ROLL.boss.minShare : 0.5) : 1)));
+        const tro = Math.max(1, Math.round((mon.trophy + pl.trophy) * (coop ? Math.max(share, boss ? D.MON_ROLL.boss.minShare : 0.5) : 1))) * (this.is(p, 'genius') ? D.LEADER.genius.trophyMult : 1);
         rec.tro[j] = tro;
         if (mon.type === D.ANCIENT_DRAGON.id) { p.fame.dragon += tro + D.DRAGON.join; this.emit({ t: 'trophy', seat: p.pid, monster: mon.type, fame: tro + D.DRAGON.join }); }
         else { p.fame.trophy += tro; this.emit({ t: 'trophy', seat: p.pid, monster: mon.type, fame: tro }); }
         p.kills += 1;
+        yield* this.leadWin(p, mon, pl, plans, boss);
         if (!p.races.includes(mon.race)) p.races.push(mon.race);
         if (boss) p.st.boss += 1;
         if (coop) { p.st.coop += 1; p.acts.push('coop'); }
@@ -2274,7 +2387,7 @@ export function optLabel(o: Option): string {
 // ------------------------------------------------------------ 名声（§9）
 export const SCORE_LABELS: Record<string, string> = {
   trophy: '討伐の証', quest: '依頼', secret: '秘密依頼', donate: '寄進', ancient: '古代の品', card: 'カード', effect: '効果', dragon: '古竜', absent: '主・古竜に不参加',
-  comps: '仲間', kinds: '4種の品物', gold: '金貨', discontent: '不満', raid: '襲撃',
+  comps: '仲間', kinds: '4種の品物', gold: '金貨', discontent: '不満', raid: '襲撃', leader: 'リーダー',
 };
 
 export function ancientScore(g: Game, p: Player): number {
@@ -2318,7 +2431,17 @@ export function scoreBreakdown(g: Game, p: Player): Record<string, number> {
   b.gold = goldFame(p.res.gold, g.years, m.gold_cap, m.gold_div);
   b.discontent = -p.discontent * D.DISCONTENT;
   b.raid = -p.raidLoss;
+  b.leader = p.fame.leader + leaderEndFame(g, p);
   return b;
+}
+/** 試合の終わりのリーダーの名声（探検家・自宅警備員・詐欺師・伝説の商人） */
+export function leaderEndFame(g: Game, p: Player): number {
+  const L = D.LEADER;
+  if (g.is(p, 'explorer')) return p.ancient.length * L.explorer.ancientFame;
+  if (g.is(p, 'guard')) { const w = p.walls * L.guard.wallFame; return w + (p.st.blocked <= L.guard.lowBlocked ? w * (L.guard.lowMult - 1) : 0); }
+  if (g.is(p, 'swindler')) return p.st.trades * L.swindler.fame;
+  if (g.is(p, 'merchant')) return Math.floor(p.res.gold / L.merchant.goldDiv);
+  return 0;
 }
 /** 金貨の名声：4枚で1点、上限（年数で伸びる。gold_cap で上がる）を超えた分は8枚で1点。gold_div で割る */
 export function goldFame(gold: number, years: number, capAdd = 0, div = 1): number {

@@ -120,6 +120,52 @@ export function tableFor(years: number): Record<string, number[]> {
 
 // ---- 主・補充の時期（年）
 export const BOSS_YEARS: Record<number, number[]> = { 5: [1, 2, 3, 4], 10: [2, 4, 6, 8], 15: [3, 6, 9, 12] };
+/**
+ * リーダーの効果の数字（効果そのものは engine.ts の LEAD の決まりのとおり。ここは値だけ変える）。
+ * 効果はリーダー本人だけでなく、その人の駒（仲間）全員に効く。割り算の端数は切り捨て。
+ */
+export const LEADER = {
+  /** 戦闘の天才：武器の戦力と武器の効果を weaponMult 倍、勝ったときの証を trophyMult 倍 */
+  genius: { weaponMult: 2, effectMult: 2, trophyMult: 2 },
+  /** 無限の努力家：熟練の上限 +skillCap、熟練の効き目 skillMult 倍、勝つと送った仲間の熟練の合計 ÷ fameDiv の名声 */
+  striver: { skillCap: 1, skillMult: 3, fameDiv: 1 },
+  /** 最高の魔術師：秘術を使ったあと魔石 mana か秘術 draw 枚（1ラウンド perRound 回まで）。勝つとその戦闘で使った秘術 1枚につき fame */
+  mage: { perRound: 2, mana: 1, draw: 1, fame: 4 },
+  /** 盾の勇者：守りを戦力として数える（guardMult 倍）、運命の影響なし、勝つと（守り − 反撃）÷ fameDiv の名声 */
+  shield: { guardMult: 1, fameDiv: 1 },
+  /** 孤高のテイマー：好物の数＝切り上げ(強さ ÷ favDiv)、持てる使い魔 +petCap、ラウンドの終わりに使い魔1体につき fame */
+  tamer: { favDiv: 3, petCap: 7, fame: 1 },
+  /** 巨人狩り山田：主・古竜と戦うとき戦力 bossMult 倍。一番貢献して勝つと主 bossFame・古竜 dragonFame */
+  giant: { bossMult: 3, bossFame: 4, dragonFame: 8 },
+  /** 偉大な探検家：冬の食料 −upkeep、冒険マスの効果 mult 倍、終わりに古代の遺物1つにつき ancientFame */
+  explorer: { upkeep: 2, mult: 2, ancientFame: 2 },
+  /** 自宅警備員：冬に防いだ襲撃1につき blockedFame、終わりに防壁1つにつき wallFame（防いだ襲撃の合計が lowBlocked 以下ならさらに lowMult 倍になるよう足す） */
+  guard: { blockedFame: 1, wallFame: 1, lowBlocked: 10, lowMult: 2 },
+  /** 採集家：マスで集める資源 mult 倍、ラウンドの終わりに持っている資源の合計 ÷ fameDiv の名声 */
+  gatherer: { mult: 2, fameDiv: 40 },
+  /** 詐欺師：相手の了承なしに取引（出す数＝受け取る数）、終わりに取引1回につき fame */
+  swindler: { fame: 5 },
+  /** 職人：道具の費用 −discount（資源・素材あわせて）、道具を作るたび fame */
+  crafter: { discount: 2, fame: 4 },
+  /** 伝説の商人：始めに資源・素材を start 個ずつ、売値 +sellBonus、終わりに金貨 ÷ goldDiv の名声 */
+  merchant: { start: 4, sellBonus: 1, goldDiv: 3 },
+};
+/** テイマーの好物（魔物の種類ごと。食材・資源・素材から） */
+export const FAV_RES = ['food', 'wood', 'iron', 'herb', 'mana', 'mat'] as const;
+
+/**
+ * 行動マスのまとまり（盤面で同じ役割のマスを並べる。探検家の「冒険マス」は adventure）。段階カードのマスも出たらここで分ける。
+ * 載っていない id はカードの強い動きの種類で分け（SPACE_GROUP_BY_TAG）、それも無ければ「冒険」。
+ */
+export const SPACE_GROUPS: { id: string; jp: string; ids: string[] }[] = [
+  { id: 'gather', jp: '資源を集める', ids: ['forest', 'grove', 'mine', 'deepmine', 'meadow', 'herb2', 'spring', 'hunt', 'plaza', 'lodge', 'bazaar', 'explore'] },
+  { id: 'craft', jp: '作る・建てる', ids: ['forge', 'workshop', 'training', 'drill', 'walls', 'upgrade', 'bigforge', 'clearing'] },
+  { id: 'trade', jp: '取引・お金', ids: ['market', 'market2', 'peddler', 'outpost', 'caravan', 'tradepost', 'temple', 'envoy', 'treasury'] },
+  { id: 'people', jp: '仲間・家族', ids: ['guild', 'hall', 'tavern', 'family', 'hero', 'recommend'] },
+  { id: 'adventure', jp: '冒険', ids: ['board', 'ruins', 'library', 'altar', 'kennel', 'raid', 'pilgrim', 'prepare', 'infirmary', 'triumph'] },
+];
+export const SPACE_GROUP_BY_TAG: Record<string, string> = { gather: 'gather', smith: 'craft', fort: 'craft', trade: 'trade', family: 'people', bridge: 'people' };
+
 /** 準備のドラフト：束の数と1束の枚数（職能・品物の種類ごとに 5枚×6束） */
 export const PACKS = 6;
 export const PACK_SIZE = 5;

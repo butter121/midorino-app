@@ -103,6 +103,9 @@ export function choiceLabel(g: Game, p: Player | null, x: Choice): { title: stri
     if (x === 'wall') return { title: '防壁を建てる', detail: '冬の襲撃を1ずつ防ぐ・戦闘の守り（2つで+1）', cost: p ? g.wallCost(p) : D.WALL_COST };
     if (x === 'atk') return { title: '攻めの熟練+1', detail: `選んだ仲間1人の戦力+1（${D.MAX_SKILL.atk}まで）` };
     if (x === 'def') return { title: '守りの熟練+1', detail: `選んだ仲間1人の守り+1（${D.MAX_SKILL.def}まで）` };
+    if (x === 'skip') return { title: '何もしない' };
+    if (x === 'mage:mana') return { title: `魔石を${D.LEADER.mage.mana}つ得る`, detail: '最高の魔術師' };
+    if (x === 'mage:draw') return { title: `秘術を${D.LEADER.mage.draw}枚引く`, detail: '最高の魔術師' };
     if (x.startsWith('tr:')) { const i = Number(x.slice(3)); return { title: p?.comps[i]?.leader ? 'リーダー' : `仲間${i + 1}` }; }
     if (g.byId.has(x)) {
       const c = g.card(x);
@@ -137,6 +140,10 @@ export function optionLabel(g: Game, p: Player | null, o: Option): { title: stri
     return { title: sub ? `${c.name}：${sub.title}` : `${c.name}の効果を使う`, detail: sub?.detail ?? c.text, card: sub?.card ?? o.card, cost: sub?.cost };
   }
   if (o.x !== undefined) return choiceLabel(g, p, o.x);
+  if (o.mode === 'capture') {
+    const nd = g.nest(o.s);
+    if (nd?.mon) return { title: `${nd.mon.name}に好物をあげて使い魔にする`, detail: `${D.NEST_JP[o.s] ?? o.s}・強さ${nd.mon.str}`, cost: g.captureCost(nd.mon, p ?? undefined) };
+  }
   const sp = g.space(o.s);
   if (!sp) return { title: o.s };
   const ops = sp.def.options[o.i] ?? [];

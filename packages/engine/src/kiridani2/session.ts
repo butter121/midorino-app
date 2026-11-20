@@ -223,7 +223,8 @@ export class Kiridani2Session {
   }
   tradePartners(): number[] {
     const me = this.player?.pid ?? this.human;
-    return this.g.players.filter((o) => o.pid !== me && ((o.ai instanceof AI && o.ai.trade_on) || this.isHuman(o.pid))).map((o) => o.pid);
+    const sw = this.player ? this.g.is(this.player, 'swindler') : false;
+    return this.g.players.filter((o) => o.pid !== me && (sw || (o.ai instanceof AI && o.ai.trade_on) || this.isHuman(o.pid))).map((o) => o.pid);
   }
   isHuman(seat: number): boolean { return this.humans.includes(seat) && !this.g.players[seat]?.ai; }
 
@@ -237,6 +238,12 @@ export class Kiridani2Session {
     for (const r of Object.keys(give)) if (!RES.includes(r as Res) || (get as Record<string, number>)[r]) return fail('同じ資源を渡して受け取ることはできない');
     const err = this.g.tradeOk(p, o, give, get);
     if (err) return fail(err);
+    // 詐欺師：相手の了承なしに取引できる（出す数と受け取る数は同じ）
+    if (this.g.is(p, 'swindler')) {
+      const n = (c: Cost) => Object.values(c).reduce((a, k) => a + (k ?? 0), 0);
+      if (n(give) !== n(get)) return fail('出す数と受け取る数を同じにする');
+      return { ok: true, accept: true };
+    }
     if (this.isHuman(b)) return { ok: true, accept: true, human: true };
     if (!(o.ai instanceof AI) || !o.ai.trade_on) return fail('この相手は取引しない');
     return { ok: true, accept: o.ai.judgeOffer(this.g, o, give, get) };
