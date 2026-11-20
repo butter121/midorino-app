@@ -27,22 +27,22 @@ const q = (v) => {
 const rows = [['id', 'kind', 'name', 'engine', 'effect_dsl_json', 'draft_text']];
 const cardDsl = (c) => {
   const o = {};
-  for (const k of ['cost', 'prereq', 'fame', 'slot', 'two_hand', 'rear', 'leader_only', 'power', 'guard', 'el', 'vs_race', 'place', 'count', 'stage', 'cap', 'accum', 'mods'])
+  for (const k of ['cost', 'prereq', 'fame', 'slot', 'two_hand', 'leader_only', 'power', 'guard', 'tome', 'weight', 'place', 'count', 'stage', 'cap', 'accum', 'mods'])
     if (c[k] !== undefined && c[k] !== null && c[k] !== false) o[k] = c[k];
   o.effects = c.effects;
   return o;
 };
-for (const list of ['LEADERS', 'OCCUPATIONS', 'WEAPONS', 'TOOLS', 'SPELLS', 'GEAR', 'STAGES'])
+for (const list of ['LEADERS', 'OCCUPATIONS', 'WEAPONS', 'ARMORS', 'TOOLS', 'SPELLS', 'PETS', 'GEAR', 'STAGES'])
   for (const c of mod[list]) if (keep(c.id)) rows.push([c.id, c.kind, c.name, c.engine.join('|'), JSON.stringify(cardDsl(c)), c.text]);
 for (const c of mod.QUESTS) if (keep(c.id)) rows.push([c.id, c.secret ? 'secret_quest' : 'quest', c.name, '', JSON.stringify({ need: c.need, fame: c.fame }), c.text]);
-for (const c of mod.ANCIENT) if (keep(c.id)) rows.push([c.id, 'ancient', c.name, 'ruins', JSON.stringify({ group: c.group, copies: c.copies ?? 3 }), c.text]);
+for (const c of mod.ANCIENT) if (keep(c.id)) rows.push([c.id, 'ancient', c.name, 'ruins', JSON.stringify({ group: c.group, copies: c.copies ?? 1 }), c.text]);
 
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, '﻿' + rows.map((r) => r.map(q).join(',')).join('\r\n') + '\r\n');
 console.log(`wrote ${rows.length - 1} rows -> ${out}`);
 
 const moves = ['hunt', 'gather', 'trade', 'fort', 'smith', 'family', 'arcane', 'beast', 'quest', 'ally', 'ruins', 'boss'];
-const playable = ['LEADERS', 'OCCUPATIONS', 'WEAPONS', 'TOOLS', 'SPELLS'].flatMap((k) => mod[k]);
+const playable = ['LEADERS', 'OCCUPATIONS', 'WEAPONS', 'ARMORS', 'TOOLS', 'SPELLS'].flatMap((k) => mod[k]);
 for (const m of moves) {
   const cs = playable.filter((c) => c.engine.includes(m));
   const by = {};

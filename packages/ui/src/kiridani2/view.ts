@@ -9,8 +9,12 @@ export interface CompView { atk: number; def: number; weapon: string | null; arm
 export interface PV2 {
   seat: Seat; name: string; leader?: string; fame: number; res: Record<Res, number>;
   beds: number; walls: number; tools: string[]; occs: string[]; items: string[]; hand: string[]; ancient: string[];
-  comps: CompView[]; pets: number; trophies: string[]; discontent: number; raidLoss: number; quests: string[];
+  comps: CompView[]; pets: number;
+  /** 捕まえた使い魔（魔物の型・戦力）。拠点に並べる */
+  petList: { type: string; power: number }[]; trophies: string[]; discontent: number; raidLoss: number; quests: string[];
   secret?: string; ratio?: Record<string, number>; spellsUsed: string[];
+  /** 身につけた（何度でも使える）秘術・遺物の欠片 */
+  tomes: string[]; shards: number;
   /** 運命の山の残り（小さい順。空＝次にめくるとき混ぜ直し）。めくった値は全員に見えるので公開 */
   fateLeft: number[];
   /** 冬の食料のカードの修正（合わせで届いた「要る食料」− 仲間の数から出す値） */
@@ -26,6 +30,8 @@ export interface View2 {
   spaceOrder: string[]; spaces: Record<string, SpaceView2>; stages: string[];
   nests: NestView2[]; lair: { boss?: Monster; round?: number; occupants: Seat[]; defeated?: boolean };
   forecast: Monster[]; bosses: { round: number; boss: Monster }[];
+  /** 掘り出し市に並んだ品物 */
+  curio: string[];
   /** 共通の依頼：達成した人と、それぞれが得た名声（同時に達成した人は同じ名声） */
   quests: { id: string; doneBy: Seat[]; fames: number[] }[];
   players: PV2[]; combat?: CombatView2; winter?: { upkeep: { seat: Seat; need: number; paid: number; discontent: number }[]; raids: { seat: Seat; damage: number; blocked: number }[] };
@@ -41,7 +47,7 @@ export interface FamePoint { round: number; year: number; season: Season; fame: 
 export const RES_JP = DATA.RES_JP;
 export const SEASON_JP: Record<Season, string> = { spring: '春', summer: '夏', autumn: '秋', winter: '冬' };
 export const NEST_JP = DATA.NEST_JP;
-const ALL = [...CARD_SET.leaders, ...CARD_SET.occupations, ...CARD_SET.weapons, ...CARD_SET.tools, ...CARD_SET.spells, ...CARD_SET.gear, ...CARD_SET.stages];
+const ALL = [...CARD_SET.leaders, ...CARD_SET.occupations, ...CARD_SET.weapons, ...CARD_SET.armors, ...CARD_SET.tools, ...CARD_SET.spells, ...CARD_SET.gear, ...CARD_SET.stages, ...CARD_SET.pets];
 export const CARD2 = Object.fromEntries(ALL.map((c) => [c.id, c])) as Record<string, (typeof ALL)[number]>;
 export const QUEST2 = Object.fromEntries(CARD_SET.quests.map((q) => [q.id, q]));
 export const ANC2 = Object.fromEntries(CARD_SET.ancient.map((a) => [a.id, a]));
@@ -81,7 +87,7 @@ export const emptyRes = (): Record<Res, number> => Object.fromEntries(RES.map((r
 export function initialView2(me: Seat = 0): View2 {
   return {
     phase: 'title', me, years: 5, rounds: 20, round: 0, year: 0, season: 'spring', progress: 0, first: 0, spaceOrder: [], spaces: {}, stages: [],
-    nests: [], lair: { occupants: [] }, forecast: [], bosses: [], quests: [], players: [], log: [], fameHist: [],
+    nests: [], lair: { occupants: [] }, forecast: [], curio: [], bosses: [], quests: [], players: [], log: [], fameHist: [],
   };
 }
 
@@ -89,7 +95,7 @@ const newComp = (leader: boolean): CompView => ({ atk: 0, def: 0, weapon: null, 
 function newPlayer(seat: Seat, name: string): PV2 {
   return {
     seat, name, fame: 0, res: emptyRes(), beds: DATA.START.beds, walls: 0, tools: [], occs: [], items: [], hand: [], ancient: [],
-    comps: [newComp(true), newComp(false)], pets: 0, trophies: [], discontent: 0, raidLoss: 0, quests: [], spellsUsed: [],
+    comps: [newComp(true), newComp(false)], pets: 0, petList: [], trophies: [], discontent: 0, raidLoss: 0, quests: [], spellsUsed: [], tomes: [], shards: 0,
     fateLeft: fullFate(), upkeepMod: 0,
   };
 }
@@ -110,7 +116,7 @@ export function fateCells(left: number[]): { v: number; left: boolean }[] {
 
 const add = (to: Record<Res, number>, c: Cost, sign = 1) => { for (const [r, n] of Object.entries(c)) if (r in to) to[r as Res] = Math.max(0, to[r as Res] + sign * (n ?? 0)); };
 const who = (v: View2, s: Seat) => (s === v.me ? 'あなた' : v.players[s]?.name ?? `席${s + 1}`);
-const KIND_JP: Record<string, string> = { occ: '職能', weapon: '武具', tool: '道具', spell: '秘術', item: '品物', ancient: '古代の品' };
+const KIND_JP: Record<string, string> = { occ: '職能', weapon: '武器', armor: '防具', equip: '武器か防具', tool: '道具', spell: '秘術', item: '品物', ancient: '遺物', curio: '掘り出し市' };
 
 /** v を壊さずに次の状態を返す */
 export function applyEvent2(v0: View2, ev: Ev): View2 {
@@ -212,7 +218,7 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
       log(`${who(v, ev.seat)}が${cardName(ev.card)}を出した`);
       break;
     }
-    case 'spell': { const p = P(ev.seat); dropHand(p, ev.card); p.spellsUsed.push(ev.card); log(`${who(v, ev.seat)}が秘術「${cardName(ev.card)}」`); break; }
+    case 'spell': { const p = P(ev.seat); if (!p.tomes.includes(ev.card)) dropHand(p, ev.card); p.spellsUsed.push(ev.card); log(`${who(v, ev.seat)}が秘術「${cardName(ev.card)}」`); break; }
     case 'craft': { const p = P(ev.seat); if (!p.items.includes(ev.card) || CARD2[ev.card]?.kind === 'gear') p.items.push(ev.card); log(`${who(v, ev.seat)}が${cardName(ev.card)}を作った`); break; }
     case 'build': {
       const p = P(ev.seat);
@@ -270,8 +276,13 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
       log(`${who(v, ev.seat)}が${v.combat?.monster.name ?? '魔物'}を倒した（証${ev.fame}）`);
       break;
     }
+    case 'learn': { const p = P(ev.seat); dropHand(p, ev.card); if (!p.tomes.includes(ev.card)) p.tomes.push(ev.card); log(`${who(v, ev.seat)}が秘術「${cardName(ev.card)}」を身につけた`); break; }
+    case 'release': { const p = P(ev.seat); p.pets = Math.max(0, p.pets - 1); const k = p.petList.findIndex((x) => x.type === ev.monster); if (k >= 0) p.petList.splice(k, 1); log(`${who(v, ev.seat)}が使い魔を放した`); break; }
+    case 'shards': { P(ev.seat).shards = ev.total; break; }
+    case 'scrap': { const p = P(ev.seat); p.tools = p.tools.filter((c) => c !== ev.card); log(`${who(v, ev.seat)}が${cardName(ev.card)}を壊した`); break; }
+    case 'curio': v.curio = [...ev.cards]; break;
     case 'tame': {
-      const p = P(ev.seat); p.pets += 1;
+      const p = P(ev.seat); p.pets += 1; p.petList.push({ type: ev.monster, power: ev.power ?? 1 });
       const n = v.nests.find((x) => x.mon?.type === ev.monster); if (n) n.mon = undefined;
       log(`${who(v, ev.seat)}が魔物を使い魔にした`);
       break;

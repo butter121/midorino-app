@@ -66,21 +66,35 @@ describe('kiridani2 訓練', () => {
 });
 
 describe('kiridani2 遺跡の探索', () => {
-  it('武具・道具・秘術の山を選んで3枚見て1枚／古代の品', () => {
-    const froms = stageOps('ruins').map((ops) => ops[0].draw?.from);
-    expect(froms).toEqual(['weapon', 'tool', 'spell', 'ancient']);
+  it('武器・防具・道具・秘術の山を選んで3枚見て1枚／遺物の欠片+2', () => {
+    const ops = stageOps('ruins');
+    expect(ops[0][0].draw_any?.from).toEqual(['weapon', 'armor', 'tool', 'spell']);
+    expect(ops[1][0].shard).toBe(2);
   });
 
   it('選んだ山からだけ見る', () => {
     const { g, p } = bare();
-    const gen = g.runOps(p, stageOps('ruins')[1], {});
-    const r = gen.next();
+    const gen = g.runOps(p, stageOps('ruins')[0], {});
+    const r0 = gen.next();
+    expect((r0.value as { what: string }).what).toBe('deck');
+    const r = gen.next('tool');
     const req = r.value as { k: string; cards: string[] };
     expect(req.k).toBe('card');
     expect(req.cards).toHaveLength(3);
     for (const c of req.cards) expect(g.card(c).kind).toBe('tool');
     gen.next(req.cards[0]);
     expect(p.hand).toContain(req.cards[0]);
+  });
+
+  it('欠片が3つたまると遺物を1枚引く', () => {
+    const { g, p } = bare();
+    const gen = g.runOps(p, [{ shard: 3 }], {});
+    const r = gen.next();
+    const req = r.value as { k: string; cards: string[] };
+    expect(req.k).toBe('card');
+    gen.next(req.cards[0]);
+    expect(p.ancient).toEqual([req.cards[0]]);
+    expect(p.shards).toBe(0);
   });
 });
 

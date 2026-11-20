@@ -16,7 +16,7 @@ import { whyTitle, type Ask2 } from './table2';
 import { MarketTray2 } from './market2';
 import { CARD2, cardName, placeName } from './view';
 
-const KIND_JP: Record<string, string> = { weapon: '武具', tool: '道具', spell: '秘術' };
+const KIND_JP: Record<string, string> = { weapon: '武器', armor: '防具', tool: '道具', spell: '秘術' };
 const isFight = (sid: string) => sid.startsWith('nest') || sid === 'lair';
 const SLOT_JP = { weapon: '武器', armor: '防具' } as const;
 
@@ -84,7 +84,7 @@ export function uiFor2(s: SeatSession2): { ask: Ask2 | null; sheet: (ChoiceSpec 
         toAction: (id) => ({ t: 'kind', v: id as 'weapon' | 'tool' | 'spell' }),
       },
     };
-    case 'choose': return { ask: { kind: 'place', options: [...new Set(w.opts.filter((o) => o.s !== '@spell').map((o) => o.s))] }, sheet: null };
+    case 'choose': return { ask: { kind: 'place', options: [...new Set(w.opts.filter((o) => !isSpellOpt(o)).map((o) => o.s))] }, sheet: null };
     case 'heal': return {
       ask: null, sheet: {
         title: `仲間${w.comp + 1}の負傷を治す？`, sub: '治さないと次のラウンドは休み',
@@ -160,7 +160,7 @@ export function actionable2(s: SeatSession2, ui: ReturnType<typeof uiFor2>): boo
   if (ui.sheet) return true;
   const a = ui.ask;
   if (!a) return false;
-  if (a.kind === 'place') return a.options.length > 0 || (w.k === 'choose' && w.opts.some((o) => o.s === '@spell'));
+  if (a.kind === 'place') return a.options.length > 0 || (w.k === 'choose' && w.opts.some((o) => isSpellOpt(o)));
   if (a.kind === 'card') return a.cards.length > 0;
   return a.ratios.length > 0;
 }
@@ -173,9 +173,9 @@ export function fallbackSheet2(s: SeatSession2): (ChoiceSpec & { toAction: (id: 
   const title = 'いま選べるもの';
   switch (w.k) {
     case 'card': return { title, items: w.cards.map((c) => ({ id: c, title: cardName(c), card: CARD2[c] ? c : undefined })), toAction: (id) => ({ t: 'card', id }) };
-    case 'ratio': return { title, items: w.options.map((r, i) => ({ id: String(i), title: `武具${r.weapon}・道具${r.tool}・秘術${r.spell}` })), toAction: (id) => ({ t: 'ratio', v: w.options[Number(id)] }) };
+    case 'ratio': return { title, items: w.options.map((r, i) => ({ id: String(i), title: `武器${r.weapon}・防具${r.armor}・道具${r.tool}・秘術${r.spell}` })), toAction: (id) => ({ t: 'ratio', v: w.options[Number(id)] }) };
     case 'kind': return { title, items: w.options.map((k) => ({ id: k, title: KIND_JP[k] ?? k })), toAction: (id) => ({ t: 'kind', v: id as 'weapon' | 'tool' | 'spell' }) };
-    case 'choose': return { title, items: w.opts.map((o, i) => { const l = optionLabel(g, p, o); return { id: String(i), title: o.s === '@spell' ? l.title : `${placeName(o.s)}：${l.title}`, detail: l.detail, cost: l.cost }; }), toAction: (id) => ({ t: 'opt', i: Number(id) }) };
+    case 'choose': return { title, items: w.opts.map((o, i) => { const l = optionLabel(g, p, o); return { id: String(i), title: isSpellOpt(o) ? l.title : `${placeName(o.s)}：${l.title}`, detail: l.detail, cost: l.cost }; }), toAction: (id) => ({ t: 'opt', i: Number(id) }) };
     case 'pick': return { title, items: w.options.map((x, i) => choiceItem2(g, p, x, String(i))), toAction: (id) => ({ t: 'pick', i: Number(id) }) };
     case 'heal': case 'effect': return { title, items: [{ id: 'yes', title: 'はい', primary: true }, { id: 'no', title: 'いいえ' }], toAction: (id) => ({ t: 'yes', v: id === 'yes' }) };
   }
@@ -188,10 +188,11 @@ function Sheet({ label, children }: { label: string; children: ReactNode }) {
 // ---------------------------------------------------------------- 戦闘のトレイ（v1 と同じ「選択式」）
 // 送る仲間の数・戦い方を選び、使うもの（士気・ポーション・払うカードの効果・手札の秘術）をタップでトレイに足す。
 // 足すたびに戦力・勝つ見込み・運命・反撃と負傷・払うものがその場で変わる。計算はエンジン（previewFight → makePlan の use）。
-const EL_JP: Record<string, string> = { fire: '火', ice: '氷', thunder: '雷', light: '光', dark: '闇' };
 const STYLES: [FightMode, string, string][] = [
-  ['normal', '普通に', '戦力そのまま'], ['guard', '守って戦う', '戦力−2・反撃−2'], ['chip', '削るだけ', '負けても傷+1'],
+  ['normal', '普通に', '戦力そのまま'], ['guard', '守って戦う', '戦力−2・反撃−2'], ['chip', '削るだけ', '負けても傷+1'], ['capture', '捕まえる', '勝てば使い魔（強さ＋捕まえにくさ・食料）'],
 ];
+/** 秘術を唱える・身につける（置く場所を選ぶ前に何度でも） */
+const isSpellOpt = (o: { s: string }) => o.s === '@spell' || o.s === '@learn';
 const sumCost = (c: Cost) => Object.values(c).reduce((a: number, n) => a + (n ?? 0), 0);
 const addC = (a: Cost, b: Cost): Cost => { const o: Cost = { ...a }; for (const [r, n] of Object.entries(b)) (o as Record<string, number>)[r] = ((o as Record<string, number>)[r] ?? 0) + (n as number); return o; };
 const payable = (res: Record<string, number> | undefined, c: Cost) => !!res && Object.entries(c).every(([r, n]) => (res[r] ?? 0) >= (n as number));
@@ -275,7 +276,6 @@ export function FightTray2({ s, sid, onPick, onCancel }: { s: SeatSession2; sid:
             <span className="kd-tray-stats">
               <span className="kd-stat is-str">強さ{mon.str - mon.wounds}{mon.wounds ? <small>（傷{mon.wounds}）</small> : null}</span>
               <span className="kd-stat is-ctr">反撃{mon.counter}</span>
-              {mon.weak && <span className="kd-stat is-weak"><KIcon name={mon.weak} size={14} />弱点{EL_JP[mon.weak] ?? mon.weak}</span>}
             </span>
           )}
         </div>
@@ -442,7 +442,7 @@ function tradeAdapter(s: SeatSession2): SeatSession {
 export type Route2 = { k: 'send'; a: Action2 } | { k: 'fight'; sid: string } | { k: 'sub'; sid: string; opts: Option[] } | { k: 'none' };
 export function routeAnswer2(w: NonNullable<SeatSession2['waiting']>, c: string): Route2 {
   if (w.k === 'choose') {
-    const os = w.opts.filter((o) => o.s === c && o.s !== '@spell');
+    const os = w.opts.filter((o) => o.s === c && !isSpellOpt(o));
     if (!os.length) return { k: 'none' };
     if (isFight(c)) return { k: 'fight', sid: c };
     // 選べるものが1つでも、選ぶ要素のあるマス（建てる・作る・売り買い・できることが複数）は中身を見せてから決める。
@@ -453,8 +453,8 @@ export function routeAnswer2(w: NonNullable<SeatSession2['waiting']>, c: string)
     return { k: 'sub', sid: c, opts: os };
   }
   if (w.k === 'ratio') {
-    const [a, b, d] = c.split(',').map(Number);
-    const r = w.options.find((x) => x.weapon === a && x.tool === b && x.spell === d);
+    const [a, ar, b, d] = c.split(',').map(Number);
+    const r = w.options.find((x) => x.weapon === a && x.armor === ar && x.tool === b && x.spell === d);
     return r ? { k: 'send', a: { t: 'ratio', v: r } } : { k: 'none' };
   }
   if (w.k === 'card' && w.cards.includes(c)) return { k: 'send', a: { t: 'card', id: c } };
@@ -476,7 +476,7 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
   const withWho = (a: Action2): Action2 => {
     if (a.t !== 'opt' || w?.k !== 'choose' || who === null || !s || !p) return a;
     const o = w.opts[a.i];
-    return o && !isFight(o.s) && o.s !== '@spell' && s.g.whoFor(p, { ...o, who: [who] }) ? { ...a, who: [who] } : a;
+    return o && !isFight(o.s) && !isSpellOpt(o) && s.g.whoFor(p, { ...o, who: [who] }) ? { ...a, who: [who] } : a;
   };
   const go = (a: Action2) => { reset(); send(withWho(a)); };
 
@@ -501,7 +501,7 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
     const from = (id: string) => (s.g.storage(p).includes(id) ? '倉庫' : compName(p, p.comps.findIndex((c) => c[slot] === id)));
     const items: ChoiceItem[] = cand.map((id) => {
       const cd = s.g.card(id);
-      const stat = slot === 'weapon' ? `戦力+${cd.power ?? 0}${cd.two_hand ? '・両手' : ''}${cd.rear ? '・後衛' : ''}` : `守り+${cd.guard ?? 0}`;
+      const stat = slot === 'weapon' ? `戦力+${cd.power ?? 0}${cd.two_hand ? '・両手' : ''}` : `守り+${cd.guard ?? 0}`;
       return { id, title: cd.name, detail: `${stat}（${from(id)}から）`, card: CARD2[id] ? id : undefined };
     });
     if (cur) items.push({ id: '-', title: 'はずす', detail: `${cardName(cur)}を倉庫へ` });
@@ -510,7 +510,7 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
   }
   else if (s && w?.k === 'choose' && tray?.kind === 'trade') sheetNode = <TradeTray s={tradeAdapter(s)} onTrade={(b, give, get) => { reset(); opts.onTrade(b, give, get); }} onCancel={reset} />;
   else if (s && w?.k === 'choose' && tray?.kind === 'spell') {
-    const sp = w.opts.filter((o) => o.s === '@spell');
+    const sp = w.opts.filter((o) => isSpellOpt(o));
     sheetNode = <ChoiceSheet spec={{ title: '秘術を使う', sub: '置く前に1枚。使うと手札から捨てる', items: sp.map((o, i) => { const l = optionLabel(s.g, s.player, o); return { id: String(i), title: l.title.replace(/を使う$/, ''), detail: l.detail, card: l.card, cost: l.cost }; }), cancel: '使わない' }} onPick={(id) => go({ t: 'opt', i: w.opts.indexOf(sp[Number(id)]) })} onCancel={reset} />;
   } else if (s && p && w?.k === 'choose' && sub && sub.opts.every((o) => o.x !== undefined && typeof o.x === 'object')) {
     // 売り買いのマス：両替の形のトレイ
@@ -530,7 +530,7 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
     if (fb) sheetNode = <ChoiceSheet spec={fb} onPick={(id) => go(fb.toAction(id))} />;
   }
 
-  const spells = w?.k === 'choose' ? w.opts.filter((o) => o.s === '@spell').length : 0;
+  const spells = w?.k === 'choose' ? w.opts.filter((o) => isSpellOpt(o)).length : 0;
   const actions = ui.ask?.kind === 'place' && s ? (
     <>
       {spells > 0 && <button type="button" className="kd-btn kd-tradebtn" onClick={() => setTray({ kind: 'spell' })} aria-label={`秘術（${spells}）`}>✷ 秘術<small>{spells}</small></button>}

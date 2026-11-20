@@ -17,21 +17,26 @@ export const STAGES: StageDef[] = [
     effects: [
       opt([{ pay: { food: 1 } }, { train: 'atk' }]),
       opt([{ pay: { food: 1 } }, { train: 'def' }]),
-      opt([{ craft: 'armor' }]),
     ],
-    text: '次のどれか：食料1で選んだ仲間1人の攻めの熟練+1（3まで）／食料1で守りの熟練+1（2まで）／防具を1つ作る。',
+    text: '次のどれか：食料1で選んだ仲間1人の攻めの熟練+1（3まで）／食料1で守りの熟練+1（2まで）。防具は鍛冶場で作る。',
   },
   {
     id: 'ruins', kind: 'stage', stage: 1, name: '遺跡の探索', engine: ['ruins'], mech: 'action',
     effects: [
-      opt([{ draw: { from: 'weapon', look: 3, take: 1 } }]),
-      opt([{ draw: { from: 'tool', look: 3, take: 1 } }]),
-      opt([{ draw: { from: 'spell', look: 3, take: 1 } }]),
-      opt([{ draw: { from: 'ancient', look: 1, take: 1 } }]),
+      opt([{ draw_any: { from: ['weapon', 'armor', 'tool', 'spell'], look: 3, take: 1 } }]),
+      opt([{ shard: 2 }]),
     ],
-    text: '次のどれか：武具・道具・秘術から山を1つ選び、3枚見て1枚を手札に／古代の品を1枚引く。',
+    text: '次のどれか：武器・防具・道具・秘術から山を1つ選び、3枚見て1枚を手札に／遺物の欠片+2（3つで遺物1枚）。',
   },
   // ---------------- 段階2（候補6から4枚）
+  {
+    id: 'apprentice', kind: 'stage', stage: 2, name: '弟子入り', engine: ['bridge', 'family'], mech: 'action',
+    effects: [
+      opt([{ occ: 1 }, { draw: { from: 'occ', look: 3, take: 1 } }]),
+      opt([{ draw: { from: 'occ', look: 3, take: 1 } }, { gain: { food: 1 } }]),
+    ],
+    text: '次のどれか：手札の職能を1枚出して（費用はギルドと同じ）、職能の山から3枚見て1枚を手札に／職能の山から3枚見て1枚を手札に、食料+1。',
+  },
   {
     id: 'walls', kind: 'stage', stage: 2, name: '城壁の普請', engine: ['fort'], mech: 'action',
     effects: [opt([{ build: 'wall', discount: { wood: 1 } }])],
@@ -82,7 +87,7 @@ export const STAGES: StageDef[] = [
   {
     id: 'upgrade', kind: 'stage', stage: 3, name: '施設の強化', engine: ['fort', 'gather'], mech: 'action',
     effects: [opt([{ build: 'facility', discount: { wood: 2 } }])],
-    text: '施設（道具カード）を1つ建てる（木材2安い）。',
+    text: '道具を1つ建てる（木材2安い）。',
   },
   {
     id: 'library', kind: 'stage', stage: 3, name: '魔導書庫', engine: ['arcane'], mech: 'action',
@@ -103,10 +108,10 @@ export const STAGES: StageDef[] = [
   {
     id: 'kennel', kind: 'stage', stage: 3, name: '獣舎の開放', engine: ['beast'], mech: 'action',
     effects: [
-      opt([{ pay: { food: 3 } }, { tame: true }]),
+      opt([{ tame: true }]),
       opt([{ gain: { food: 1, mat: 1 } }]),
     ],
-    text: '次のどれか：食料3を払い、巣にいる獣1体を戦わずに使い魔にする／食料1と素材1を得る。',
+    text: '次のどれか：巣にいる魔物1体を戦わずに使い魔にする（捕まえる食料＝強さ÷4は払う）／食料1と素材1を得る。',
   },
   // ---------------- 段階4（候補6から4枚）
   {
@@ -136,10 +141,10 @@ export const STAGES: StageDef[] = [
   {
     id: 'altar', kind: 'stage', stage: 4, name: '古代の祭壇', engine: ['ruins', 'arcane'], mech: 'action',
     effects: [
-      opt([{ draw: { from: 'ancient', look: 2, take: 1 } }]),
-      opt([{ pay: { mana: 2 } }, { fame: 2 }]),
+      opt([{ shard: 2 }]),
+      { when: 'use' as const, do: [{ pay: { mana: 2 } }, { fame: 2 }], limit: 'year' as const },
     ],
-    text: '次のどれか：古代の品を2枚見て1枚取る／魔石2を捧げて名声2。',
+    text: '次のどれか：遺物の欠片+2／魔石2を捧げて名声2（1年1回）。',
   },
   {
     id: 'pilgrim', kind: 'stage', stage: 4, name: '巡礼路', engine: ['quest', 'boss'], mech: 'action',
@@ -159,13 +164,10 @@ export const STAGES: StageDef[] = [
   {
     id: 'triumph', kind: 'stage', stage: 5, name: '凱旋', engine: ['hunt'], mech: 'endfame',
     effects: [
-      opt([{ fame: 1 }], { min: { races: 1 } }),
-      opt([{ fame: 2 }], { min: { races: 2 } }),
-      opt([{ fame: 3 }], { min: { races: 3 } }),
-      opt([{ fame: 4 }], { min: { races: 4 } }),
-      opt([{ fame: 5 }], { min: { races: 5 } }),
+      { when: 'use' as const, if: { min: { races: 3 } }, do: [{ fame_per: { stat: 'races', per: 1 } }, { fame: -1 }], limit: 'game' as const },
+      opt([{ gain: { food: 2, mat: 1 } }]),
     ],
-    text: '倒した種族1種につき名声+1（最大5）。',
+    text: '次のどれか（名声は1試合に1回、年数の倍率がかかる）：倒した種族3種で名声2・4種で名声3・5種で名声4／食料2と素材1を得る。',
   },
   {
     id: 'infirmary', kind: 'stage', stage: 5, name: '救護所', engine: ['boss', 'hunt'], mech: 'action',
@@ -191,9 +193,9 @@ export const STAGES: StageDef[] = [
   {
     id: 'treasury', kind: 'stage', stage: 5, name: '宝物庫', engine: ['ruins', 'trade'], mech: 'action',
     effects: [
-      opt([{ draw: { from: 'ancient', look: 2, take: 1 } }]),
+      opt([{ shard: 2 }]),
       opt([{ gain: { gold: 4 } }]),
     ],
-    text: '次のどれか：古代の品を2枚見て1枚取る／金貨4を得る。',
+    text: '次のどれか：遺物の欠片+2／金貨4を得る。',
   },
 ];

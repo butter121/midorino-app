@@ -10,15 +10,15 @@ import { RES } from '@midorino/engine/src/kiridani2';
 const nameOf = (v: View2, s: Seat) => (s === v.me ? 'あなた' : v.players[s]?.name ?? '');
 const Row = ({ k, children }: { k: string; children: ReactNode }) => <div className="kd-insp-row"><span>{k}</span><div>{children}</div></div>;
 const RACE_JP: Record<string, string> = { beast: '獣', spirit: '精霊', undead: '亡者', humanoid: '人型', dragon: '竜' };
-const EL_JP: Record<string, string> = { fire: '炎', ice: '氷', thunder: '雷', light: '光', dark: '闇' };
 
 function monBlock(m: Monster): ReactNode {
   return <>
-    <div className="kd-insp-art"><MonArt m={m} size={110} /></div>
+    <div className="kd-insp-art"><MonArt m={m} size={200} /></div>
     <Row k="強さ">{m.str}{m.wounds ? `（傷${m.wounds} → ${m.str - m.wounds}）` : ''}</Row>
     {m.boss && <Row k="参加しないと">名声−{DATA.BOSS_ABSENT}（主の巣に仲間を送らなかった人。勝ち負けによらない）</Row>}
     <Row k="反撃">{m.counter}（守りを超えた分だけ前衛が負傷）</Row>
-    <Row k="種族・弱点"><span className="kd-insp-who"><KIcon name={m.race} size={18} />{RACE_JP[m.race]}</span>{m.weak && <span className="kd-insp-who"><KIcon name={m.weak} size={18} />弱点：{EL_JP[m.weak]}（突くと戦力+{DATA.WEAK_BONUS}）</span>}</Row>
+    <Row k="種族"><span className="kd-insp-who"><KIcon name={m.race} size={18} />{RACE_JP[m.race]}</span></Row>
+    {!m.boss && <Row k="捕まえる">食料{Math.ceil(m.str / DATA.CAPTURE.foodDiv)}・使い魔の戦力{Math.min(DATA.CAPTURE.powerMax, Math.ceil(m.str / DATA.CAPTURE.powerDiv))}（強さ＋{DATA.CAPTURE.ease[String(DATA.MON[m.type]?.grade ?? 0)] ?? 2} の戦力で勝つ）</Row>}
     <Row k="戦利品"><CostRow cost={m.loot} size={18} /></Row>
     <Row k="討伐の証">名声{m.trophy}</Row>
     {m.raid > 0 && <Row k="冬の襲撃">{m.raid}（その年のうちに倒さないと冬に襲う）</Row>}
@@ -32,7 +32,7 @@ function foodLine(p: PV2): ReactNode {
 
 function playerBlock(v: View2, p: PV2): ReactNode {
   return <>
-    <div className="kd-insp-art"><LeaderArt id={p.leader} size={96} /></div>
+    <div className="kd-insp-art"><LeaderArt id={p.leader} size={200} /></div>
     {p.leader && <Row k="リーダー"><span className="kd-insp-link" data-inspect={`card2:${p.leader}`} role="button" tabIndex={0}>{cardName(p.leader)}</span></Row>}
     <Row k="名声">{p.fame}{p.discontent ? `（不満${p.discontent}）` : ''}</Row>
     <Row k="持ち物"><span className="kd-resgrid">{RES.map((r) => <ResCount key={r} r={r} n={p.res[r]} size={16} />)}</span></Row>
@@ -40,6 +40,8 @@ function playerBlock(v: View2, p: PV2): ReactNode {
     <Row k="職能">{p.occs.length ? p.occs.map((c) => <CardChip2 key={c} id={c} />) : 'なし'}</Row>
     <Row k="施設・防壁">{p.tools.map((c) => <CardChip2 key={c} id={c} />)}寝床{p.beds}・防壁{p.walls}</Row>
     <Row k="討伐">{p.trophies.length}体・使い魔{p.pets}</Row>
+    {p.tomes.length > 0 && <Row k="身につけた秘術">{p.tomes.map((c) => <CardChip2 key={c} id={c} />)}</Row>}
+    <Row k="遺物">{p.ancient.length}枚・欠片{p.shards}/{DATA.SHARD_NEED}</Row>
     <Row k="冬の食料">{foodLine(p)}</Row>
     <Row k="運命の残り"><FateRow2 left={p.fateLeft} inspect={`fate2:${p.seat}`} /><small className="kd2-insp-sub">{p.fateLeft.length ? `${p.fateLeft.length}枚` : '次は混ぜ直し'}</small></Row>
   </>;
@@ -55,9 +57,9 @@ function body(target: string, v: View2): { kind: string; title: string; node: Re
       return {
         kind: c ? KIND2_JP[c.kind] : q ? (q.secret ? '秘密依頼' : '依頼') : '古代の品', title: name, node: <>
           <div className="kd-insp-card"><CardFace2 id={id} size="l" /></div>
-          {c?.cost && <Row k="費用"><CostRow cost={c.cost} size={18} /></Row>}
+          {c?.cost && Object.keys(c.cost).length > 0 && <Row k="費用"><CostRow cost={c.cost} size={18} /></Row>}
           {c?.prereq && <Row k="条件">{Object.entries(c.prereq).map(([kk, n]) => `${kk === 'occs' ? '職能' : kk === 'comps' ? '仲間' : kk === 'walls' ? '防壁' : kk === 'facilities' ? '施設' : kk === 'kills' ? '討伐' : kk}${typeof n === 'number' ? `${n}以上` : `：${cardName(String(n))}`}`).join('・')}</Row>}
-          {c && (c.kind === 'weapon' || c.kind === 'armor' || c.kind === 'gear') && <Row k="装備">{c.slot === 'armor' ? '防具の枠' : '武器の枠'}{c.power ? `・戦力+${c.power}` : ''}{c.guard ? `・守り+${c.guard}` : ''}{c.rear ? '・後衛（反撃を受けない）' : ''}{c.two_hand ? '・両手（防具なし）' : ''}</Row>}
+          {c && (c.kind === 'weapon' || c.kind === 'armor' || c.kind === 'gear') && <Row k="装備">{c.slot === 'armor' ? '防具の枠' : '武器の枠'}{c.power ? `・戦力+${c.power}` : ''}{c.guard ? `・守り+${c.guard}` : ''}{c.two_hand ? '・両手（防具なし）' : ''}</Row>}
           {c?.kind === 'gear' && <Row k="作る場所">{(c as { place?: string }).place === 'training' ? '訓練場' : '鍛冶場'}</Row>}
           {a && <Row k="組">同じ種類2つ＝名声{DATA.ANCIENT_SAME[2]}・3つ＝{DATA.ANCIENT_SAME[3]}・4種そろい＝{DATA.ANCIENT_ALL}</Row>}
         </>,
@@ -81,7 +83,7 @@ function body(target: string, v: View2): { kind: string; title: string; node: Re
       const s = v.spaces[id];
       return {
         kind: s?.stage ? `段階${s.stage}の場所` : '行動マス', title: placeName(id), node: <>
-          <div className="kd-insp-art">{st && !def ? <CardArt2 id={id} size={96} /> : <SpaceArt id={id} size={96} />}</div>
+          <div className="kd-insp-art">{st && !def ? <CardArt2 id={id} size={200} /> : <SpaceArt id={id} size={200} />}</div>
           {st && <p className="kd-insp-p kd-insp-big">{st.text}</p>}
           {st && FLAVOR[id] && <p className="kd2-flavor">{FLAVOR[id]}</p>}
           {def?.accum && <Row k="毎ラウンドたまる"><CostRow cost={def.accum} size={18} signed /></Row>}

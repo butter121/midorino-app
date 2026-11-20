@@ -30,6 +30,8 @@ interface PRec {
   seat: number; level: Level; target: string; targets: string[]; leader: string; score: number; rel: number; win: boolean;
   bd: Record<string, number>; picked: string[]; loopN: number; loopOk: number; repeats: number; rounds: number; fed: number; winters: number;
   plaza: number; places: number; fateMean: number; fates: number; comps: number; kills: number; bossTro: number; bossWins: number;
+  /** 再設計の測り：唱えた秘術・使い魔・遺物・売った回数・終わりの金貨・道具・武器・防具・身につけた秘術、マスごとの置いた回数 */
+  ex: Record<string, number>; sp: Record<string, number>;
 }
 interface FRec { t: number; kind: string; str: number; base: number; total: number; win: boolean; addons: number; comps: number; sides: number; mode: string }
 interface GRec { years: number; n: number; mixed: boolean; seed: number; players: PRec[]; ms: number; fights: FRec[] }
@@ -39,7 +41,8 @@ function playOne(years: number, n: number, seed: number, mixed: boolean): GRec {
   let levels: Level[] = Array(n).fill('strong');
   if (mixed) do { levels = Array.from({ length: n }, () => lr.choice(['novice', 'normal', 'strong'] as Level[])); } while (new Set(levels).size < 2);
   // 同じ腕前の卓では、席ごとに目指す動きをくじで決める（強い動きごとの名声を同じ数ずつ比べるため。SIM_NATURAL=1 で AI まかせ）
-  const tags = lr.shuffle([...FORCE_TAGS]);
+  const fixed = (process.env.SIM_TAGS ?? '').split(',').filter(Boolean) as EngineTag[];
+  const tags = [...fixed, ...lr.shuffle([...FORCE_TAGS]).filter((t) => !fixed.includes(t))];
   const ais = levels.map((l, i) => new AI(l, { seed: seed * 31 + i, ...(!mixed && !process.env.SIM_NATURAL ? { target: tags[i % tags.length] } : {}) }));
   const g = new Game(n, ais, { seed, years, cards: CARD_SET });
   const t0 = Date.now();
@@ -69,6 +72,8 @@ function playOne(years: number, n: number, seed: number, mixed: boolean): GRec {
       bd: scoreBreakdown(g, p), picked: [p.leader ?? '', ...p.picked].filter(Boolean), loopN, loopOk, repeats, rounds: p.history.length,
       fed: p.fed.filter(Boolean).length, winters: p.fed.length, plaza, places, fateMean: fv.length ? fv.reduce((a, b) => a + b, 0) / fv.length : 0.5, fates: fv.length, comps: p.comps.length, kills: p.kills,
       bossTro: g.fightLog.filter((f) => f.kind !== 'nest').reduce((a, f) => a + (f.tro[f.pids.indexOf(p.pid)] ?? 0), 0), bossWins: p.st.boss,
+      ex: { casts: p.st.casts, pets: p.pets.length, anc: p.ancient.length, sold: p.st.sold, gold: p.res.gold, tools: p.tools.length, wpn: g.stat(p, 'weapons'), arm: g.stat(p, 'armors'), tomes: p.tomes.length, occs: p.occs.length },
+      sp: p.history.flat().filter((a) => a.startsWith('sp:')).reduce((o, a) => { o[a.slice(3)] = (o[a.slice(3)] ?? 0) + 1; return o; }, {} as Record<string, number>),
     };
   });
   if (g.errors.length) throw new Error(`errors in game ${seed}: ${g.errors.join(';')}`);
@@ -180,6 +185,16 @@ function summarize(years: number, eq: GRec[], mx: GRec[]) {
   res.cards = cards;
   res.cardsOut = cards.filter((x) => Math.abs(x.d) > 3).length;
   res.ms = avg(eq.map((g) => g.ms));
+  // 再設計の測り：強い動きごとの中身と、取り合いのマスを1人がどれだけ使ったか（そのマスの全回数に占める、いちばん使った人の割合）
+  res.ex = Object.fromEntries([...new Set(P.map((p) => p.target))].sort().map((t) => {
+    const q = P.filter((p) => p.target === t);
+    return [t, Object.fromEntries(Object.keys(q[0].ex).map((k) => [k, avg(q.map((p) => p.ex[k]))]))];
+  }));
+  res.hog = Object.fromEntries(['market', 'dig', 'curio', 'forge', 'workshop', 'guild'].map((s) => {
+    const xs = eq.map((g) => { const c = g.players.map((p) => p.sp[s] ?? 0); const tot = c.reduce((a, b) => a + b, 0); return tot ? Math.max(...c) / tot : NaN; }).filter(Number.isFinite);
+    const who = eq.map((g) => { const c = g.players.map((p) => p.sp[s] ?? 0); const tot = c.reduce((a, b) => a + b, 0); return tot / g.players[0].rounds; });
+    return [s, [avg(xs), avg(who)]];
+  }));
   // 戦闘（同じ腕前の卓）：種類 × 時期（t＜1/3 序盤、＜2/3 中盤、それ以降 終盤）
   const F = eq.flatMap((g) => g.fights);
   const phase = (t: number) => (t < 1 / 3 ? 'early' : t < 2 / 3 ? 'mid' : 'late');
@@ -230,6 +245,10 @@ function print(all: Record<string, any>[]) {
     console.log(`\n--- 強い動きごとの名声の入り口（${r.years}年、平均）: ${[...Object.keys(SRC), 'neg'].join(' / ')}`);
     for (const t of tags) if (r.engine[t]) console.log(`  ${t.padEnd(8)} ${[...Object.keys(SRC).map((k) => f1(r.engine[t].src[k])), f1(r.engine[t].neg)].join(' / ')}  (不満/襲撃/古竜 ${r.engine[t].negParts.map(f1).join('/')})`);
   }
+  console.log('\n--- 強い動きごとの中身（唱えた秘術/使い魔/遺物/売った回数/終わりの金貨/道具/武器/防具/身につけた秘術/職能）');
+  for (const t of tags) L(`  ${t}`, (r) => (r.ex[t] ? ['casts', 'pets', 'anc', 'sold', 'gold', 'tools', 'wpn', 'arm', 'tomes', 'occs'].map((k) => (r.ex[t][k] ?? 0).toFixed(1)).join('/') : '-'));
+  console.log('\n--- 取り合いのマス：いちばん使った人の割合 / 1ラウンドあたりの使用回数（4人なら 0.25〜0.4 が目安）');
+  for (const s of Object.keys(all[0].hog)) L(`  ${s}`, (r) => `${pct(r.hog[s][0])} / ${f2(r.hog[s][1])}`);
   console.log('\n--- 強い動きごとの「一周」の割合');
   for (const t of tags) L(`  ${t}`, (r) => (r.loopBy[t] !== undefined ? pct(r.loopBy[t]) : '-'));
   for (const r of all) {
