@@ -21,7 +21,8 @@ export const CARD_SET: CardSet = {
   armors: ARMORS,
   tools: TOOLS,
   spells: SPELLS,
-  pets: PETS,
+  // 使い魔のカードは使わない（前の仕組みに戻した：使い魔は1体につき戦力+1）
+  pets: [],
   gear: GEAR,
   stages: STAGES,
   quests: QUESTS,

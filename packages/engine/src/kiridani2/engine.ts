@@ -408,7 +408,7 @@ export class Game {
     const out: string[] = [];
     if (p.leader) out.push(p.leader);
     out.push(...p.occs, ...p.tools, ...p.tomes);
-    p.pets.forEach((pt, i) => { if (!fightIdxs || (fightPets ?? this.bringPets(p)).includes(i)) out.push(pt.card); });
+    p.pets.forEach((pt, i) => { if (pt.card && (!fightIdxs || (fightPets ?? this.bringPets(p)).includes(i))) out.push(pt.card); });
     p.comps.forEach((c, i) => {
       if (fightIdxs && !fightIdxs.includes(i)) return;
       if (c.weapon) out.push(c.weapon);
@@ -416,10 +416,9 @@ export class Game {
     });
     return out;
   }
-  /** 戦闘に連れて行く使い魔（戦力の高い順に、連れて行ける数まで） */
+  /** 戦闘に連れて行く使い魔（前の仕組みに戻した：持っている使い魔は全部ついてくる） */
   bringPets(p: Player): number[] {
-    const n = D.CAPTURE.bring + this.mods(p).pet_bring;
-    return p.pets.map((_, i) => i).sort((a, b) => p.pets[b].power - p.pets[a].power || a - b).slice(0, Math.max(0, n));
+    return p.pets.map((_, i) => i);
   }
   petCap(p: Player) { return D.CAPTURE.cap + this.mods(p).pet_cap; }
   /** マスの定員（0＝定員なし） */
@@ -703,7 +702,8 @@ export class Game {
         const c: string = yield* this.ask({ k: 'card', g: this, p, why: 'start_occ', cards: occs });
         yield* this.playOcc(p, c, true);
       }
-      const items = p.hand.filter((c) => ['weapon', 'armor', 'tool'].includes(this.card(c).kind) || !!this.card(c).tome);
+      // 準備で作れる武器・防具は軽いものだけ（中・重い・呪いの装備は試合が始まってから）
+      const items = p.hand.filter((c) => { const d = this.card(c); return d.kind === 'tool' || !!d.tome || ((d.kind === 'weapon' || d.kind === 'armor') && d.weight === 'light'); });
       if (items.length) {
         const c: string = yield* this.ask({ k: 'card', g: this, p, why: 'start_item', cards: items });
         yield* this.playItem(p, c, true);
@@ -989,18 +989,16 @@ export class Game {
           continue;
         }
         if (nd.groups >= D.NEST_CAP && !p.ignoreFull) continue;
-        const capOk = canPay(p, this.captureCost(nd.mon));
         for (let k = 1; k <= Math.min(D.MAX_SEND, nfree); k++) {
-          for (const mode of ['normal', 'safe', 'gamble', 'chip', 'guard', 'wait', 'capture'] as FightMode[]) {
+          for (const mode of ['normal', 'safe', 'gamble', 'chip', 'guard', 'wait'] as FightMode[]) {
             if (mode === 'wait' && (nd.groups > 0 || this.n < 2)) continue;
-            if (mode === 'capture' && !capOk) continue;
             out.push({ s: nd.id, i: 0, k, mode });
           }
         }
         for (const key of [`instead:nest`, `instead:${nd.id}`]) {
           for (const [card, ei, e] of this.effectsOf(p, key, { race: nd.mon.race, coop: false, k: 1, boss: false })) {
             if (!canPay(p, sumPays(e.do ?? []))) continue;
-            if ((e.do ?? []).some((op) => op.tame) && !canPay(p, addCost(sumPays(e.do ?? []), this.captureCost(nd.mon)))) continue;
+            if ((e.do ?? []).some((op) => op.tame) && (!this.canTame(nd.mon) || !canPay(p, addCost(sumPays(e.do ?? []), this.captureCost(nd.mon))))) continue;
             out.push({ s: nd.id, i: -1, card, e: ei, k: 1 });
           }
         }
@@ -1033,7 +1031,7 @@ export class Game {
     // 作る・建てる・職能は、足りない資源を金貨で払える（goldPlan）
     const after = (c: Cost) => this.goldPlan(p, c, base) !== null;
     for (const o of ops) if ((o.hire || o.hire_free) && !this.canHire(p, !!o.hire_free)) return [];
-    if (!nestCtx && ops.some((o) => o.tame) && !this.nests.some((nd) => nd.mon && canPay(p, addCost(base, this.captureCost(nd.mon))))) return [];
+    if (!nestCtx && ops.some((o) => o.tame) && !this.nests.some((nd) => nd.mon && this.canTame(nd.mon) && canPay(p, addCost(base, this.captureCost(nd.mon))))) return [];
     if (ops.some((o) => o.buy_card) && !this.curio.length) return [];
     if (!op) return [undefined];
     const k = opKey(op);
@@ -1332,15 +1330,15 @@ export class Game {
           break;
         }
         case 'tame': {
-          // 戦わずに捕まえる（捕まえる食料は払う）
+          // 戦わずに使い魔にする（獣だけ。食料を払う）
           let nd = ctx.nest ? this.nest(ctx.nest) : undefined;
           if (!nd) {
-            const cand = this.nests.filter((n) => n.mon && canPay(p, this.captureCost(n.mon))).map((n) => n.id);
+            const cand = this.nests.filter((n) => n.mon && this.canTame(n.mon) && canPay(p, this.captureCost(n.mon))).map((n) => n.id);
             if (!cand.length) break;
             const nid: string = yield* this.askOne(p, cand, { k: 'pick', g: this, p, what: 'tame', options: cand });
             nd = this.nest(nid);
           }
-          if (!nd?.mon || !canPay(p, this.captureCost(nd.mon))) break;
+          if (!nd?.mon || !this.canTame(nd.mon) || !canPay(p, this.captureCost(nd.mon))) break;
           const mon = nd.mon;
           nd.mon = null;
           yield* this.addPet(p, mon);
@@ -1587,7 +1585,10 @@ export class Game {
     const g = D.MON[mon.type]?.grade ?? 0;
     return Math.max(1, mon.str - mon.wounds + (D.CAPTURE.ease[String(g)] ?? 2) - this.mods(p).capture_ease);
   }
-  petPower(str: number) { return Math.min(D.CAPTURE.powerMax, Math.ceil(str / D.CAPTURE.powerDiv)); }
+  /** 使い魔の戦力（前の仕組み：1体につき1。pet_power で増える） */
+  petPower(_str: number) { return 1; }
+  /** 使い魔にできる魔物（獣だけ。主は除く） */
+  canTame(mon: Monster) { return mon.race === 'beast' && !mon.boss; }
   /** 使い魔にする（食料を払う。持てる数を超えたらいちばん弱い使い魔を放す） */
   *addPet(p: Player, mon: Monster): Gen {
     const cost = this.captureCost(mon);
