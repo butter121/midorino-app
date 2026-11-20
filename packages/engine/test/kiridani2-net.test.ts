@@ -99,18 +99,20 @@ describe('霧谷 v2：オンライン対戦の審判', () => {
     }
   });
 
-  it('準備段階：リーダー・職能・割合・品物の種類・始めの2枚・秘密依頼を、席の番に聞く', () => {
+  it('準備段階：リーダー・職能・割合・品物の種類・始めの2枚・秘密依頼を、人間の席みんなに同時に聞く', () => {
     const ref = new Kiridani2Referee({ n: 3, seed: 9, humans: [0, 1], names: NAMES.slice(0, 3), offerTimeoutMs: 0 });
     ref.start();
     const seen = new Set<string>();
+    let sawBoth = false;
     for (let i = 0; i < 500 && !ref.log.some((e) => e.t === 'round_start'); i++) {
       const seats = ref.waitingSeats();
-      expect(seats.length).toBe(1);
-      const pr = ref.prompt(seats[0])!;
-      seen.add(pr.k === 'card' ? `card:${pr.why}` : pr.k);
+      expect(seats.length).toBeGreaterThan(0);
+      for (const seat of seats) { const pr = ref.prompt(seat)!; seen.add(pr.k === 'card' ? `card:${pr.why}` : pr.k); }
+      if (seats.length === 2) sawBoth = true;
       step(ref);
     }
     for (const k of ['card:leader', 'card:occ', 'ratio', 'kind', 'card:item', 'card:start_occ', 'card:start_item', 'card:quest']) expect(seen).toContain(k);
+    expect(sawBoth).toBe(true);
   });
 
   it('知らない答え・古い番号・ほかの席の番は断る', () => {

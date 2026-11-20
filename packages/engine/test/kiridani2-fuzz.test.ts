@@ -7,8 +7,8 @@ import { Kiridani2Referee, Kiridani2Session, Rng, applyAction2, previewFight, ty
 const RES5: Res[] = ['wood', 'iron', 'herb', 'mana', 'food'];
 
 /** いまの問いに対する、でたらめだが正しい答え（取引・装備は置き場所の選択の前に混ぜる） */
-function randomActions(s: Kiridani2Session, rng: Rng): Action2[] {
-  const w = s.waiting!;
+function randomActions(s: Kiridani2Session, rng: Rng, seat?: number): Action2[] {
+  const w = seat === undefined ? s.waiting! : s.waitingOf(seat)!;
   const pick = <T,>(xs: T[]) => xs[Math.floor(rng.random() * xs.length)];
   switch (w.k) {
     case 'card': return [{ t: 'card', id: pick(w.cards) }];
@@ -16,6 +16,7 @@ function randomActions(s: Kiridani2Session, rng: Rng): Action2[] {
     case 'kind': return [{ t: 'kind', v: pick(w.options) }];
     case 'pick': return [{ t: 'pick', i: Math.floor(rng.random() * w.options.length) }];
     case 'heal': case 'effect': return [{ t: 'yes', v: rng.random() < 0.5 }];
+    case 'multi': throw new Error('ひとり用の試合では同時に聞かない');
     case 'choose': {
       const out: Action2[] = [];
       const p = w.p;
@@ -109,7 +110,7 @@ describe('kiridani2 でたらめな人の答えで回す', () => {
   it('取引で払えるようになったマスを、そのまま選べる（古い選択肢で答えを弾かない）', () => {
     // 取引のあとに増えた選択肢を選ぶ場面を探す
     let found = 0;
-    for (let seed = 1; seed <= 40 && found < 3; seed++) {
+    for (let seed = 1; seed <= 150 && found < 3; seed++) {
       const s = new Kiridani2Session({ n: 3, seed, human: 0 });
       s.start();
       const r0 = new Rng(seed);
@@ -144,8 +145,8 @@ describe('kiridani2 でたらめな人の答えで回す', () => {
         if (seat === undefined) break;
         const pr = ref.prompt(seat)!;
         const s = ref.s;
-        if (s.waiting!.k === 'choose') for (const a of randomActions(s, rng)) ref.act(seat, ref.prompt(seat)!.id, a);
-        const a = s.waiting!.k === 'choose' ? chooseAfter(s, rng) : randomActions(s, rng)[0];
+        if (s.waitingOf(seat)!.k === 'choose') for (const a of randomActions(s, rng)) ref.act(seat, ref.prompt(seat)!.id, a);
+        const a = s.waitingOf(seat)!.k === 'choose' ? chooseAfter(s, rng) : randomActions(s, rng, seat)[0];
         const r = ref.act(seat, ref.prompt(seat)?.id ?? pr.id, a);
         expect(r.ok, `seed ${seed}: ${JSON.stringify(a)} ${r.ok ? "" : r.error}`).toBe(true);
       }

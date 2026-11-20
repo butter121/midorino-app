@@ -102,7 +102,12 @@ describe('kiridani2 装備を自分で持たせる', () => {
     // 装備の問いが来たら倉庫に置く。最初の置き場所の選択まで
     while (!(s.waiting!.k === 'choose' && s.g.storage(s.player!).length) && !s.done) {
       const w = s.waiting!;
+      // 手伝いの AI は先読みで人の席の狙いと他の AI の乱数を進めるので、答えたあと元に戻す
+      const me = s.g.players[0], keepT = [...me.target];
+      const keepR = s.g.players.map((q) => (q.ai as unknown as { rng?: { a: number } } | null)?.rng?.a);
       const a: Action2 = w.k === 'pick' && w.what.startsWith('equip:') ? { t: 'pick', i: w.options.length - 1 } : answerToAction(w, helper.respond(w));
+      me.target = keepT;
+      s.g.players.forEach((q, i) => { const r = (q.ai as unknown as { rng?: { a: number } } | null)?.rng; if (r && keepR[i] !== undefined) r.a = keepR[i]!; });
       applyAction2(s, a); hist.push(a);
     }
     const p = s.player!;

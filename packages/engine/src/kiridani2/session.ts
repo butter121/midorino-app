@@ -22,6 +22,8 @@ export interface SessionOptions {
   names?: string[];
   /** カード一式（既定は cards/ の全カード） */
   cards?: CardSet;
+  /** 準備段階の選択を人どうし同時に聞く（オンライン対戦の審判） */
+  parallel?: boolean;
 }
 
 export interface TradeJudge { ok: boolean; accept: boolean; error?: string; human?: boolean }
@@ -44,7 +46,8 @@ type Input =
   | { k: 'answer'; a: unknown }
   | { k: 'trade'; b: number; give: Cost; get: Cost }
   | { k: 'equip'; c: number; slot: 'weapon' | 'armor'; id: string | null }
-  | { k: 'auto'; seat: number; on: boolean; level: Level };
+  | { k: 'auto'; seat: number; on: boolean; level: Level }
+  | { k: 'seat'; seat: number; a: unknown };
 
 export class Kiridani2Session {
   /** 盤面（エンジンが例外を出したときは、最後の正しい場面まで当て直した新しい盤面に入れ替わる） */
@@ -69,7 +72,37 @@ export class Kiridani2Session {
     const ais = Array.from({ length: o.n }, (_, i) => (this.humans.includes(i) ? null : new AI(levels[i] ?? 'normal', { seed: this.seed * 100 + i })));
     const names = o.names ?? Array.from({ length: o.n }, (_, i) => (i === this.human ? 'あなた' : this.humans.includes(i) ? `P${i + 1}` : `AI${i + 1}`));
     this.g = new Game(o.n, ais, { seed: this.seed, years: o.years ?? 5, cards: o.cards ?? CARD_SET, events: { me: this.human, names } });
+    this.g.parallelAsk = !!o.parallel;
     this.gen = this.g.play();
+  }
+
+  /** 同時の問い（multi）で、もう答えた席の答え */
+  private partial = new Map<number, unknown>();
+  /** この席にいま聞いていること（同時の問いなら、その席の分でまだ答えていないもの） */
+  waitingOf(seat: number): Req | null {
+    const w = this.waiting;
+    if (!w) return null;
+    if (w.k === 'multi') return this.partial.has(seat) ? null : w.reqs.find((r) => r.p.pid === seat) ?? null;
+    return w.p.pid === seat ? w : null;
+  }
+  /** 席を指定して答える（同時の問いなら、全員そろったときに進む。そろうまでは出来事なし） */
+  answerSeat(seat: number, a: unknown): GameEvent[] {
+    const w = this.waiting;
+    if (!w || w.k !== 'multi') { if (!w || w.p.pid !== seat) throw new Error('いまはこの席の番ではない'); return this.answer(a); }
+    const raw = a;
+    const out = this.answerPart(seat, a);
+    this.inputs.push({ k: 'seat', seat, a: raw });
+    return out;
+  }
+  private answerPart(seat: number, a: unknown): GameEvent[] {
+    const w = this.waiting;
+    if (!w || w.k !== 'multi') throw new Error('同時の問いではない');
+    const sub = this.waitingOf(seat);
+    if (!sub) throw new Error('この席はもう答えた');
+    this.partial.set(seat, this.norm(sub, a));
+    if (!w.reqs.every((r) => this.partial.has(r.p.pid))) return [];
+    const all = w.reqs.map((r) => this.partial.get(r.p.pid));
+    return this.run(all);
   }
 
   /** いま選んでいる人間の席（待っていなければ最初の人間の席） */
@@ -94,6 +127,7 @@ export class Kiridani2Session {
       throw e;
     }
     this.started = true;
+    this.partial.clear();
     if (r.done) { this.done = true; this.waiting = null; this.scores = r.value; } else this.waiting = this.sane(r.value);
     return this.g.E!.splice(0);
   }
@@ -117,6 +151,7 @@ export class Kiridani2Session {
       case 'trade': return this.applyTrade(x.b, x.give, x.get);
       case 'equip': return this.equip(x.c, x.slot, x.id);
       case 'auto': return this.setAuto(x.seat, x.on, x.level);
+      case 'seat': return this.answerSeat(x.seat, x.a);
     }
   }
 
@@ -143,7 +178,17 @@ export class Kiridani2Session {
   private answer1(a: unknown): GameEvent[] {
     const w = this.waiting;
     if (!w) throw new Error('nothing to answer');
+    if (w.k === 'multi') {
+      // まとめて答える（テスト・お任せ用）：席ごとの答えの配列
+      if (!Array.isArray(a) || a.length !== w.reqs.length) throw new Error('bad answers');
+      return this.run(w.reqs.map((r, i) => this.norm(r, a[i])));
+    }
+    return this.run(this.norm(w, a));
+  }
+  /** 答えを問いの選択肢と照らして、エンジンに渡す形にする（正しくなければ例外） */
+  private norm(w: Req, a: unknown): unknown {
     switch (w.k) {
+      case 'multi': throw new Error('bad answer');
       case 'card': if (!w.cards.includes(a as string)) throw new Error('bad card'); break;
       case 'ratio': { const m = w.options.find((x) => same(x, a)); if (!m) throw new Error('bad ratio'); a = m; break; }
       case 'kind': if (!w.options.includes(a as never)) throw new Error('bad kind'); break;
@@ -165,7 +210,7 @@ export class Kiridani2Session {
       }
       case 'heal': case 'effect': a = !!a; break;
     }
-    return this.run(a);
+    return a;
   }
   /** answer の別名 */
   respond(a: unknown): GameEvent[] { return this.answer(a); }
@@ -253,7 +298,8 @@ export class Kiridani2Session {
     if (!on) { p.ai = null; this.inputs.push({ k: 'auto', seat, on, level }); return []; }
     const ai = new AI(level, { seed: (this.seed * 100 + seat) * 7 + 3 });
     p.ai = ai;
-    const evs = this.done || !this.waiting || this.waiting.p.pid !== seat ? [] : this.run(ai.respond(this.waiting));
+    const sub = this.done ? null : this.waitingOf(seat);
+    const evs = !sub ? [] : this.waiting!.k === 'multi' ? this.answerPart(seat, ai.respond(sub)) : this.run(ai.respond(sub));
     this.inputs.push({ k: 'auto', seat, on, level });
     return evs;
   }
@@ -263,7 +309,7 @@ export class Kiridani2Session {
   autoplay(level: Level = 'normal'): GameEvent[] {
     const helper = new AI(level, { seed: 7 });
     const out: GameEvent[] = [...(this.started ? [] : this.start())];
-    while (!this.done) out.push(...this.answer(helper.respond(this.waiting!)));
+    while (!this.done) { const w = this.waiting!; out.push(...this.answer(w.k === 'multi' ? w.reqs.map((r) => helper.respond(r)) : helper.respond(w))); }
     return out;
   }
 }

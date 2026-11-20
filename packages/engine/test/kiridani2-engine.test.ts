@@ -123,8 +123,8 @@ describe('kiridani2 試合', () => {
     const s = new Kiridani2Session({ n: 4, years: 5, seed, human: -1, levels: ['normal', 'normal', 'normal', 'normal'] });
     const ev = s.start();
     expect(ev[1]).toEqual({ t: 'first_player', seat: 2 });
-    // リーダーは手番の最後の人（先手の1つ前の席）から
-    expect(ev.filter((e) => e.t === 'leader_offer').map((e) => (e as { seat: number }).seat)).toEqual([1, 0, 3, 2]);
+    // リーダーも先手から配る（選ぶのは全員同時）
+    expect(ev.filter((e) => e.t === 'leader_offer').map((e) => (e as { seat: number }).seat)).toEqual([2, 3, 0, 1]);
     // 職能の1巡目は先手から
     expect(ev.filter((e) => e.t === 'draft_offer').slice(0, 4).map((e) => (e as { seat: number }).seat)).toEqual([2, 3, 0, 1]);
     // 食料の追加は手番の順（先手が 0）

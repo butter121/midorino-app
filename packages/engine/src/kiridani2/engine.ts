@@ -55,7 +55,9 @@ export type Req =
   | { k: 'choose'; g: Game; p: Player; opts: Option[] }
   | { k: 'heal'; g: Game; p: Player; comp: number; cost: Cost }
   | { k: 'effect'; g: Game; p: Player; card: string; when: string; ops: Op[]; ei?: number }
-  | { k: 'pick'; g: Game; p: Player; what: string; options: Choice[] };
+  | { k: 'pick'; g: Game; p: Player; what: string; options: Choice[] }
+  /** 何人かの人に同時に聞く（準備段階。答えは reqs と同じ順の配列）。p は先頭の人 */
+  | { k: 'multi'; g: Game; p: Player; reqs: Req[] };
 export type Gen<T = void> = Generator<Req, T, any>;
 
 export interface Brain {
@@ -73,9 +75,10 @@ export function humanDefault(req: Req): any {
     case 'pick': return req.options[0];
     case 'heal': return true;
     case 'effect': return true;
+    case 'multi': return req.reqs.map(humanDefault);
   }
 }
-export const autoAnswer = (req: Req) => (req.p.ai ? req.p.ai.respond(req) : humanDefault(req));
+export const autoAnswer = (req: Req): any => (req.k === 'multi' ? req.reqs.map(autoAnswer) : req.p.ai ? req.p.ai.respond(req) : humanDefault(req));
 export function drive<T>(gen: Gen<T>): T {
   let r = gen.next();
   while (!r.done) r = gen.next(autoAnswer(r.value));
@@ -169,8 +172,9 @@ export class Player {
     q.ratio = this.ratio;
     q.target = this.target;
     q.acts = [...this.acts];
-    // history / fed / picked はラウンドの終わり・準備段階でしか増えないので、先読みの複製では共有する
-    q.history = this.history; q.fed = this.fed; q.picked = this.picked; q.cardHist = this.cardHist;
+    // history / fed はラウンドの終わり・準備段階でしか増えないので、先読みの複製では共有する。
+    // picked は手番中（引く・掘る）にも増えるので写す（先読みが本物を書きかえないように）
+    q.history = this.history; q.fed = this.fed; q.picked = [...this.picked]; q.cardHist = this.cardHist;
     return q;
   }
 
@@ -279,6 +283,8 @@ export class Game {
   lastClash: { base: number; strength: number; win: boolean } | null = null;
   E: GameEvent[] | null = null;
   me = -1;
+  /** 人が2人以上いるとき、準備段階の選択を同時に聞く（オンライン対戦の審判が使う） */
+  parallelAsk = false;
   names: string[] = [];
   /** 測定：戦闘の運命（運の寄与の推定に使う） */
   fateLog: { pid: number; v: number }[] = [];
@@ -395,6 +401,16 @@ export class Game {
   private *ask(req: Req): Gen<any> {
     if (req.p.ai) return req.p.ai.respond(req);
     return yield req;
+  }
+  /** 何人かに同時に聞く。AI はその場で答え、人は2人以上なら1つの multi にまとめる（parallelAsk のときだけ。ほかは順に聞く） */
+  private *askAll(reqs: Req[]): Gen<any[]> {
+    const out: any[] = new Array(reqs.length);
+    const hum: number[] = [];
+    reqs.forEach((r, i) => { if (r.p.ai) out[i] = r.p.ai.respond(r); else hum.push(i); });
+    if (hum.length <= 1 || !this.parallelAsk) { for (const i of hum) out[i] = yield reqs[i]; return out; }
+    const ans: any[] = yield { k: 'multi', g: this, p: reqs[hum[0]].p, reqs: hum.map((i) => reqs[i]) };
+    hum.forEach((i, j) => { out[i] = ans[j]; });
+    return out;
   }
   /** 選択肢から1つ選ぶ。人の席は1つしかなくても聞く（何ができるのか見てから決められるように）。AI の席は1つなら聞かない */
   private *askOne<T>(p: Player, opts: T[], req: Req): Gen<T> {
@@ -660,63 +676,75 @@ export class Game {
     // 始めの先手（くじ）。準備の順・食料の追加もこの順
     this.emit({ t: 'first_player', seat: this.first });
     const order = this.turnOrder();
-    // 1. リーダー：最後の手番の人から
-    for (let i = this.n - 1; i >= 0; i--) {
-      const p = order[i];
-      const show = this.decks.leader.splice(0, Math.min(5, this.decks.leader.length));
-      this.emit({ t: 'leader_offer', seat: p.pid, cards: [...show] });
-      const c: string = yield* this.ask({ k: 'card', g: this, p, why: 'leader', cards: show });
-      if (!show.includes(c)) throw new Error('bad leader');
-      p.leader = c;
-      this.decks.leader.push(...show.filter((x) => x !== c));
+    // 準備段階の選択は全員が同時に選ぶ（オンラインでは同時に聞く。カードは先手から順に配る）
+    // 1. リーダー：山から1人 per 枚ずつ配る（リーダーは12人なので、人数が多いと見られる枚数が減る）
+    {
+      const per = Math.max(1, Math.min(5, Math.floor(this.decks.leader.length / this.n)));
+      const shows = order.map((p) => { const show = this.decks.leader.splice(0, per); this.emit({ t: 'leader_offer', seat: p.pid, cards: [...show] }); return show; });
+      const picks: string[] = yield* this.askAll(order.map((p, i) => ({ k: 'card', g: this, p, why: 'leader', cards: shows[i] }) as Req));
+      order.forEach((p, i) => {
+        const c = picks[i];
+        if (!shows[i].includes(c)) throw new Error('bad leader');
+        p.leader = c;
+        this.decks.leader.push(...shows[i].filter((x) => x !== c));
+        this.emit({ t: 'leader_pick', seat: p.pid, card: c });
+      });
       rng.shuffle(this.decks.leader);
-      this.emit({ t: 'leader_pick', seat: p.pid, card: c });
     }
-    // 2. 職能×3
-    for (let lap = 0; lap < 3; lap++) {
-      for (const p of order) yield* this.draftOne(p, 'occ', 'occ');
-    }
+    // 2. 職能×3：1周ごとに先手から5枚ずつ配り、全員が同時に1枚選ぶ。残りは山に戻して混ぜ、次の周は配り直す
+    for (let lap = 0; lap < 3; lap++) yield* this.draftAll(order, order.map(() => 'occ' as const), 'occ');
     // 3〜4. 割合と品物×ITEM_COUNT（武器・防具・道具・秘術）
     const ratios: Ratio[] = [];
     const N = D.ITEM_COUNT;
     for (let w = 0; w <= N; w++) for (let a = 0; a <= N - w; a++) for (let t = 0; t <= N - w - a; t++) ratios.push({ weapon: w, armor: a, tool: t, spell: N - w - a - t });
-    for (const p of order) {
-      const ra: Ratio = yield* this.ask({ k: 'ratio', g: this, p, options: ratios });
-      p.ratio = { ...ra };
-      this.emit({ t: 'ratio', seat: p.pid, ratio: { ...ra } });
-    }
-    for (const p of order) {
-      const left: Ratio = { ...p.ratio };
-      for (let j = 0; j < D.ITEM_COUNT; j++) {
-        const kinds = ITEM_KINDS.filter((k) => left[k] > 0 && this.decks[k].length > 0);
-        if (!kinds.length) break;
-        const kind: ItemKind = kinds.length === 1 ? kinds[0] : yield* this.ask({ k: 'kind', g: this, p, options: kinds, left: { ...left } });
-        left[kind] -= 1;
-        yield* this.draftOne(p, kind, 'item');
+    const ras: Ratio[] = yield* this.askAll(order.map((p) => ({ k: 'ratio', g: this, p, options: ratios }) as Req));
+    order.forEach((p, i) => { p.ratio = { ...ras[i] }; this.emit({ t: 'ratio', seat: p.pid, ratio: { ...ras[i] } }); });
+    const left = new Map(order.map((p) => [p.pid, { ...p.ratio }]));
+    for (let j = 0; j < D.ITEM_COUNT; j++) {
+      // どの種類を取るか（全員同時）→ その種類の山から5枚ずつ配って全員同時に1枚
+      const who: Player[] = [], reqs: Req[] = [], kindsOf: ItemKind[][] = [];
+      for (const p of order) {
+        const lf = left.get(p.pid)!;
+        const kinds = ITEM_KINDS.filter((k) => lf[k] > 0 && this.decks[k].length > 0);
+        if (!kinds.length) continue;
+        who.push(p); kindsOf.push(kinds);
+        reqs.push({ k: 'kind', g: this, p, options: kinds, left: { ...lf } });
       }
+      if (!who.length) break;
+      const many = reqs.map((r, i) => (kindsOf[i].length > 1 ? i : -1)).filter((i) => i >= 0);
+      const ans: ItemKind[] = yield* this.askAll(many.map((i) => reqs[i]));
+      const kinds = who.map((_, i) => (kindsOf[i].length > 1 ? ans[many.indexOf(i)] : kindsOf[i][0]));
+      who.forEach((p, i) => { if (!kindsOf[i].includes(kinds[i])) throw new Error('bad kind'); left.get(p.pid)![kinds[i]] -= 1; });
+      yield* this.draftAll(who, kinds, 'item');
     }
-    // 5. 始めの2枚（費用なし）
-    for (const p of order) {
-      const occs = p.hand.filter((c) => this.card(c).kind === 'occ');
-      if (occs.length) {
-        const c: string = yield* this.ask({ k: 'card', g: this, p, why: 'start_occ', cards: occs });
-        yield* this.playOcc(p, c, true);
-      }
+    // 5. 始めの2枚（費用なし）：職能を全員同時に選んで出し、次に品物を全員同時に選んで出す
+    {
+      const who = order.filter((p) => p.hand.some((c) => this.card(c).kind === 'occ'));
+      const picks: string[] = yield* this.askAll(who.map((p) => ({ k: 'card', g: this, p, why: 'start_occ', cards: p.hand.filter((c) => this.card(c).kind === 'occ') }) as Req));
+      for (let i = 0; i < who.length; i++) yield* this.playOcc(who[i], picks[i], true);
+    }
+    {
       // 準備で作れる武器・防具は軽いものだけ（中・重い・呪いの装備は試合が始まってから）
-      const items = p.hand.filter((c) => { const d = this.card(c); return d.kind === 'tool' || !!d.tome || ((d.kind === 'weapon' || d.kind === 'armor') && d.weight === 'light'); });
-      if (items.length) {
-        const c: string = yield* this.ask({ k: 'card', g: this, p, why: 'start_item', cards: items });
-        yield* this.playItem(p, c, true);
-      }
+      const okStart = (c: string) => { const d = this.card(c); return d.kind === 'tool' || !!d.tome || ((d.kind === 'weapon' || d.kind === 'armor') && d.weight === 'light'); };
+      const who = order.filter((p) => p.hand.some(okStart));
+      const picks: string[] = yield* this.askAll(who.map((p) => ({ k: 'card', g: this, p, why: 'start_item', cards: p.hand.filter(okStart) }) as Req));
+      for (let i = 0; i < who.length; i++) yield* this.playItem(who[i], picks[i], true);
     }
-    // 6. 秘密依頼
-    for (const p of order) {
-      const show = this.decks.secret.splice(0, Math.min(2, this.decks.secret.length));
-      if (!show.length) continue;
-      const c: string = yield* this.ask({ k: 'card', g: this, p, why: 'quest', cards: show });
-      p.secret = c;
-      this.decks.secret.push(...show.filter((x) => x !== c));
-      this.emit({ t: 'secret_quest', seat: p.pid, quest: p.pid === this.me ? c : '?' });
+    // 6. 秘密依頼（2枚ずつ配って全員同時に1枚）
+    {
+      const who: Player[] = [], shows: string[][] = [];
+      for (const p of order) {
+        const show = this.decks.secret.splice(0, Math.min(2, this.decks.secret.length));
+        if (!show.length) continue;
+        who.push(p); shows.push(show);
+      }
+      const picks: string[] = yield* this.askAll(who.map((p, i) => ({ k: 'card', g: this, p, why: 'quest', cards: shows[i] }) as Req));
+      who.forEach((p, i) => {
+        const c = shows[i].includes(picks[i]) ? picks[i] : shows[i][0];
+        p.secret = c;
+        this.decks.secret.push(...shows[i].filter((x) => x !== c));
+        this.emit({ t: 'secret_quest', seat: p.pid, quest: p.pid === this.me ? c : '?' });
+      });
     }
     // 始めの持ち物
     for (const p of order) {
@@ -750,6 +778,27 @@ export class Game {
   recycle(id: string) {
     const k = this.card(id).kind;
     if (k === 'weapon' || k === 'armor' || k === 'tool' || k === 'spell' || k === 'occ') this.decks[k].push(id);
+  }
+
+  /** 何人かに山から5枚ずつ配り（先手から順に）、全員同時に1枚選ぶ。残りは山に戻して混ぜる */
+  private *draftAll(ps: Player[], decks: ('occ' | ItemKind)[], why: CardWhy): Gen {
+    const shows = ps.map((p, i) => {
+      const d = this.decks[decks[i]];
+      const show = d.splice(0, Math.min(5, d.length));
+      if (show.length) this.emit({ t: 'draft_offer', seat: p.pid, kind: decks[i], cards: p.pid === this.me || this.me < 0 ? [...show] : show.map(() => '?') });
+      return show;
+    });
+    const idx = ps.map((_, i) => i).filter((i) => shows[i].length);
+    const picks: string[] = yield* this.askAll(idx.map((i) => ({ k: 'card', g: this, p: ps[i], why, cards: shows[i], kind: decks[i] }) as Req));
+    idx.forEach((i, j) => {
+      const p = ps[i], c = picks[j];
+      if (!shows[i].includes(c)) throw new Error('bad pick');
+      p.hand.push(c);
+      p.picked.push(c);
+      this.decks[decks[i]].push(...shows[i].filter((x) => x !== c));
+      this.emit({ t: 'draft_pick', seat: p.pid, kind: decks[i], card: p.pid === this.me || this.me < 0 ? c : '?' });
+    });
+    for (const k of new Set(idx.map((i) => decks[i]))) this.rng.shuffle(this.decks[k]);
   }
 
   /** 山から5枚見て1枚（残りは戻して混ぜる） */

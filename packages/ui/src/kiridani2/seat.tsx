@@ -84,6 +84,7 @@ export function uiFor2(s: SeatSession2): { ask: Ask2 | null; sheet: (ChoiceSpec 
         toAction: (id) => ({ t: 'kind', v: id as 'weapon' | 'tool' | 'spell' }),
       },
     };
+    case 'multi': return { ask: null, sheet: null };
     case 'choose': return { ask: { kind: 'place', options: [...new Set(w.opts.filter((o) => !isSpellOpt(o)).map((o) => o.s))] }, sheet: null };
     case 'heal': return {
       ask: null, sheet: {
@@ -178,6 +179,7 @@ export function fallbackSheet2(s: SeatSession2): (ChoiceSpec & { toAction: (id: 
     case 'choose': return { title, items: w.opts.map((o, i) => { const l = optionLabel(g, p, o); return { id: String(i), title: isSpellOpt(o) ? l.title : `${placeName(o.s)}：${l.title}`, detail: l.detail, cost: l.cost }; }), toAction: (id) => ({ t: 'opt', i: Number(id) }) };
     case 'pick': return { title, items: w.options.map((x, i) => choiceItem2(g, p, x, String(i))), toAction: (id) => ({ t: 'pick', i: Number(id) }) };
     case 'heal': case 'effect': return { title, items: [{ id: 'yes', title: 'はい', primary: true }, { id: 'no', title: 'いいえ' }], toAction: (id) => ({ t: 'yes', v: id === 'yes' }) };
+    case 'multi': return null;
   }
 }
 
@@ -189,7 +191,7 @@ function Sheet({ label, children }: { label: string; children: ReactNode }) {
 // 送る仲間の数・戦い方を選び、使うもの（士気・ポーション・払うカードの効果・手札の秘術）をタップでトレイに足す。
 // 足すたびに戦力・勝つ見込み・運命・反撃と負傷・払うものがその場で変わる。計算はエンジン（previewFight → makePlan の use）。
 const STYLES: [FightMode, string, string][] = [
-  ['normal', '普通に', '戦力そのまま'], ['guard', '守って戦う', '戦力−2・反撃−2'], ['chip', '削るだけ', '負けても傷+1'], ['capture', '捕まえる', '勝てば使い魔（強さ＋捕まえにくさ・食料）'],
+  ['normal', '普通に', '戦力そのまま'], ['guard', '守って戦う', '戦力−2・反撃−2'], ['chip', '削るだけ', '負けても傷+1'],
 ];
 /** 秘術を唱える・身につける（置く場所を選ぶ前に何度でも） */
 const isSpellOpt = (o: { s: string }) => o.s === '@spell' || o.s === '@learn';
