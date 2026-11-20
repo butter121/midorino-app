@@ -113,7 +113,7 @@ export function opJP(op: Op, scaled = false): string {
     case 'draw_any': { const d = v as { look: number; take: number }; return `好きな山から${d.look}枚見て${d.take}枚を手札に`; }
     case 'hire': return `仲間を${v}人雇う`;
     case 'hire_free': return `寝床なしで仲間を${v}人増やす`;
-    case 'tame': return '巣の魔物1体を戦わずに使い魔にする（捕まえる食料は払う）';
+    case 'tame': return '巣の獣1体を、食料を払って戦わずに使い魔にする';
     case 'train': return `${(op as { fresh?: boolean }).fresh ? 'まだ熟練のない' : ''}仲間1人の${v === 'atk' ? '攻めの' : v === 'def' ? '守りの' : ''}熟練+1`;
     case 'build': { const d = (op as { discount?: Cost }).discount; const w = v === 'wall' ? '防壁' : v === 'bed' ? '寝床' : v === 'facility' ? '道具' : '道具・寝床・防壁のどれか'; return `${w}を1つ建てる${d ? `（${costText(d)}安い）` : ''}`; }
     case 'heal': return `負傷した仲間を${v}人回復する`;

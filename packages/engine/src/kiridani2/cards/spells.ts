@@ -5,7 +5,7 @@ import type { CardDef } from '../types';
 import { S, TM, fight, play, powPer, famePer } from './mk';
 import { withText } from './text';
 
-export const SPELLS: CardDef[] = withText([
+const ALL_SPELLS: CardDef[] = withText([
   // ================= 使い切り（50）
   // ---- 魔石1
   S('s_spark', '火花', ['arcane', 'hunt'], { mana: 1 }, [fight([{ power: 2 }])], { weight: 'light' }),
@@ -95,3 +95,7 @@ export const SPELLS: CardDef[] = withText([
   TM('tm_blood', '血の詠唱', ['arcane', 'boss'], { mana: 1 }, 3, { mana: 1 }, [play([{ injure: 1 }, { gain: { mana: 2 } }])], { weight: 'curse' }),
   TM('tm_fury', '怒りの火', ['hunt', 'boss'], { mana: 2 }, 2, { mana: 1 }, [fight([{ power: 3 }, { guard: -2 }])], { weight: 'curse' }),
 ]);
+
+/** 使うのはこの30枚（ルール・難易度の見直しで絞った） */
+const KEEP_SPELLS = new Set(['s_spark', 's_fireball', 'tm_firebolt', 's_blade_dance', 's_boss_bane', 's_dragon_ward', 'tm_ward_boss', 's_stone_skin', 's_ward', 'tm_aegis', 's_forge_spark', 'tm_forge', 's_build_spell', 's_tool_magic', 's_mana_tide', 'tm_lightning', 's_fame_echo', 'tm_echo', 's_beast_call', 'tm_beast_bond', 's_gold_touch', 'tm_goldsmith', 's_relic_whisper', 'tm_relic_call', 's_scry', 's_summon_ally', 's_feast', 'tm_bulwark', 's_heal', 's_weaken']);
+export const SPELLS: CardDef[] = ALL_SPELLS.filter((c) => KEEP_SPELLS.has(c.id));

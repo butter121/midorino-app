@@ -4,7 +4,7 @@ import type { CardDef } from '../types';
 import { T, fight, win, hit, on, end, passive, powPer, famePer } from './mk';
 import { withText } from './text';
 
-export const TOOLS: CardDef[] = withText([
+const ALL_TOOLS: CardDef[] = withText([
   // ---- 軽い（資源の入口）
   T('t_lumber', '製材所', ['gather'], { wood: 2, iron: 1 }, [on('use:forest', [{ gain: { wood: 1 } }])], { weight: 'light' }),
   T('t_mine_cart', '鉱山の荷車', ['gather', 'smith'], { wood: 2, iron: 1 }, [on('use:mine', [{ gain: { iron: 1 } }])], { weight: 'light' }),
@@ -90,3 +90,7 @@ export const TOOLS: CardDef[] = withText([
   T('t_mercenary_camp', '傭兵の野営', ['hunt', 'trade'], { wood: 3, gold: 2 }, [passive({ power: 2 }), on('round_start', [{ lose: { gold: 1 } }])], { weight: 'curse' }),
   T('t_war_machine', '攻城兵器', ['boss'], { wood: 6, iron: 4, mat: 2 }, [fight([{ power: 4 }], { boss: true }), passive({ upkeep: 1 })], { weight: 'curse' }),
 ]);
+
+/** 使うのはこの30枚（ルール・難易度の見直しで絞った） */
+const KEEP_TOOLS = new Set(['t_whetstone', 't_arena', 't_trophy_hall', 't_war_machine', 't_armor_stand', 't_shield_wall', 't_armory', 't_forge_bellows', 't_great_forge', 't_workbench', 't_tool_shed', 't_lumber', 't_library', 't_rune_circle', 't_arcane_tower', 't_kennel', 't_stable', 't_beast_den', 't_market_stall', 't_counting_house', 't_bank', 't_dig_camp', 't_relic_case', 't_notice_board', 't_bed_hall', 't_granary', 't_wall_kit', 't_watchtower', 't_fortress', 't_smokehouse']);
+export const TOOLS: CardDef[] = ALL_TOOLS.filter((c) => KEEP_TOOLS.has(c.id));
