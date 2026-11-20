@@ -46,6 +46,8 @@ export const SECRET_FAME = 5;
 export const DRAGON = { grade: 3, per: { 5: 0.88, 10: 1.03, 15: 1.07 } as Record<number, number>, counter: 1, trophy: 14, join: 3, fail: 3 };
 /** 主・古竜の戦いに参加しなかった（主の巣に仲間を送らなかった）人の名声（勝ち負けによらない） */
 export const BOSS_ABSENT = 5;
+/** 主・古竜の強さにかける人数（人数が多いほど強いが、1人あたりの戦力は人数が多いと下がるので、人数そのままよりゆるく） */
+export const BOSS_N: Record<number, number> = { 1: 1, 2: 2, 3: 2.7, 4: 3.2, 5: 3.7, 6: 4.2 };
 export const TRADE_MAX = 3;
 
 // ---- 交換所
@@ -145,14 +147,15 @@ export const SPACES: SpaceDef[] = [
 ];
 export const SPACE: Record<string, SpaceDef> = Object.fromEntries(SPACES.map((s) => [s.id, s]));
 
+/** 巣は人数と同じ数（人数が多いときに魔物が足りなくならないように） */
 export const NESTS: Record<number, string[]> = {
   2: ['nest_forest', 'nest_cave'],
   3: ['nest_forest', 'nest_cave', 'nest_swamp'],
-  4: ['nest_forest', 'nest_cave', 'nest_swamp'],
-  5: ['nest_forest', 'nest_cave', 'nest_swamp', 'nest_mount'],
-  6: ['nest_forest', 'nest_cave', 'nest_swamp', 'nest_mount'],
+  4: ['nest_forest', 'nest_cave', 'nest_swamp', 'nest_mount'],
+  5: ['nest_forest', 'nest_cave', 'nest_swamp', 'nest_mount', 'nest_ruins'],
+  6: ['nest_forest', 'nest_cave', 'nest_swamp', 'nest_mount', 'nest_ruins', 'nest_plain'],
 };
-export const NEST_JP: Record<string, string> = { nest_forest: '森の巣', nest_cave: '洞窟', nest_swamp: '沼の巣', nest_mount: '山の巣', lair: '主の巣' };
+export const NEST_JP: Record<string, string> = { nest_forest: '森の巣', nest_cave: '洞窟', nest_swamp: '沼の巣', nest_mount: '山の巣', nest_ruins: '廃墟の巣', nest_plain: '荒野の巣', lair: '主の巣' };
 
 // ---- 魔物の型（v1 の30種＋追加18種。格は v1 の年ごとの強さの順で −1/0/+1）
 const M = (id: string, name: string, race: MonsterType['race'], loot: Res[], grade: number): MonsterType => ({ id, name, race, loot, grade });
@@ -236,6 +239,9 @@ export const MON_ROLL = {
   trophyDiv: 6.5, counterDiv: 3.2,
   /** 冬の襲撃＝round(s/raidDiv)（調整：仕様は 4。防壁を持たない動きが襲撃で負けすぎるので弱めた。強さを上げたので 5→14。主に負けたときは +boss.raid） */
   raidDiv: 14,
+  /** 巣の魔物の強さだけ下げる分（戦利品・証・反撃・襲撃は s のまま）。強さ＝round(s − ease.base − ease.slope[年数]·t)。
+   *  序盤の魔物の8割くらいを1人で倒せるように（シミュレーションで、1人が出せる戦力と運命で勝つ見込み5割以上） */
+  ease: { base: 3.5, slope: { 5: 5, 10: 3, 15: 3 } as Record<number, number> },
   /** 空いた巣に予告の魔物が入る確率（調整：毎ラウンド全部は埋まらない） */
   spawnP: 0.85,
   /**

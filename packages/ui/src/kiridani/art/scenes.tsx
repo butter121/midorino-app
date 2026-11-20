@@ -110,6 +110,20 @@ const NESTS: Record<string, { jp: string; draw: ReactNode }> = {
     <path d="M70 18l10-12 10 12-5-2-5 4-5-4z M24 34l6-8 6 8-3-1-3 2z" fill="#fff" stroke={INK} strokeWidth={1} />
     <path d="M0 84c40-8 100-8 160 0v12H0z" fill="#9A8A7A" stroke={INK} strokeWidth={1.4} />
     {[20, 50, 120].map((x) => <path key={x} d={`M${x} 84l6-6 6 6z`} fill="#B8A898" stroke={INK} strokeWidth={1} />)}</> },
+  nest_ruins: { jp: '廃墟の巣', draw: <>
+    <rect width="160" height="96" fill="#8A8478" />
+    <path d="M0 60c40-6 80 4 160-2v38H0z" fill="#6A6458" stroke={INK} strokeWidth={1.4} />
+    {[[18, 24, 14, 40], [58, 34, 12, 30], [118, 18, 16, 46]].map(([x, y, w, h], i) => <path key={i} d={`M${x} ${y + h}V${y + 6}l${w / 3} -6 ${w / 3} 4 ${w / 3} -2V${y + h}z`} fill="#B0A898" stroke={INK} strokeWidth={1.3} strokeLinejoin="round" />)}
+    <path d="M78 64h34v-16c0-10-34-10-34 0z" fill="#9A9284" stroke={INK} strokeWidth={1.3} />
+    <path d="M88 64v-10c0-6 14-6 14 0v10z" fill="#2E2A26" stroke={INK} strokeWidth={1} />
+    {[[40, 80], [96, 84], [140, 78]].map(([x, y], i) => <path key={i} d={`M${x} ${y}l6-4 6 3-2 4h-8z`} fill="#A49C8C" stroke={INK} strokeWidth={1} />)}</> },
+  nest_plain: { jp: '荒野の巣', draw: <>
+    <rect width="160" height="96" fill="#E4C08A" />
+    <circle cx="124" cy="22" r="12" fill={K.gold2} opacity={0.8} />
+    <path d="M0 56c30-8 60 2 90-4s50-4 70 2v42H0z" fill="#C49A62" stroke={INK} strokeWidth={1.4} />
+    <path d="M0 76c50-6 110 4 160-2v22H0z" fill="#A87C4A" stroke={INK} strokeWidth={1.4} />
+    {[[30, 58], [70, 64], [132, 60]].map(([x, y], i) => <path key={i} d={`M${x} ${y}v-14m0 6l-5-4m5 8l5-5`} fill="none" stroke="#5E7A3A" strokeWidth={2.4} strokeLinecap="round" />)}
+    {[[48, 84], [110, 88]].map(([x, y], i) => <g key={i}><ellipse cx={x} cy={y} rx={7} ry={3} fill={K.bone} stroke={INK} strokeWidth={1} /><circle cx={x + 6} cy={y - 2} r={3} fill={K.bone} stroke={INK} strokeWidth={1} /></g>)}</> },
   lair: { jp: '主の巣', draw: <>
     <rect width="160" height="96" fill="#2A1418" />
     <circle cx="80" cy="50" r="50" fill={K.fire} opacity={0.25} />

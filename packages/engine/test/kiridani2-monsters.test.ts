@@ -13,17 +13,18 @@ describe('kiridani2 魔物の強さ', () => {
   it('巣の魔物は t とともに強くなり、長い試合ほど傾きが大きい', () => {
     const g5 = game(4, 5), g15 = game(4, 15);
     const e = avg(rolls(g5, 'nest', 0.1).map((m) => m.str)), l5 = avg(rolls(g5, 'nest', 0.9).map((m) => m.str)), l15 = avg(rolls(g15, 'nest', 0.9).map((m) => m.str));
-    expect(e).toBeCloseTo(DATA.MON_ROLL.base + DATA.MON_ROLL.slope[5] * 0.1, 0);
-    expect(l5).toBeGreaterThan(e + 8);
+    const R = DATA.MON_ROLL;
+    expect(e).toBeCloseTo(R.base - R.ease.base + (R.slope[5] - R.ease.slope[5]) * 0.1, 0);
+    expect(l5).toBeGreaterThan(e + 6);
     expect(l15).toBeGreaterThan(l5 + 3);
     expect(rolls(g5, 'nest', 0.5).every((m) => !m.boss)).toBe(true);
   });
 
-  it('主は人数に比例して強く、巣の魔物の数倍', () => {
+  it('主は人数が多いほど強く（BOSS_N 倍）、巣の魔物の数倍', () => {
     const b2 = avg(rolls(game(2, 10), 'boss', 0.5).map((m) => m.str)), b4 = avg(rolls(game(4, 10), 'boss', 0.5).map((m) => m.str));
     const nest = avg(rolls(game(4, 10), 'nest', 0.5).map((m) => m.str));
     expect(b4).toBeGreaterThan(3 * nest);
-    expect(b4 - 3).toBeCloseTo(2 * (b2 - 3), -1);
+    expect(b4 - 3).toBeCloseTo((DATA.BOSS_N[4] / DATA.BOSS_N[2]) * (b2 - 3), -1);
     const m = rolls(game(4, 10), 'boss', 0.5, 1)[0];
     expect(m.boss).toBe(true);
     expect('rage' in m).toBe(false);

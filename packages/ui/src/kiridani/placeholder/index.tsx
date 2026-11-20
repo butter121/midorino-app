@@ -297,6 +297,8 @@ const TERRAIN: Record<string, { g: string; c: string; bg: [string, string] }> = 
   nest_cave: { g: 'cave', c: '#2A2430', bg: ['#5A5068', '#120E16'] },
   nest_swamp: { g: 'reeds', c: '#1E3A2A', bg: ['#4E6A4A', '#101A10'] },
   nest_mount: { g: 'mountain', c: '#3A3A48', bg: ['#7A8AA8', '#1A1E2A'] },
+  nest_ruins: { g: 'mountain', c: '#4A4438', bg: ['#B0A898', '#2A2620'] },
+  nest_plain: { g: 'mountain', c: '#6A4A2A', bg: ['#E4C08A', '#3A2A1A'] },
   lair: { g: 'cave', c: '#2A0E10', bg: ['#8A2A1E', '#14060A'] },
 };
 /** アクションスペース・巣・主の巣の背景（地形） */

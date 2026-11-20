@@ -633,7 +633,7 @@ export class Game {
     const s0 = Math.max(1, (kind === 'nest' ? R.base : R.boss.base) + slope * t + grade + z);
     const boss = kind !== 'nest';
     const per = kind === 'boss' ? R.boss.per[this.years] ?? 1 : kind === 'dragon' ? D.DRAGON.per[this.years] ?? 1 : 0;
-    const str = boss ? Math.max(1, Math.round((s0 - grade) * per * this.n) + grade) : Math.max(1, Math.round(s0));
+    const str = boss ? Math.max(1, Math.round((s0 - grade) * per * (D.BOSS_N[this.n] ?? this.n)) + grade) : Math.max(1, Math.round(s0 - R.ease.base - (R.ease.slope[this.years] ?? 4) * t));
     const lootN = Math.max(0, Math.round((s0 / R.lootDiv) * (boss ? R.boss.loot : 1) + n));
     const loot: Cost = {};
     for (let i = 0; i < lootN; i++) { const r = type.loot[i % type.loot.length]; loot[r] = (loot[r] ?? 0) + 1; }
