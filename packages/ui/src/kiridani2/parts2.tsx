@@ -54,7 +54,7 @@ export function CardFace2({ id, size = 'm', selected, onClick, disabled, anchor 
   const stats = c ? [c.power ? `戦力+${c.power}` : '', c.guard ? `守り+${c.guard}` : '', c.two_hand ? '両手' : '', c.leader_only ? 'リーダー専用' : ''].filter(Boolean) : [];
   const body = (
     <>
-      <div className="kd-card-art"><CardArt2 id={id} size={size === 's' ? 44 : size === 'm' ? 76 : 104} /></div>
+      <div className="kd-card-art"><CardArt2 id={id} size={size === 's' ? 44 : size === 'm' ? 76 : 220} /></div>
       <div className="kd-card-body">
         <div className="kd-card-kind">{KIND2_JP[kind]}</div>
         <div className="kd-card-name">{name}</div>

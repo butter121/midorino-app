@@ -13,7 +13,7 @@ const RACE_JP: Record<string, string> = { beast: '獣', spirit: '精霊', undead
 
 function monBlock(m: Monster): ReactNode {
   return <>
-    <div className="kd-insp-art"><MonArt m={m} size={110} /></div>
+    <div className="kd-insp-art"><MonArt m={m} size={200} /></div>
     <Row k="強さ">{m.str}{m.wounds ? `（傷${m.wounds} → ${m.str - m.wounds}）` : ''}</Row>
     {m.boss && <Row k="参加しないと">名声−{DATA.BOSS_ABSENT}（主の巣に仲間を送らなかった人。勝ち負けによらない）</Row>}
     <Row k="反撃">{m.counter}（守りを超えた分だけ前衛が負傷）</Row>
@@ -32,7 +32,7 @@ function foodLine(p: PV2): ReactNode {
 
 function playerBlock(v: View2, p: PV2): ReactNode {
   return <>
-    <div className="kd-insp-art"><LeaderArt id={p.leader} size={96} /></div>
+    <div className="kd-insp-art"><LeaderArt id={p.leader} size={200} /></div>
     {p.leader && <Row k="リーダー"><span className="kd-insp-link" data-inspect={`card2:${p.leader}`} role="button" tabIndex={0}>{cardName(p.leader)}</span></Row>}
     <Row k="名声">{p.fame}{p.discontent ? `（不満${p.discontent}）` : ''}</Row>
     <Row k="持ち物"><span className="kd-resgrid">{RES.map((r) => <ResCount key={r} r={r} n={p.res[r]} size={16} />)}</span></Row>
@@ -57,7 +57,7 @@ function body(target: string, v: View2): { kind: string; title: string; node: Re
       return {
         kind: c ? KIND2_JP[c.kind] : q ? (q.secret ? '秘密依頼' : '依頼') : '古代の品', title: name, node: <>
           <div className="kd-insp-card"><CardFace2 id={id} size="l" /></div>
-          {c?.cost && <Row k="費用"><CostRow cost={c.cost} size={18} /></Row>}
+          {c?.cost && Object.keys(c.cost).length > 0 && <Row k="費用"><CostRow cost={c.cost} size={18} /></Row>}
           {c?.prereq && <Row k="条件">{Object.entries(c.prereq).map(([kk, n]) => `${kk === 'occs' ? '職能' : kk === 'comps' ? '仲間' : kk === 'walls' ? '防壁' : kk === 'facilities' ? '施設' : kk === 'kills' ? '討伐' : kk}${typeof n === 'number' ? `${n}以上` : `：${cardName(String(n))}`}`).join('・')}</Row>}
           {c && (c.kind === 'weapon' || c.kind === 'armor' || c.kind === 'gear') && <Row k="装備">{c.slot === 'armor' ? '防具の枠' : '武器の枠'}{c.power ? `・戦力+${c.power}` : ''}{c.guard ? `・守り+${c.guard}` : ''}{c.two_hand ? '・両手（防具なし）' : ''}</Row>}
           {c?.kind === 'gear' && <Row k="作る場所">{(c as { place?: string }).place === 'training' ? '訓練場' : '鍛冶場'}</Row>}
@@ -83,7 +83,7 @@ function body(target: string, v: View2): { kind: string; title: string; node: Re
       const s = v.spaces[id];
       return {
         kind: s?.stage ? `段階${s.stage}の場所` : '行動マス', title: placeName(id), node: <>
-          <div className="kd-insp-art">{st && !def ? <CardArt2 id={id} size={96} /> : <SpaceArt id={id} size={96} />}</div>
+          <div className="kd-insp-art">{st && !def ? <CardArt2 id={id} size={200} /> : <SpaceArt id={id} size={200} />}</div>
           {st && <p className="kd-insp-p kd-insp-big">{st.text}</p>}
           {st && FLAVOR[id] && <p className="kd2-flavor">{FLAVOR[id]}</p>}
           {def?.accum && <Row k="毎ラウンドたまる"><CostRow cost={def.accum} size={18} signed /></Row>}
