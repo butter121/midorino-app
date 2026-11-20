@@ -357,10 +357,11 @@ export function BaseView2({ p, v, cur, onEquip }: { p: PV2; v: View2; cur: Playi
           </div>
         </section>
         <section className="kd-bsec kd-bsec-plots" aria-label="拠点">
-          <h3>拠点<small>寝床{p.beds}・施設{p.tools.length}・防壁{p.walls}</small></h3>
+          <h3>拠点<small>寝床{p.beds}・施設{p.tools.length}・防壁{p.walls}{p.petList.length > 0 && `・使い魔${p.petList.length}`}</small></h3>
           <div className="kd-plots">
             {Array.from({ length: p.beds }, (_, i) => <div key={`b${i}`} className={`kd-plot is-bed${lastBuild === 'bed' && i === p.beds - 1 ? ' is-new' : ''}`} title="寝床"><svg viewBox="0 0 40 30" width="28" aria-hidden><rect x="2" y="12" width="36" height="12" rx="3" fill="#8A5A34" /><rect x="4" y="8" width="10" height="8" rx="3" fill="#EADBC0" /><rect x="14" y="10" width="22" height="6" rx="2" fill="#6A7FB0" /></svg></div>)}
             {p.tools.map((id) => <div key={id} className={`kd-plot is-fac${lastBuild === 'facility' ? ' is-new' : ''}`} data-inspect={`card2:${id}`} title={cardName(id)}><CardChip2 id={id} /></div>)}
+            {p.petList.map((pt, i) => <div key={`p${i}${pt.type}`} className={`kd-plot is-pet${cur?.ev.t === 'tame' && cur.ev.seat === p.seat && i === p.petList.length - 1 ? ' is-new' : ''}`} data-inspect={`card2:pet_${pt.type}`} title={`${cardName(`pet_${pt.type}`)}（戦力${pt.power}）`}><MonArt m={{ type: pt.type }} size={26} /><b className="kd2-pet-pw">{pt.power}</b></div>)}
             {Array.from({ length: p.walls }, (_, i) => <div key={`w${i}`} className={`kd-plot is-wall${lastBuild === 'wall' && i === p.walls - 1 ? ' is-new' : ''}`} title="防壁"><EffectArt id="wall-block" size={26} /></div>)}
           </div>
         </section>

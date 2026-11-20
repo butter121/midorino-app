@@ -9,7 +9,9 @@ export interface CompView { atk: number; def: number; weapon: string | null; arm
 export interface PV2 {
   seat: Seat; name: string; leader?: string; fame: number; res: Record<Res, number>;
   beds: number; walls: number; tools: string[]; occs: string[]; items: string[]; hand: string[]; ancient: string[];
-  comps: CompView[]; pets: number; trophies: string[]; discontent: number; raidLoss: number; quests: string[];
+  comps: CompView[]; pets: number;
+  /** 捕まえた使い魔（魔物の型・戦力）。拠点に並べる */
+  petList: { type: string; power: number }[]; trophies: string[]; discontent: number; raidLoss: number; quests: string[];
   secret?: string; ratio?: Record<string, number>; spellsUsed: string[];
   /** 身につけた（何度でも使える）秘術・遺物の欠片 */
   tomes: string[]; shards: number;
@@ -93,7 +95,7 @@ const newComp = (leader: boolean): CompView => ({ atk: 0, def: 0, weapon: null, 
 function newPlayer(seat: Seat, name: string): PV2 {
   return {
     seat, name, fame: 0, res: emptyRes(), beds: DATA.START.beds, walls: 0, tools: [], occs: [], items: [], hand: [], ancient: [],
-    comps: [newComp(true), newComp(false)], pets: 0, trophies: [], discontent: 0, raidLoss: 0, quests: [], spellsUsed: [], tomes: [], shards: 0,
+    comps: [newComp(true), newComp(false)], pets: 0, petList: [], trophies: [], discontent: 0, raidLoss: 0, quests: [], spellsUsed: [], tomes: [], shards: 0,
     fateLeft: fullFate(), upkeepMod: 0,
   };
 }
@@ -275,12 +277,12 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
       break;
     }
     case 'learn': { const p = P(ev.seat); dropHand(p, ev.card); if (!p.tomes.includes(ev.card)) p.tomes.push(ev.card); log(`${who(v, ev.seat)}が秘術「${cardName(ev.card)}」を身につけた`); break; }
-    case 'release': { const p = P(ev.seat); p.pets = Math.max(0, p.pets - 1); log(`${who(v, ev.seat)}が使い魔を放した`); break; }
+    case 'release': { const p = P(ev.seat); p.pets = Math.max(0, p.pets - 1); const k = p.petList.findIndex((x) => x.type === ev.monster); if (k >= 0) p.petList.splice(k, 1); log(`${who(v, ev.seat)}が使い魔を放した`); break; }
     case 'shards': { P(ev.seat).shards = ev.total; break; }
     case 'scrap': { const p = P(ev.seat); p.tools = p.tools.filter((c) => c !== ev.card); log(`${who(v, ev.seat)}が${cardName(ev.card)}を壊した`); break; }
     case 'curio': v.curio = [...ev.cards]; break;
     case 'tame': {
-      const p = P(ev.seat); p.pets += 1;
+      const p = P(ev.seat); p.pets += 1; p.petList.push({ type: ev.monster, power: ev.power ?? 1 });
       const n = v.nests.find((x) => x.mon?.type === ev.monster); if (n) n.mon = undefined;
       log(`${who(v, ev.seat)}が魔物を使い魔にした`);
       break;
