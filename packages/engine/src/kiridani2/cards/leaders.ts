@@ -26,10 +26,10 @@ export const LEADERS: CardDef[] = [
   ]),
   def('l_mina', '最高の魔術師', ['arcane'], [
     `秘術を使ったあと、魔石${V.mage.mana}を得るか、秘術を${V.mage.draw}枚引く（1ラウンド${V.mage.perRound}回まで）。`,
-    `戦闘に勝ったとき、その戦闘で使った秘術1枚ごとに名声${V.mage.fame}。`,
+    `戦闘に勝ったとき、そのラウンドで使った秘術1枚ごとに名声${V.mage.fame}。`,
   ]),
   def('l_gareth', '盾の勇者', ['fort'], [
-    '守りを戦力として数える。',
+    `守りを戦力として数える。守りの値は${x(V.shield.guardMult)}。`,
     '運命カードの影響を受けない。',
     `戦闘に勝ったとき、守りが反撃を上回った数÷${V.shield.fameDiv}の名声。`,
   ]),
@@ -37,7 +37,7 @@ export const LEADERS: CardDef[] = [
     '巣の魔物は倒せない。かわりに好物をあげて使い魔にできる（主・古竜は倒せるが、使い魔にはできない）。',
     `好物は魔物ごとに食料・木・鉄・薬草・魔石・素材のどれか1つ。強さ÷${V.tamer.favDiv}（切り上げ）個いる。`,
     `使い魔は1体ごとに戦力+${V.tamer.petPower}。持てる数は${3 + V.tamer.petCap}体。`,
-    `ラウンドの終わりに、使い魔1体ごとに名声${V.tamer.fame}。`,
+    `年の終わりに、使い魔1体ごとに名声${V.tamer.fame}。`,
   ]),
   def('l_doran', '巨人狩り山田', ['boss', 'hunt'], [
     '両手武器しか持てない。',

@@ -18,7 +18,7 @@ export function costText(c: Cost | undefined): string {
 
 export const STAT_JP: Record<StatKey, string> = {
   comps: '仲間', occs: '出した職能', walls: '防壁', beds: '寝床', facilities: '建てた道具', gear: '持たせた装備', pets: '使い魔', kills: '倒した魔物',
-  races: '倒した種族', trophies: '討伐の名声', hand: '手札', ancient: '遺物', quests: '達成した依頼', skills: '熟練', injured: '負傷した仲間',
+  races: '倒した種族', trophies: '討伐の証', hand: '手札', ancient: '遺物', quests: '達成した依頼', skills: '熟練', injured: '負傷した仲間',
   boss: '倒した主', coop: '共闘での勝ち', spells: '唱えた秘術', donations: '寄進', trades: '取引', year: '年', round: 'ラウンド',
   weapons: '持たせた武器', armors: '持たせた防具', tools: '建てた道具', tomes: '覚えた秘術書', casts: '唱えた秘術', shards: '遺物の欠片',
   kinds: '使っている品物の種類', sold: '売った回数', gold: '金貨', atk: '攻めの熟練', def: '守りの熟練', dmg: '守りを超えた反撃',
@@ -27,7 +27,7 @@ export const STAT_JP: Record<StatKey, string> = {
 };
 /** 数え方（「2つ」「1体」など） */
 const UNIT: Record<StatKey, string> = {
-  comps: '人', occs: '枚', walls: 'つ', beds: 'つ', facilities: 'つ', gear: 'つ', pets: '体', kills: '体', races: '種', trophies: '点', hand: '枚',
+  comps: '人', occs: '枚', walls: 'つ', beds: 'つ', facilities: 'つ', gear: 'つ', pets: '体', kills: '体', races: '種', trophies: '個', hand: '枚',
   ancient: '枚', quests: 'つ', skills: '段', injured: '人', boss: '体', coop: '回', spells: '回', donations: '回', trades: '回', year: '年', round: '',
   weapons: 'つ', armors: 'つ', tools: 'つ', tomes: '冊', casts: '回', shards: '個', kinds: '種', sold: '', gold: '枚', atk: '段', def: '段', dmg: '点',
   sent_atk: '段', sent_wpow: '点', sent_k: '人', exposed: '点', casts_round: '回',

@@ -119,6 +119,8 @@ export class Player {
   tomeUses: Record<string, number> = {};
   /** 遺物の欠片 */
   shards = 0;
+  /** 討伐の証の数（名声は合計 ÷ TROPHY_DIV の切り捨て） */
+  trophies = 0;
   /** 怒り（mod rage：負傷のかわりにためた反撃） */
   rage = 0;
   /** 直前の反撃で負傷する分（hit の効果の中で stat dmg） */
@@ -164,7 +166,7 @@ export class Player {
     q.beds = this.beds; q.walls = this.walls;
     q.tools = [...this.tools]; q.occs = [...this.occs]; q.hand = [...this.hand]; q.items = [...this.items]; q.ancient = [...this.ancient];
     q.pets = this.pets.map((x) => ({ ...x })); q.kills = this.kills;
-    q.tomes = [...this.tomes]; q.tomeUses = { ...this.tomeUses }; q.shards = this.shards; q.rage = this.rage; q.lastDmg = this.lastDmg;
+    q.tomes = [...this.tomes]; q.tomeUses = { ...this.tomeUses }; q.shards = this.shards; q.trophies = this.trophies; q.rage = this.rage; q.lastDmg = this.lastDmg;
     q.races = [...this.races];
     q.st = { ...this.st };
     q.quests = [...this.quests];
@@ -506,7 +508,7 @@ export class Game {
       case 'sent_atk': case 'sent_wpow': case 'sent_k': case 'exposed': return 0;
       case 'kills': return p.kills;
       case 'races': return p.races.length;
-      case 'trophies': return p.fame.trophy;
+      case 'trophies': return p.trophies;
       case 'hand': return p.hand.length;
       case 'ancient': return p.ancient.length;
       case 'quests': return p.quests.length;
@@ -1023,7 +1025,6 @@ export class Game {
   *endRound(): Gen {
     for (const p of this.players) {
       yield* this.fire(p, 'round_end', {});
-      if (this.is(p, 'tamer')) this.leadFame(p, p.pets.length * D.LEADER.tamer.fame, '孤高のテイマー');
     }
     // 仲間が戻る。負傷の回復判定（薬草2で即回復、払わなければ次のラウンド休み）
     for (const p of this.players) {
@@ -1078,6 +1079,7 @@ export class Game {
     }
     // 採集家：毎年の終わり（冬のあと）に、持っている資源の合計 ÷ fameDiv の名声
     for (const p of this.players) if (this.is(p, 'gatherer')) this.leadFame(p, Math.floor(RES.reduce((a, r) => a + p.res[r], 0) / D.LEADER.gatherer.fameDiv), '採集家');
+    for (const p of this.players) if (this.is(p, 'tamer')) this.leadFame(p, p.pets.length * D.LEADER.tamer.fame, '孤高のテイマー');
     this.emit({ t: 'winter_end' });
   }
 
@@ -1679,7 +1681,7 @@ export class Game {
   private *leadWin(p: Player, mon: Monster, pl: Plan, plans: Plan[], boss: boolean): Gen {
     const L = D.LEADER;
     if (this.is(p, 'striver')) this.leadFame(p, Math.floor(pl.idxs.reduce((a, i) => a + p.comps[i].atk + p.comps[i].def, 0) / L.striver.fameDiv), '無限の努力家');
-    if (this.is(p, 'mage')) this.leadFame(p, (pl.spells.length + Object.values(pl.tomeUse).reduce((a, n) => a + n, 0)) * L.mage.fame, '最高の魔術師');
+    if (this.is(p, 'mage')) this.leadFame(p, p.st.castsRound * L.mage.fame, '最高の魔術師');
     if (this.is(p, 'shield')) this.leadFame(p, Math.floor(Math.max(0, this.defense(p, pl) - Math.max(0, mon.counter + pl.counter)) / L.shield.fameDiv), '盾の勇者');
     if (this.is(p, 'giant') && boss && plans.every((q) => q === pl || q.power < pl.power)) this.leadFame(p, mon.type === D.ANCIENT_DRAGON.id ? L.giant.dragonFame : L.giant.bossFame, '巨人狩り');
   }
@@ -2227,8 +2229,13 @@ export class Game {
         if (costUnits(loot)) this.emit({ t: 'loot', seat: p.pid, gain: loot });
         const tro = Math.max(1, Math.round((mon.trophy + pl.trophy) * (coop ? Math.max(share, boss ? D.MON_ROLL.boss.minShare : 0.5) : 1))) * (this.is(p, 'genius') ? D.LEADER.genius.trophyMult : 1);
         rec.tro[j] = tro;
-        if (mon.type === D.ANCIENT_DRAGON.id) { p.fame.dragon += tro + D.DRAGON.join; this.emit({ t: 'trophy', seat: p.pid, monster: mon.type, fame: tro + D.DRAGON.join }); }
-        else { p.fame.trophy += tro; this.emit({ t: 'trophy', seat: p.pid, monster: mon.type, fame: tro }); }
+        // 討伐の証：数を足し、合計 ÷ TROPHY_DIV（切り捨て）の増えた分だけ名声（古竜も証。参加の名声 join は別）
+        const before = Math.floor(p.trophies / D.TROPHY_DIV + 1e-9);
+        p.trophies += tro;
+        const tf = Math.floor(p.trophies / D.TROPHY_DIV + 1e-9) - before;
+        p.fame.trophy += tf;
+        if (mon.type === D.ANCIENT_DRAGON.id) p.fame.dragon += D.DRAGON.join;
+        this.emit({ t: 'trophy', seat: p.pid, monster: mon.type, fame: tf + (mon.type === D.ANCIENT_DRAGON.id ? D.DRAGON.join : 0), trophies: tro });
         p.kills += 1;
         yield* this.leadWin(p, mon, pl, plans, boss);
         if (!p.races.includes(mon.race)) p.races.push(mon.race);

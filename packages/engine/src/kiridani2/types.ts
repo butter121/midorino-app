@@ -414,7 +414,7 @@ export type GameEvent =
   | { t: 'injury'; seat: Seat; companion: number }
   | { t: 'heal'; seat: Seat; companion: number; cost: Cost }
   | { t: 'loot'; seat: Seat; gain: Cost }
-  | { t: 'trophy'; seat: Seat; monster: string; fame: number }
+  | { t: 'trophy'; seat: Seat; monster: string; fame: number; trophies?: number }
   | { t: 'tame'; seat: Seat; monster: string; power?: number }
   | { t: 'release'; seat: Seat; monster: string }
   | { t: 'learn'; seat: Seat; card: string }

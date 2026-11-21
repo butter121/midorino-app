@@ -49,6 +49,8 @@ export const BOSS_ABSENT = 5;
 /** 主・古竜の強さにかける人数（人数が多いほど強いが、1人あたりの戦力は人数が多いと下がるので、人数そのままよりゆるく） */
 export const BOSS_N: Record<number, number> = { 1: 1, 2: 2, 3: 2.7, 4: 3.2, 5: 3.7, 6: 4.2 };
 export const TRADE_MAX = 3;
+/** 討伐の証：持っている証の合計 ÷ TROPHY_DIV（切り捨て）が名声 */
+export const TROPHY_DIV = 2.5;
 
 // ---- 交換所
 export const BUY: Record<Res, number> = { wood: 1, iron: 2, herb: 1, food: 1, mana: 3, mat: 2, gold: 0 };
@@ -132,11 +134,11 @@ export const LEADER = {
   /** 最高の魔術師：秘術を使ったあと魔石 mana か秘術 draw 枚（1ラウンド perRound 回まで）。勝つとその戦闘で使った秘術 1枚につき fame */
   mage: { perRound: 2, mana: 1, draw: 1, fame: 2 },
   /** 盾の勇者：守りを戦力として数える（guardMult 倍）、運命の影響なし、勝つと（守り − 反撃）÷ fameDiv の名声 */
-  shield: { guardMult: 1, fameDiv: 1 },
+  shield: { guardMult: 2, fameDiv: 1 },
   /** 孤高のテイマー：好物の数＝切り上げ(強さ ÷ favDiv)、使い魔1体の戦力 petPower、持てる使い魔 +petCap、ラウンドの終わりに使い魔1体ごとに fame（主・古竜は使い魔にできない） */
   tamer: { favDiv: 4, petCap: 7, fame: 2, petPower: 2 },
   /** 巨人狩り山田：主・古竜と戦うとき戦力 bossMult 倍。一番貢献して勝つと主 bossFame・古竜 dragonFame */
-  giant: { bossMult: 3, bossFame: 6, dragonFame: 12 },
+  giant: { bossMult: 3, bossFame: 8, dragonFame: 16 },
   /** 偉大な探検家：冬の食料 −upkeep、冒険マスにほかの人がいても置ける、冒険マスの効果 mult 倍、終わりに古代の遺物1つにつき ancientFame */
   explorer: { upkeep: 2, mult: 2, ancientFame: 2 },
   /** 自宅警備員：冬に防いだ襲撃1につき blockedFame、終わりに防壁1つにつき wallFame（防いだ襲撃の合計が lowBlocked 以下ならさらに lowMult 倍になるよう足す） */
@@ -144,7 +146,7 @@ export const LEADER = {
   /** 採集家：マスで集める資源 mult 倍、毎年の終わりに持っている資源の合計 ÷ fameDiv の名声 */
   gatherer: { mult: 2, fameDiv: 10 },
   /** 詐欺師：相手の了承なしに取引（出す数＝受け取る数）、終わりに取引1回につき fame */
-  swindler: { fame: 3 },
+  swindler: { fame: 1 },
   /** 職人：道具の費用 −discount（資源・素材あわせて）、道具を作るたび fame、作ったあと山から look 枚の道具を見て1枚取る */
   crafter: { discount: 2, fame: 1, look: 3 },
   /** 伝説の商人：始めに資源・素材を start 個ずつ、売値 +sellBonus、終わりに金貨 ÷ goldDiv の名声 */

@@ -267,7 +267,7 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
       const n = v.nests.find((x) => x.mon && (x.mon.uid === uid));
       if (n) n.mon = undefined;
       if (v.lair.boss && v.lair.boss.uid === uid) v.lair.defeated = true;
-      log(`${who(v, ev.seat)}が${v.combat?.monster.name ?? '魔物'}を倒した（証${ev.fame}）`);
+      log(`${who(v, ev.seat)}が${v.combat?.monster.name ?? '魔物'}を倒した（証${ev.trophies ?? ev.fame}・名声+${ev.fame}）`);
       break;
     }
     case 'learn': { const p = P(ev.seat); dropHand(p, ev.card); if (!p.tomes.includes(ev.card)) p.tomes.push(ev.card); log(`${who(v, ev.seat)}が秘術「${cardName(ev.card)}」を身につけた`); break; }
