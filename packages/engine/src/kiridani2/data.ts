@@ -128,27 +128,27 @@ export const LEADER = {
   /** 戦闘の天才：武器の戦力と武器の効果を weaponMult 倍、勝ったときの証を trophyMult 倍 */
   genius: { weaponMult: 2, effectMult: 2, trophyMult: 2 },
   /** 無限の努力家：熟練の上限 +skillCap、熟練の効き目 skillMult 倍、勝つと送った仲間の熟練の合計 ÷ fameDiv の名声 */
-  striver: { skillCap: 1, skillMult: 3, fameDiv: 1 },
+  striver: { skillCap: 1, skillMult: 3, fameDiv: 2 },
   /** 最高の魔術師：秘術を使ったあと魔石 mana か秘術 draw 枚（1ラウンド perRound 回まで）。勝つとその戦闘で使った秘術 1枚につき fame */
-  mage: { perRound: 2, mana: 1, draw: 1, fame: 4 },
+  mage: { perRound: 2, mana: 1, draw: 1, fame: 2 },
   /** 盾の勇者：守りを戦力として数える（guardMult 倍）、運命の影響なし、勝つと（守り − 反撃）÷ fameDiv の名声 */
   shield: { guardMult: 1, fameDiv: 1 },
-  /** 孤高のテイマー：好物の数＝切り上げ(強さ ÷ favDiv)、持てる使い魔 +petCap、ラウンドの終わりに使い魔1体につき fame */
-  tamer: { favDiv: 3, petCap: 7, fame: 1 },
+  /** 孤高のテイマー：好物の数＝切り上げ(強さ ÷ favDiv)、使い魔1体の戦力 petPower、持てる使い魔 +petCap、ラウンドの終わりに使い魔1体ごとに fame（主・古竜は使い魔にできない） */
+  tamer: { favDiv: 4, petCap: 7, fame: 2, petPower: 2 },
   /** 巨人狩り山田：主・古竜と戦うとき戦力 bossMult 倍。一番貢献して勝つと主 bossFame・古竜 dragonFame */
-  giant: { bossMult: 3, bossFame: 4, dragonFame: 8 },
-  /** 偉大な探検家：冬の食料 −upkeep、冒険マスの効果 mult 倍、終わりに古代の遺物1つにつき ancientFame */
+  giant: { bossMult: 3, bossFame: 6, dragonFame: 12 },
+  /** 偉大な探検家：冬の食料 −upkeep、冒険マスにほかの人がいても置ける、冒険マスの効果 mult 倍、終わりに古代の遺物1つにつき ancientFame */
   explorer: { upkeep: 2, mult: 2, ancientFame: 2 },
   /** 自宅警備員：冬に防いだ襲撃1につき blockedFame、終わりに防壁1つにつき wallFame（防いだ襲撃の合計が lowBlocked 以下ならさらに lowMult 倍になるよう足す） */
   guard: { blockedFame: 1, wallFame: 1, lowBlocked: 10, lowMult: 2 },
   /** 採集家：マスで集める資源 mult 倍、毎年の終わりに持っている資源の合計 ÷ fameDiv の名声 */
-  gatherer: { mult: 2, fameDiv: 40 },
+  gatherer: { mult: 2, fameDiv: 10 },
   /** 詐欺師：相手の了承なしに取引（出す数＝受け取る数）、終わりに取引1回につき fame */
-  swindler: { fame: 5 },
+  swindler: { fame: 3 },
   /** 職人：道具の費用 −discount（資源・素材あわせて）、道具を作るたび fame、作ったあと山から look 枚の道具を見て1枚取る */
   crafter: { discount: 2, fame: 1, look: 3 },
   /** 伝説の商人：始めに資源・素材を start 個ずつ、売値 +sellBonus、終わりに金貨 ÷ goldDiv の名声 */
-  merchant: { start: 4, sellBonus: 1, goldDiv: 3 },
+  merchant: { start: 10, sellBonus: 1, goldDiv: 2 },
 };
 /** テイマーの好物（魔物の種類ごと。食材・資源・素材から） */
 export const FAV_RES = ['food', 'wood', 'iron', 'herb', 'mana', 'mat'] as const;

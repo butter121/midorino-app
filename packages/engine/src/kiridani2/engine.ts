@@ -1113,7 +1113,7 @@ export class Game {
     for (const s of this.spaces) {
       const cap = this.capOf(s);
       // 定員を無視して置く効果は、交換所・遺跡の探索・発掘場には使えない（取り合いのマスを独り占めしないように）
-      if (cap > 0 && s.occ.length >= cap && (!p.ignoreFull || NO_IGNORE_FULL.has(s.id)) && !(s.id === 'workshop' && this.is(p, 'crafter'))) continue;
+      if (cap > 0 && s.occ.length >= cap && (!p.ignoreFull || NO_IGNORE_FULL.has(s.id)) && !(s.id === 'workshop' && this.is(p, 'crafter')) && !(this.is(p, 'explorer') && this.isAdventure(s.id))) continue;
       s.def.options.forEach((ops, i) => {
         const eff = s.optEffects?.[i];
         if (eff) {
@@ -1787,7 +1787,7 @@ export class Game {
     this.spend(p, cost);
     this.emit({ t: 'pay', seat: p.pid, cost, reason: 'tame' });
     const id = `pet_${mon.type}`;
-    const pet: Pet = { type: mon.type, name: mon.name, str: mon.str, power: this.petPower(mon.str), card: this.byId.has(id) ? id : '' };
+    const pet: Pet = { type: mon.type, name: mon.name, str: mon.str, power: this.is(p, 'tamer') ? D.LEADER.tamer.petPower : this.petPower(mon.str), card: this.byId.has(id) ? id : '' };
     p.pets.push(pet);
     p.acts.push('tame');
     this.emit({ t: 'tame', seat: p.pid, monster: mon.type, power: pet.power });

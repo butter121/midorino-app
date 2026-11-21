@@ -198,7 +198,7 @@ export class AI implements Brain {
           return pick;
         }
         for (const { c } of cs) if (c && (req.why === 'occ' || req.why === 'item')) this.note(c.engine, 0.3);
-        const pick = this.best(req.cards, (id) => (id === 'skip' ? 1.6 : cardValue(g.card(id), this.targets) + (req.why === 'start_item' && g.card(id).kind !== 'spell' ? 0.5 : 0)));
+        const pick = this.best(req.cards, (id) => (id === 'skip' ? 1.6 : cardValue(g.card(id), this.targets) + (req.why === 'start_item' && g.card(id).kind !== 'spell' ? 0.5 : 0) + this.leadBonus(g, p, id)));
         if ((req.why === 'occ' || req.why === 'item') && pick !== 'skip') { this.note(g.card(pick).engine, 1); this.setTargets(p); }
         return pick;
       }
@@ -337,6 +337,25 @@ export class AI implements Brain {
   }
 
   // ------------------------------------------------------------ 取引
+  /** 詐欺師：了承なしの取引でほかの人を妨害する。いちばん名声の高い相手から、その人のいちばん値打ちのある資源を取り、
+   *  こちらのいちばん安い資源を同じ数だけ渡す（冬の前で食料が足りなければ、食料を先に取る） */
+  private swindle(g: Game, p: Player) {
+    const foes = g.players.filter((q) => q !== p).sort((a, b) => score(g, b) - score(g, a));
+    const toW = 4 - ((g.round - 1) % 4) - 1;
+    const short = Math.max(0, D.upkeepOf(p.comps.length) - p.res.food);
+    for (const q of foes) {
+      const want = (short > 0 && toW <= 1 && q.res.food > 0 ? ['food' as Res] : [])
+        .concat(RES.filter((r) => q.res[r] > 0).sort((a, b) => D.RES_VAL[b] * Math.min(q.res[b], D.TRADE_MAX) - D.RES_VAL[a] * Math.min(q.res[a], D.TRADE_MAX)));
+      for (const r of want) {
+        const mine = RES.filter((x) => x !== r && p.res[x] > 0).sort((a, b) => D.RES_VAL[a] - D.RES_VAL[b]);
+        if (!mine.length || D.RES_VAL[mine[0]] >= D.RES_VAL[r] && r !== 'food') continue;
+        const k = Math.min(D.TRADE_MAX, q.res[r], p.res[mine[0]]);
+        if (k <= 0) continue;
+        const give: Cost = { [mine[0]]: k }, get: Cost = { [r]: k };
+        if (!g.tradeOk(p, q, give, get)) { g.trade(p, q, give, get); return; }
+      }
+    }
+  }
   judgeOffer(g: Game, p: Player, recv: Cost, send: Cost): boolean {
     const val = (c: Cost) => Object.entries(c).reduce((a, [r, n]) => a + this.needW(g, p, r as Res) * (n as number), 0);
     return val(recv) - val(send) > 0.05;
@@ -346,19 +365,22 @@ export class AI implements Brain {
     if (r === 'food') { const need = D.upkeepOf(p.comps.length); if (p.res.food < need) w += 0.4; }
     return w;
   }
+  /** リーダーに合うカードを高く見る（職人：名声のある道具） */
+  leadBonus(g: Game, p: Player, id: string): number {
+    if (!g.byId.has(id)) return 0;
+    const c = g.card(id);
+    if (g.is(p, 'crafter') && c.kind === 'tool') return 1 + 1.5 * (c.fame ?? 0);
+    return 0;
+  }
   tradePhase(g: Game, p: Player) {
-    if (!this.trade_on || p.tradesUsed >= g.tradeLimit(p)) return;
+    if (p.tradesUsed >= g.tradeLimit(p)) return;
+    if (g.is(p, 'swindler')) { this.swindle(g, p); return; }
+    if (!this.trade_on) return;
     const toW = 4 - ((g.round - 1) % 4) - 1;
     const need = D.upkeepOf(p.comps.length) - p.res.food;
     if (need <= 0 || toW > 1) return;
     const surplus = (['wood', 'iron', 'herb', 'mat', 'mana'] as Res[]).filter((r) => p.res[r] >= 3).sort((a, b) => p.res[b] - p.res[a]);
     if (!surplus.length) return;
-    // 詐欺師：了承なしに、同じ数で食料と取り替える（食料のいちばん多い相手から）
-    if (g.is(p, 'swindler')) {
-      const k = Math.min(need, p.res[surplus[0]]);
-      const q = g.players.filter((x) => x !== p && x.res.food >= k).sort((a, b) => b.res.food - a.res.food)[0];
-      if (q && k > 0 && !g.tradeOk(p, q, { [surplus[0]]: k }, { food: k })) { g.trade(p, q, { [surplus[0]]: k }, { food: k }); return; }
-    }
     for (const q of g.players) {
       if (q === p || !(q.ai instanceof AI) || !q.ai.trade_on) continue;
       const give: Cost = { [surplus[0]]: 2 }, get: Cost = { food: Math.min(2, need) };
