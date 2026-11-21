@@ -1024,7 +1024,6 @@ export class Game {
     for (const p of this.players) {
       yield* this.fire(p, 'round_end', {});
       if (this.is(p, 'tamer')) this.leadFame(p, p.pets.length * D.LEADER.tamer.fame, '孤高のテイマー');
-      if (this.is(p, 'gatherer')) this.leadFame(p, Math.floor(RES.reduce((a, r) => a + p.res[r], 0) / D.LEADER.gatherer.fameDiv), '採集家');
     }
     // 仲間が戻る。負傷の回復判定（薬草2で即回復、払わなければ次のラウンド休み）
     for (const p of this.players) {
@@ -1077,6 +1076,8 @@ export class Game {
       if (raid) this.emit({ t: 'raid', seat: p.pid, damage: dmg, blocked });
       yield* this.fire(p, 'winter', {});
     }
+    // 採集家：毎年の終わり（冬のあと）に、持っている資源の合計 ÷ fameDiv の名声
+    for (const p of this.players) if (this.is(p, 'gatherer')) this.leadFame(p, Math.floor(RES.reduce((a, r) => a + p.res[r], 0) / D.LEADER.gatherer.fameDiv), '採集家');
     this.emit({ t: 'winter_end' });
   }
 
@@ -1527,7 +1528,11 @@ export class Game {
             if (!c) break;
             this.spend(p, c);
             yield* this.playItem(p, what, true);
-            if (this.is(p, 'crafter')) this.leadFame(p, D.LEADER.crafter.fame, '職人');
+            if (this.is(p, 'crafter')) {
+              this.leadFame(p, D.LEADER.crafter.fame, '職人');
+              // 道具を作ったあと、山からランダムに look 枚の道具を見て1枚を手札に（回数の制限なし）
+              if (this.decks.tool.length) yield* this.runOps(p, [{ draw: { from: 'tool', look: D.LEADER.crafter.look, take: 1 } }], {});
+            }
           } else break;
           p.acts.push('build');
           yield* this.fire(p, 'build', {});

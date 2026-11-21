@@ -56,7 +56,7 @@ export const LEADERS: CardDef[] = [
   ]),
   def('l_popo', '採集家', ['gather'], [
     `マスで集める資源が${x(V.gatherer.mult)}。`,
-    `ラウンドの終わりに、持っている資源の数÷${V.gatherer.fameDiv}の名声。`,
+    `毎年の終わりに、持っている資源の数÷${V.gatherer.fameDiv}の名声。`,
   ]),
   def('l_momo', '詐欺師', ['trade'], [
     '取引に相手の了承がいらない（出す数と受け取る数は同じ）。',
@@ -66,6 +66,7 @@ export const LEADERS: CardDef[] = [
     '工房にほかの人がいても使える。',
     `道具を作る費用が、資源・素材あわせて${V.crafter.discount}少ない。`,
     `道具を作るたびに名声+${V.crafter.fame}。`,
+    `道具を作ったあと、山からランダムに${V.crafter.look}枚の道具を見て、1枚を手札に取る。`,
   ]),
   def('l_miro', '伝説の商人', ['trade'], [
     `試合の始めに、資源・素材を${V.merchant.start}個ずつ持つ。`,

@@ -141,12 +141,12 @@ export const LEADER = {
   explorer: { upkeep: 2, mult: 2, ancientFame: 2 },
   /** 自宅警備員：冬に防いだ襲撃1につき blockedFame、終わりに防壁1つにつき wallFame（防いだ襲撃の合計が lowBlocked 以下ならさらに lowMult 倍になるよう足す） */
   guard: { blockedFame: 1, wallFame: 1, lowBlocked: 10, lowMult: 2 },
-  /** 採集家：マスで集める資源 mult 倍、ラウンドの終わりに持っている資源の合計 ÷ fameDiv の名声 */
+  /** 採集家：マスで集める資源 mult 倍、毎年の終わりに持っている資源の合計 ÷ fameDiv の名声 */
   gatherer: { mult: 2, fameDiv: 40 },
   /** 詐欺師：相手の了承なしに取引（出す数＝受け取る数）、終わりに取引1回につき fame */
   swindler: { fame: 5 },
-  /** 職人：道具の費用 −discount（資源・素材あわせて）、道具を作るたび fame */
-  crafter: { discount: 2, fame: 4 },
+  /** 職人：道具の費用 −discount（資源・素材あわせて）、道具を作るたび fame、作ったあと山から look 枚の道具を見て1枚取る */
+  crafter: { discount: 2, fame: 4, look: 3 },
   /** 伝説の商人：始めに資源・素材を start 個ずつ、売値 +sellBonus、終わりに金貨 ÷ goldDiv の名声 */
   merchant: { start: 4, sellBonus: 1, goldDiv: 3 },
 };
