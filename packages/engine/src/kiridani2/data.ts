@@ -146,7 +146,7 @@ export const LEADER = {
   /** 詐欺師：相手の了承なしに取引（出す数＝受け取る数）、終わりに取引1回につき fame */
   swindler: { fame: 5 },
   /** 職人：道具の費用 −discount（資源・素材あわせて）、道具を作るたび fame、作ったあと山から look 枚の道具を見て1枚取る */
-  crafter: { discount: 2, fame: 4, look: 3 },
+  crafter: { discount: 2, fame: 1, look: 3 },
   /** 伝説の商人：始めに資源・素材を start 個ずつ、売値 +sellBonus、終わりに金貨 ÷ goldDiv の名声 */
   merchant: { start: 4, sellBonus: 1, goldDiv: 3 },
 };
