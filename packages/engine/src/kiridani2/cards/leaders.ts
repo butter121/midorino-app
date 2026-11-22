@@ -18,7 +18,7 @@ export const LEADERS: CardDef[] = [
   // ---- 戦闘
   def('l_akane', '戦闘の天才', ['hunt', 'smith'], [
     `武器の戦力と、武器の効果が${x(V.genius.weaponMult)}。`,
-    `戦闘に勝ったとき、得る証が${x(V.genius.trophyMult)}。`,
+    `戦闘に勝ったとき、得る証が${x(V.genius.trophyMult)}（増えた分はリーダーの名声）。`,
   ]),
   def('l_jin', '無限の努力家', ['hunt'], [
     `熟練の上限+${V.striver.skillCap}。熟練の効き目が${x(V.striver.skillMult)}。`,
@@ -26,7 +26,7 @@ export const LEADERS: CardDef[] = [
   ]),
   def('l_mina', '最高の魔術師', ['arcane'], [
     `秘術を使ったあと、マナ鉱石${V.mage.mana}を得るか、秘術を${V.mage.draw}枚引く（1ラウンド${V.mage.perRound}回まで）。`,
-    `戦闘に勝ったとき、そのラウンドで使った秘術1枚ごとに名声${V.mage.fame}。`,
+    `戦闘に勝ったラウンドは、ラウンドの終わりに、そのラウンドで使った秘術1つごとに名声${V.mage.fame}。`,
   ]),
   def('l_gareth', '盾の勇者', ['fort'], [
     `守りを戦力として数える。守りの値は${x(V.shield.guardMult)}。`,
@@ -49,12 +49,13 @@ export const LEADERS: CardDef[] = [
     `冬に要る食料−${V.explorer.upkeep}。`,
     '冒険のまとまりのマスに、ほかの人がいても置ける。',
     `冒険のまとまりのマス（依頼板・掘り出し市・古い発掘場・遺跡の探索など）の効果が${x(V.explorer.mult)}。`,
-    `試合の終わりに、古代の遺物の数×${V.explorer.ancientFame}の名声。`,
+    `遺物の修復の費用−${V.explorer.repairCut}（減らす資源は自分で選ぶ）。`,
+    `試合の終わりに、修復した遺物の数×${V.explorer.ancientFame}の名声。`,
   ]),
   def('l_goro', '自宅警備員', ['fort'], [
     '毎ラウンドの始めに、費用を払って防壁を作れる。',
     '冬に防いだ襲撃の数だけ名声。',
-    `試合の終わりに、防壁の数だけ名声（防いだ襲撃の合計が${V.guard.lowBlocked}以下なら${x(V.guard.lowMult)}）。`,
+    `試合の終わりに、防壁1つごとに名声${V.guard.wallFame}（防いだ襲撃の合計が${V.guard.lowBlocked}以下なら${x(V.guard.lowMult)}）。`,
   ]),
   def('l_popo', '採集家', ['gather'], [
     `マスで集める資源が${x(V.gatherer.mult)}。`,
@@ -71,7 +72,7 @@ export const LEADERS: CardDef[] = [
     `道具を作ったあと、山からランダムに${V.crafter.look}枚の道具を見て、1枚を手札に取る。`,
   ]),
   def('l_miro', '伝説の商人', ['trade'], [
-    `試合の始めに、資源・素材を${V.merchant.start}個ずつ持つ。`,
+    `試合の始めに、資源（木材・鉄・薬草・マナ鉱石・食料）を${V.merchant.start}個ずつ持つ。`,
     `資源・素材の売値+${V.merchant.sellBonus}。`,
     `試合の終わりに、持っている金貨÷${V.merchant.goldDiv}の名声。`,
   ]),

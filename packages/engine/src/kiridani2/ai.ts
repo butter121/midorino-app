@@ -243,7 +243,7 @@ export class AI implements Brain {
       if (x === 'wall') return 1.5 + (this.targets.includes('fort') ? 1 : 0);
       if (x === 'atk') return 1 + (this.targets.some((t) => WEAPON_TAGS.has(t)) ? 0.5 : 0);
       if (x === 'def') return 0.8;
-      { const an = g.anc.get(x); if (an) return an.fame - 0.3 * costValue(an.repair); }
+      { const an = g.anc.get(x.split('~')[0]); if (an) return an.fame - 0.3 * costValue(g.repairOf(p, x)?.cost ?? an.repair); }
       if (g.byId.has(x)) return cardValue(g.card(x), this.targets) - 0.1 * costValue(g.card(x).cost ?? {});
       const nd = g.nest(x);
       if (nd?.mon) return nd.mon.str;
@@ -252,8 +252,6 @@ export class AI implements Brain {
     if (x.m === 'sell') return D.sellPrice(x.r) * x.q * this.W.res.gold - this.W.res[x.r] * x.q;
     if (x.m === 'buy') return this.W.res[x.r] * x.q - D.BUY[x.r] * x.q * this.W.res.gold;
     if (x.m === 'item') return g.itemSell(x.id) * this.W.res.gold;
-    if (x.m === 'tool') return g.itemSell(x.id) * this.W.res.gold - cardValue(g.card(x.id), this.targets);
-    if (x.m === 'relic') return g.relicSell(x.id, x.broken) * this.W.res.gold - (g.anc.get(x.id)?.fame ?? 0) * (x.broken ? 0.45 : 1);
     return 0;
   }
 
@@ -407,8 +405,8 @@ export function sumAtLeast(decks: number[][], need: number): number {
 }
 
 // ------------------------------------------------------------ 評価関数
-const SETTLE_PUSH = 3;
 const REPAIR_PUSH = 2;
+const SKILL_BONUS = 2.2;
 function wintersFrom(g: Game, r: number) { let n = 0; for (let w = 4; w <= g.R; w += 4) if (w >= r) n++; return n; }
 
 export function evaluate(g: Game, p: Player, W: W, targets: EngineTag[] = []): number {
@@ -445,10 +443,16 @@ export function evaluate(g: Game, p: Player, W: W, targets: EngineTag[] = []): n
   const mods = g.mods(p);
   let pw = g.bringPets(p).reduce((a, i) => a + p.pets[i].power + mods.pet_power, 0) + mods.power + p.rage;
   let df = 0;
+  // 熟練は努力家なら3倍で効く。熟練は壊れず、ずっと残るので少し高く見る（SKILL_BONUS）
+  const sm = g.skillMult(p);
+  let sk = 0;
   for (const c of p.comps) {
-    pw += c.atk + (c.weapon ? g.card(c.weapon).power ?? 0 : 0);
-    df += c.def + (c.armor ? g.card(c.armor).guard ?? 0 : 0);
+    pw += c.atk * sm * SKILL_BONUS + (c.weapon ? g.card(c.weapon).power ?? 0 : 0);
+    df += c.def * sm * SKILL_BONUS + (c.armor ? g.card(c.armor).guard ?? 0 : 0);
+    sk += c.atk + c.def;
   }
+  // 努力家：勝つたびに送った仲間の熟練の合計 ÷ fameDiv の名声。残りの戦闘の見込み（4ラウンドに約3回）で数える
+  if (g.is(p, 'striver')) v += sk / D.LEADER.striver.fameDiv * Math.min(rl, 12) * 0.35;
   v += W.perm * pw * Math.min(rl, 10) / 4;
   v += W.defn * df * Math.min(rl, 10) / 4;
   v += W.pet * p.pets.length * Math.min(rl, 12) / 12;
@@ -458,9 +462,7 @@ export function evaluate(g: Game, p: Player, W: W, targets: EngineTag[] = []): n
   for (const c of p.hand) v += W.hand * cardValue(g.card(c), targets) * Math.min(1, rl / 6);
   for (const c of g.activeCards(p)) v += W.played * cardValue(g.card(c), targets) * Math.min(rl, 12) / 12;
   for (const c of g.storage(p)) v += 0.3 * g.itemSell(c);
-  // 魔石（ギルドで名声に換える見込み）・壊れた遺物（修復すれば名声）
-  // 魔石はギルドで換えないと0点。ギルドに行く手を少し後押しする（このラウンドに精算した）
-  if (p.acts.includes('settle')) v += SETTLE_PUSH;
+  // 壊れた遺物（修復すれば名声）。魔石は試合の終わりの名声として score に入っている
   if (p.acts.includes('repair')) v += REPAIR_PUSH;
   for (const id of p.broken) v += (rl > 0 ? 0.3 : 0) * (g.anc.get(id)?.fame ?? 0);
   // 依頼の進み具合

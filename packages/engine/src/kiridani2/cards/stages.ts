@@ -55,12 +55,12 @@ export const STAGES: StageDef[] = [
     effects: [
       opt([{ gain: { wood: 1, iron: 1 } }]),
       opt([{ gain: { wood: 1, herb: 1 } }]),
-      opt([{ gain: { iron: 1, mat: 1 } }]),
+      opt([{ gain: { iron: 1 } }]),
       opt([{ gain: { herb: 1, mana: 1 } }]),
-      opt([{ gain: { food: 1, mat: 1 } }]),
+      opt([{ gain: { food: 1 } }]),
       opt([{ gain: { wood: 1, mana: 1 } }]),
     ],
-    text: '資源2種を1つずつ得る（木材＋鉄／木材＋薬草／鉄＋素材／薬草＋マナ鉱石／食料＋素材／木材＋マナ鉱石から1つ）。',
+    text: '資源を1つずつ得る（木材＋鉄／木材＋薬草／鉄／薬草＋マナ鉱石／食料／木材＋マナ鉱石から1つ）。',
   },
   {
     id: 'family', kind: 'stage', stage: 2, name: '対家の家族', engine: ['family'], mech: 'action',
@@ -75,8 +75,8 @@ export const STAGES: StageDef[] = [
   {
     id: 'lodge', kind: 'stage', stage: 2, name: '狩人の小屋', engine: ['hunt', 'family'], mech: 'accrue',
     accum: { food: 2 },
-    effects: [opt([{ gain: { mat: 1 } }])],
-    text: 'たまるマス（毎ラウンド食料+2）。たまった食料と素材1を得る。',
+    effects: [opt([{ gain: { food: 1 } }])],
+    text: 'たまるマス（毎ラウンド食料+2）。たまった食料と、さらに食料1を得る。',
   },
   // ---------------- 段階3（候補6から4枚）
   {
@@ -109,9 +109,9 @@ export const STAGES: StageDef[] = [
     id: 'kennel', kind: 'stage', stage: 3, name: '獣舎の開放', engine: ['beast'], mech: 'action',
     effects: [
       opt([{ tame: true }]),
-      opt([{ gain: { food: 1, mat: 1 } }]),
+      opt([{ gain: { food: 1 } }]),
     ],
-    text: '次のどれか：巣にいる魔物1体を戦わずに使い魔にする（捕まえる食料＝強さ÷4は払う）／食料1と素材1を得る。',
+    text: '次のどれか：巣にいる魔物1体を戦わずに使い魔にする（捕まえる食料＝強さ÷4は払う）／食料1を得る。',
   },
   // ---------------- 段階4（候補6から4枚）
   {
@@ -128,10 +128,10 @@ export const STAGES: StageDef[] = [
     id: 'explore', kind: 'stage', stage: 4, name: '近辺の探索', engine: ['gather'], mech: 'action',
     effects: [
       opt([{ gain: { wood: 1, iron: 1, herb: 1 } }]),
-      opt([{ gain: { herb: 1, mana: 1, mat: 1 } }]),
-      opt([{ gain: { wood: 1, food: 1, mat: 1 } }]),
+      opt([{ gain: { herb: 1, mana: 1 } }]),
+      opt([{ gain: { wood: 1, food: 1 } }]),
     ],
-    text: '資源3種を1つずつ得る（木材・鉄・薬草／薬草・マナ鉱石・素材／木材・食料・素材から1つ）。',
+    text: '資源を1つずつ得る（木材・鉄・薬草／薬草・マナ鉱石／木材・食料から1つ）。',
   },
   {
     id: 'recommend', kind: 'stage', stage: 4, name: 'ギルドの推薦', engine: ['bridge'], mech: 'action',
@@ -165,9 +165,9 @@ export const STAGES: StageDef[] = [
     id: 'triumph', kind: 'stage', stage: 5, name: '凱旋', engine: ['hunt'], mech: 'endfame',
     effects: [
       { when: 'use' as const, if: { min: { races: 3 } }, do: [{ fame_per: { stat: 'races', per: 1 } }, { fame: -1 }], limit: 'game' as const },
-      opt([{ gain: { food: 2, mat: 1 } }]),
+      opt([{ gain: { food: 2 } }]),
     ],
-    text: '次のどれか（名声は1試合に1回、年数の倍率がかかる）：倒した種族3種で名声2・4種で名声3・5種で名声4／食料2と素材1を得る。',
+    text: '次のどれか（名声は1試合に1回、年数の倍率がかかる）：倒した種族3種で名声2・4種で名声3・5種で名声4／食料2を得る。',
   },
   {
     id: 'infirmary', kind: 'stage', stage: 5, name: '救護所', engine: ['boss', 'hunt'], mech: 'action',

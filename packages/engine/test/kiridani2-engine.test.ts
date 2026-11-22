@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AI, ancientScore, CARD_SET, DATA, drive, DslError, Game, Kiridani2Session, loadCards, Rng, score, startSeat, tableScore, validateCard,
+  AI, ancientScore, CARD_SET, DATA, stoneFame, drive, DslError, Game, Kiridani2Session, loadCards, Rng, score, startSeat, tableScore, validateCard,
   type CardDef, type CardSet, type StageDef,
 } from '../src/kiridani2/index';
 
@@ -90,14 +90,29 @@ describe('kiridani2 名声', () => {
     expect(p.ancient).toEqual([a.id]);
   });
 
-  it('ギルド：魔石を1回3つまで名声に換える', () => {
+});
+
+describe('kiridani2 魔石の段階', () => {
+  it('軽い武器は初級の魔石が1つ要り、作ると減る。魔石は最後に 1・2・4 の名声', () => {
     const g = new Game(2, [null, null], { cards: CARD_SET });
     const p = g.players[0];
-    p.stones = 5;
-    const gen = g.runOps(p, [{ settle: true }], {});
-    expect(gen.next().done).toBe(true);
-    expect(p.stones).toBe(5 - DATA.GUILD.settleMax);
-    expect(p.fame.stone).toBe(DATA.GUILD.settleMax / DATA.GUILD.fameDiv);
+    p.hand.push('w_woodaxe'); p.res.wood = 5; p.res.iron = 5;
+    expect(g.expand(p, [{ craft: 'weapon' }])).not.toContain('w_woodaxe');
+    p.stones = [1, 1, 1];
+    expect(g.expand(p, [{ craft: 'weapon' }])).toContain('w_woodaxe');
+    const gen = g.runOps(p, [{ craft: 'weapon' }], { x: 'w_woodaxe' });
+    let r = gen.next(); while (!r.done) r = gen.next(undefined as never);
+    expect(p.stones).toEqual([0, 1, 1]);
+    expect(stoneFame(p)).toBe(6);
+  });
+  it('巣の魔物の段階は強さ ÷（最大の強さ ÷ 3）', () => {
+    const g = new Game(2, [null, null], { cards: CARD_SET, years: 10 });
+    const band = g.maxNestStr() / 3;
+    for (let i = 0; i < 200; i++) {
+      const m = g.rollMonster(DATA.MONSTERS[i % DATA.MONSTERS.length], (i % 10) / 9, 1);
+      expect(m.stoneTier).toBe(Math.min(2, Math.floor(m.str / band)));
+      expect(m.stones >= 1 && m.stones <= 2).toBe(true);
+    }
   });
 });
 

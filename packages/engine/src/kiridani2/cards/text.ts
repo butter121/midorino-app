@@ -39,7 +39,7 @@ const RACE_JP: Record<string, string> = { beast: '獣', spirit: '精霊', undead
 const SEASON_JP: Record<string, string> = { spring: '春', summer: '夏', autumn: '秋', winter: '冬' };
 const DRAW_JP: Record<string, string> = { occ: '職能', item: '品物', equip: '武器か防具', weapon: '武器', armor: '防具', tool: '道具', spell: '秘術', ancient: '遺物' };
 const SPACE_JP: Record<string, string> = {
-  any_accum: 'たまるマス', forest: '古の森', mine: '鉄の坑道', meadow: '薬草の野', spring: 'マナ鉱石の泉', hunt: '狩場', board: '依頼板', guild: 'ギルド', occhall: '職能の館（仮）', forge: '鍛冶場',
+  any_accum: 'たまるマス', forest: '古の森', mine: '鉄の坑道', meadow: '薬草の野', spring: 'マナ鉱石の泉', hunt: '狩場', board: '依頼板', guild: 'ギルド', forge: '鍛冶場',
   workshop: '工房', market: '交換所', curio: '掘り出し市', dig: '古い発掘場', plaza: '広場', hall: '集会所', nest: '巣', lair: '主の巣',
   training: '訓練場', ruins: '遺跡の探索', tavern: '酒場', altar: '古代の祭壇', treasury: '宝物庫', temple: '神殿', caravan: '行商隊',
   tradepost: '交易所', kennel: '獣舎', library: '魔導書庫', bazaar: '大市', lodge: '狩人の小屋', walls: '城壁の普請',
@@ -131,8 +131,6 @@ export function opJP(op: Op, scaled = false): string {
     case 'injure': return `自分の仲間${v}人が負傷する`;
     case 'scrap': { const s = v as { gain_per_cost?: Cost }; return `建てた道具を1つ壊す（山に戻す）${s.gain_per_cost ? `。その費用1つごとに${costText(s.gain_per_cost)}を得る` : ''}`; }
     case 'shard': return `遺物の欠片+${v}`;
-    case 'settle': return '魔石を名声に換える';
-    case 'sell_item': return '品物（秘術を除く）・建てた道具・遺物を1つ売る';
     case 'repair': return '壊れた遺物を1つ修復する';
     case 'relic': return `遺物を${v}枚引く（壊れた状態）`;
     case 'buy_card': { const b = v as { count: number; price: number }; return `掘り出し市の品物を${b.count}枚まで、1枚金貨${b.price}で買う`; }

@@ -34,9 +34,7 @@ export type Choice =
   | string
   | { m: 'sell' | 'buy'; r: Res; q: number }
   | { m: 'both'; sell: { r: Res; q: number }; buy: { r: Res; q: number } }
-  | { m: 'item'; id: string }
-  | { m: 'tool'; id: string }
-  | { m: 'relic'; id: string; broken: boolean };
+  | { m: 'item'; id: string };
 
 /** 置く場所の選択肢。s＝マス（巣・'lair'・秘術は '@spell'）、i＝そのマスの何番目の手順（−1 は instead のカード効果） */
 export interface Option {
@@ -123,8 +121,10 @@ export class Player {
   shards = 0;
   /** 討伐の証の数（名声は合計 ÷ TROPHY.fameDiv の四捨五入） */
   trophies = 0;
-  /** 魔石（魔物が落とす。ギルドで名声に換える） */
-  stones = 0;
+  /** 天才で増えた分の証（リーダーの名声として数える） */
+  bonusTrophies = 0;
+  /** 魔石の数（[初級, 中級, 上級]。ゲームの終わりに名声。武器・防具を作るときに払う） */
+  stones = [0, 0, 0];
   /** 壊れた遺物（修復すると ancient に移る） */
   broken: string[] = [];
   /** 怒り（mod rage：負傷のかわりにためた反撃） */
@@ -133,7 +133,7 @@ export class Player {
   lastDmg = 0;
   kills = 0;
   races: Race[] = [];
-  st = { boss: 0, coop: 0, spells: 0, donations: 0, trades: 0, fights: 0, wins: 0, casts: 0, castsRound: 0, sold: 0, returns: 0, mageRound: 0, blocked: 0 };
+  st = { boss: 0, coop: 0, spells: 0, donations: 0, trades: 0, fights: 0, wins: 0, casts: 0, castsRound: 0, sold: 0, returns: 0, mageRound: 0, blocked: 0, mageWon: 0 };
   quests: string[] = [];
   secret: string | null = null;
   discontent = 0;
@@ -172,7 +172,7 @@ export class Player {
     q.beds = this.beds; q.walls = this.walls;
     q.tools = [...this.tools]; q.occs = [...this.occs]; q.hand = [...this.hand]; q.items = [...this.items]; q.ancient = [...this.ancient];
     q.pets = this.pets.map((x) => ({ ...x })); q.kills = this.kills;
-    q.tomes = [...this.tomes]; q.tomeUses = { ...this.tomeUses }; q.shards = this.shards; q.trophies = this.trophies; q.stones = this.stones; q.broken = [...this.broken]; q.rage = this.rage; q.lastDmg = this.lastDmg;
+    q.tomes = [...this.tomes]; q.tomeUses = { ...this.tomeUses }; q.shards = this.shards; q.trophies = this.trophies; q.bonusTrophies = this.bonusTrophies; q.stones = [...this.stones]; q.broken = [...this.broken]; q.rage = this.rage; q.lastDmg = this.lastDmg;
     q.races = [...this.races];
     q.st = { ...this.st };
     q.quests = [...this.quests];
@@ -653,8 +653,6 @@ export class Game {
     const v = Object.entries(c.cost ?? {}).reduce((a, [r, n]) => a + D.BUY[r as Res] * (n as number), 0);
     return Math.max(1, Math.floor(v * D.ITEM_SELL_RATE));
   }
-  /** 遺物を売る値段（金貨）＝名声 × RELIC_SELL */
-  relicSell(id: string, broken: boolean) { return (this.anc.get(id)?.fame ?? 0) * (broken ? D.RELIC_SELL.broken : D.RELIC_SELL.repaired); }
   storage(p: Player): string[] {
     const eq = [...p.comps.map((c) => c.weapon), ...p.comps.map((c) => c.armor)].filter(Boolean) as string[];
     const left = [...p.items];
@@ -688,9 +686,50 @@ export class Game {
     const counter = Math.round(s0 / R.counterDiv) + (kind === 'boss' ? R.boss.counter : kind === 'dragon' ? D.DRAGON.counter : 0);
     const T = D.TROPHY;
     const trophy = Math.max(1, Math.round(str / T.div + n + (kind === 'dragon' ? T.dragon : kind === 'boss' ? T.boss : 0)));
-    const stones = Math.min(D.STONE.max, Math.max(D.STONE.min, Math.round(str / D.STONE.div + this.rng.truncNormal(0, R.lootSd, R.lootClip))));
+    const band = this.maxNestStr() / 3;
+    const stoneTier = boss ? 2 : Math.min(2, Math.floor(str / band));
+    const frac = (str - stoneTier * band) / band + this.rng.truncNormal(0, D.STONE.noise, 2);
+    const stones = boss ? D.STONE.max : Math.min(D.STONE.max, frac >= 0.5 ? 2 : 1);
     const raid = kind === 'dragon' ? 0 : Math.round(s0 / R.raidDiv) + (boss ? R.boss.raid : 0);
-    return { uid: ++this.uid, type: type.id, name: type.name, race: type.race, str, counter, loot, trophy, stones, raid, boss, year, wounds: 0 };
+    return { uid: ++this.uid, type: type.id, name: type.name, race: type.race, str, counter, loot, trophy, stones, stoneTier, raid, boss, year, wounds: 0 };
+  }
+  /** その試合で巣の魔物がいちばん強くなる場合の強さ（最後のラウンド・いちばん格の高い魔物・ゆらぎ最大。主・古竜を除く） */
+  maxNestStr(): number {
+    const R = D.MON_ROLL;
+    const g = Math.max(...D.MONSTERS.map((m) => m.grade));
+    return Math.max(3, Math.round(R.base + (R.slope[this.years] ?? 15) + g + R.sd * R.clip - R.ease.base - (R.ease.slope[this.years] ?? 4)));
+  }
+  /** 遺物の修復のしかた。key は選択肢（ふつうは遺物の id。探検家は「id~減らす資源.減らす資源」で、減らす資源を選べる） */
+  repairVariants(p: Player, id: string): { key: string; cost: Cost }[] {
+    const a = this.anc.get(id);
+    if (!a) return [];
+    const cut = this.is(p, 'explorer') ? D.LEADER.explorer.repairCut : 0;
+    if (!cut) return [{ key: id, cost: a.repair }];
+    const units: Res[] = [];
+    for (const [r, n] of Object.entries(a.repair)) for (let k = 0; k < (n as number); k++) units.push(r as Res);
+    if (units.length <= cut) return [{ key: `${id}~${units.join('.')}`, cost: {} }];
+    const seen = new Map<string, Cost>();
+    const pick = (from: number, left: number, took: Res[]) => {
+      if (!left) {
+        const k = [...took].sort().join('.');
+        if (!seen.has(k)) { const c: Cost = { ...a.repair }; for (const r of took) c[r] = (c[r] ?? 0) - 1; seen.set(k, cleanCost(c)); }
+        return;
+      }
+      for (let i = from; i < units.length; i++) pick(i + 1, left - 1, [...took, units[i]]);
+    };
+    pick(0, cut, []);
+    return [...seen].map(([k, cost]) => ({ key: `${id}~${k}`, cost }));
+  }
+  repairOf(p: Player, key: string): { id: string; cost: Cost } | null {
+    const id = key.split('~')[0];
+    const v = this.repairVariants(p, id).find((x) => x.key === key);
+    return v ? { id, cost: v.cost } : null;
+  }
+  /** 作るのに要る魔石の段階（武器・防具の重さ。なければ null） */
+  stoneNeed(id: string): number | null {
+    const c = this.card(id);
+    if (c.kind !== 'weapon' && c.kind !== 'armor') return null;
+    return D.WEIGHT_TIER[c.weight ?? ''] ?? null;
   }
   private refillForecast() {
     const nr = this.round + 1;
@@ -810,7 +849,7 @@ export class Game {
       for (let i = 0; i < D.START.comps; i++) p.comps.push(newComp(i === 0));
       p.beds = D.START.beds;
       const g0: Cost = { food: D.START.food + (D.SEAT_FOOD[this.n][this.turnPos(p.pid)] ?? 0), gold: D.START.gold, wood: D.START.wood, iron: D.START.iron };
-      if (this.is(p, 'merchant')) for (const r of RES) g0[r] = (g0[r] ?? 0) + D.LEADER.merchant.start;
+      if (this.is(p, 'merchant')) for (const r of ['wood', 'iron', 'herb', 'mana', 'food'] as const) g0[r] = (g0[r] ?? 0) + D.LEADER.merchant.start;
       gainRes(p, g0);
       this.emit({ t: 'grant', seat: p.pid, gain: g0, reason: '開始時' });
       if (p.ai) this.autoEquip(p);
@@ -1034,6 +1073,9 @@ export class Game {
   // ------------------------------------------------------------ ラウンドの終わり（§3.4）
   *endRound(): Gen {
     for (const p of this.players) {
+      // 最高の魔術師：このラウンドに戦闘で勝っていれば、使った秘術1つごとに名声
+      if (this.is(p, 'mage') && p.st.mageWon && p.st.castsRound) this.leadFame(p, p.st.castsRound * D.LEADER.mage.fame, '最高の魔術師');
+      p.st.mageWon = 0;
       yield* this.fire(p, 'round_end', {});
     }
     // 仲間が戻る。負傷の回復判定（薬草2で即回復、払わなければ次のラウンド休み）
@@ -1208,7 +1250,8 @@ export class Game {
       for (const c of new Set(p.hand)) {
         const cd = this.card(c);
         const ok = (want === 'weapon' || want === 'any') && cd.kind === 'weapon' || (want === 'armor' || want === 'any') && cd.kind === 'armor';
-        if (ok && this.prereqOk(p, c) && after(this.cardCost(p, c, disc))) out.push(c);
+        const sn = this.stoneNeed(c);
+        if (ok && this.prereqOk(p, c) && (sn === null || p.stones[sn] > 0) && after(this.cardCost(p, c, disc))) out.push(c);
       }
       for (const gd of this.cs.gear) {
         const sl = slotOf(gd);
@@ -1227,13 +1270,8 @@ export class Game {
     } else if (k === 'scrap') {
       const want = op.scrap!.card;
       for (const c of new Set(p.tools)) if (!want || want === c || (want === 'self' && false)) out.push(c);
-    } else if (k === 'sell_item') {
-      for (const id of new Set(this.storage(p))) if (this.card(id).kind !== 'spell') out.push({ m: 'item', id });
-      for (const id of new Set(p.tools)) out.push({ m: 'tool', id });
-      for (const id of new Set(p.broken)) out.push({ m: 'relic', id, broken: true });
-      for (const id of new Set(p.ancient)) out.push({ m: 'relic', id, broken: false });
     } else if (k === 'repair') {
-      for (const id of new Set(p.broken)) { const a = this.anc.get(id); if (a && canPay(p, addCost(base, a.repair))) out.push(id); }
+      for (const id of new Set(p.broken)) for (const v of this.repairVariants(p, id)) if (canPay(p, addCost(base, v.cost))) out.push(v.key);
     } else if (k === 'exchange') {
       const q = this.marketQty(p, sp);
       const sells: { r: Res; q: number }[] = [], buys: { r: Res; q: number }[] = [];
@@ -1244,7 +1282,8 @@ export class Game {
       }
       for (const s of sells) out.push({ m: 'sell', ...s });
       for (const b of buys) out.push({ m: 'buy', ...b });
-      if (this.mods(p).market_both) {
+      for (const id of new Set(this.storage(p))) out.push({ m: 'item', id });
+      {
         for (const s of sells) {
           if (s.q !== Math.min(q, p.res[s.r])) continue;
           const gold = p.res.gold + this.sellPrice(p, s.r) * s.q - (base.gold ?? 0);
@@ -1561,7 +1600,10 @@ export class Game {
           if (!id) break;
           const c = this.goldPlan(p, this.cardCost(p, id));
           if (!c) break;
+          const sn = this.stoneNeed(id);
+          if (sn !== null && p.stones[sn] <= 0) break;
           this.spend(p, c);
+          if (sn !== null) { p.stones[sn] -= 1; this.emit({ t: 'stone_use', seat: p.pid, tier: sn }); }
           if (this.card(id).kind === 'gear') {
             this.gearStock[id] -= 1;
             p.items.push(id);
@@ -1621,59 +1663,15 @@ export class Game {
           }
           break;
         }
-        case 'settle': {
-          const n = Math.min(p.stones, D.GUILD.settleMax);
-          if (!n) break;
-          const f = Math.floor(n / D.GUILD.fameDiv);
-          p.stones -= n; p.fame.stone += f;
-          p.acts.push('settle');
-          this.emit({ t: 'settle', seat: p.pid, stones: n, fame: f });
-          break;
-        }
         case 'relic': if (this.decks.ancient.length) yield* this.drawCards(p, 'ancient', op.relic! + this.mods(p).ancient_look, op.relic!); break;
         case 'repair': {
-          const id = typeof x === 'string' ? x : null;
-          const a = id ? this.anc.get(id) : undefined;
-          const i = id ? p.broken.indexOf(id) : -1;
-          if (!a || i < 0 || !canPay(p, a.repair)) break;
-          this.spend(p, a.repair);
-          p.broken.splice(i, 1); p.ancient.push(a.id);
+          const rv = typeof x === 'string' ? this.repairOf(p, x) : null;
+          const i = rv ? p.broken.indexOf(rv.id) : -1;
+          if (!rv || i < 0 || !canPay(p, rv.cost)) break;
+          this.spend(p, rv.cost);
+          p.broken.splice(i, 1); p.ancient.push(rv.id);
           p.acts.push('repair');
-          this.emit({ t: 'repair', seat: p.pid, card: a.id, cost: a.repair });
-          break;
-        }
-        case 'sell_item': {
-          if (!x || typeof x === 'string') break;
-          if (x.m === 'item') {
-            const i = p.items.indexOf(x.id);
-            if (i < 0 || !this.storage(p).includes(x.id)) break;
-            p.items.splice(i, 1);
-            const gold = this.itemSell(x.id);
-            p.res.gold += gold;
-            if (this.card(x.id).kind === 'gear') this.gearStock[x.id] = (this.gearStock[x.id] ?? 0) + 1;
-            else this.recycle(x.id);
-            this.emit({ t: 'market', seat: p.pid, kind: 'sell', res: x.id, qty: 1, gold });
-          } else if (x.m === 'tool') {
-            const i = p.tools.indexOf(x.id);
-            if (i < 0) break;
-            p.tools.splice(i, 1);
-            const gold = this.itemSell(x.id);
-            p.res.gold += gold;
-            this.recycle(x.id);
-            this.emit({ t: 'sell_tool', seat: p.pid, card: x.id, gold });
-          } else if (x.m === 'relic') {
-            const list = x.broken ? p.broken : p.ancient;
-            const i = list.indexOf(x.id);
-            const a = this.anc.get(x.id);
-            if (i < 0 || !a) break;
-            list.splice(i, 1);
-            const gold = this.relicSell(x.id, x.broken);
-            p.res.gold += gold;
-            this.emit({ t: 'sell_relic', seat: p.pid, card: x.id, gold, broken: x.broken });
-          } else break;
-          p.acts.push('sell');
-          p.st.sold += 1;
-          yield* this.fire(p, 'sell', {});
+          this.emit({ t: 'repair', seat: p.pid, card: rv.id, cost: rv.cost });
           break;
         }
         case 'first': this.nextFirst = p.pid; break;
@@ -1752,7 +1750,7 @@ export class Game {
   private *leadWin(p: Player, mon: Monster, pl: Plan, plans: Plan[], boss: boolean): Gen {
     const L = D.LEADER;
     if (this.is(p, 'striver')) this.leadFame(p, Math.floor(pl.idxs.reduce((a, i) => a + p.comps[i].atk + p.comps[i].def, 0) / L.striver.fameDiv), '無限の努力家');
-    if (this.is(p, 'mage')) this.leadFame(p, p.st.castsRound * L.mage.fame, '最高の魔術師');
+    if (this.is(p, 'mage')) p.st.mageWon = 1;
     if (this.is(p, 'shield')) this.leadFame(p, Math.floor(Math.max(0, this.defense(p, pl) - Math.max(0, mon.counter + pl.counter)) / L.shield.fameDiv), '盾の勇者');
     if (this.is(p, 'giant') && boss && plans.every((q) => q === pl || q.power < pl.power)) this.leadFame(p, mon.type === D.ANCIENT_DRAGON.id ? L.giant.dragonFame : L.giant.bossFame, '巨人狩り');
   }
@@ -2301,18 +2299,20 @@ export class Game {
         this.actGain(p, loot);
         if (costUnits(loot)) this.emit({ t: 'loot', seat: p.pid, gain: loot });
         // 証：倒した人数で等分（四捨五入・最低1）＋自分のカードの分。天才は倍
-        const tro = (Math.max(1, Math.round(mon.trophy / ps.length)) + pl.trophy) * (this.is(p, 'genius') ? D.LEADER.genius.trophyMult : 1);
+        const tro = Math.max(1, Math.round(mon.trophy / ps.length)) + pl.trophy;
+        const bonusTro = this.is(p, 'genius') ? tro * (D.LEADER.genius.trophyMult - 1) : 0;
+        if (bonusTro) { const b0 = trophyFame(p.bonusTrophies); p.bonusTrophies += bonusTro; this.leadFame(p, trophyFame(p.bonusTrophies) - b0, '戦闘の天才'); }
         // 魔石：共闘は貢献（戦力）の割合、最低1
         const st = coop ? Math.max(1, Math.round(mon.stones * share)) : mon.stones;
-        p.stones += st;
-        rec.tro[j] = tro;
+        p.stones[mon.stoneTier] += st;
+        rec.tro[j] = tro + bonusTro;
         // 討伐の証：数を足し、合計 ÷ fameDiv（四捨五入）の増えた分だけ名声（古竜も証。参加の名声 join は別）
         const before = trophyFame(p.trophies);
         p.trophies += tro;
         const tf = trophyFame(p.trophies) - before;
         p.fame.trophy += tf;
         if (mon.type === D.ANCIENT_DRAGON.id) p.fame.dragon += D.DRAGON.join;
-        this.emit({ t: 'trophy', seat: p.pid, monster: mon.type, fame: tf + (mon.type === D.ANCIENT_DRAGON.id ? D.DRAGON.join : 0), trophies: tro, stones: st });
+        this.emit({ t: 'trophy', seat: p.pid, monster: mon.type, fame: tf + (mon.type === D.ANCIENT_DRAGON.id ? D.DRAGON.join : 0), trophies: tro, stones: st, stoneTier: mon.stoneTier });
         p.kills += 1;
         yield* this.leadWin(p, mon, pl, plans, boss);
         if (!p.races.includes(mon.race)) p.races.push(mon.race);
@@ -2474,7 +2474,7 @@ export function optLabel(o: Option): string {
 
 // ------------------------------------------------------------ 名声（§9）
 export const SCORE_LABELS: Record<string, string> = {
-  trophy: '討伐の証', stone: '魔石の精算', quest: '依頼', secret: '秘密依頼', donate: '寄進', ancient: '古代の品', card: 'カード', effect: '効果', dragon: '古竜', absent: '主・古竜に不参加',
+  trophy: '討伐の証', stone: '魔石', quest: '依頼', secret: '秘密依頼', donate: '寄進', ancient: '古代の品', card: 'カード', effect: '効果', dragon: '古竜', absent: '主・古竜に不参加',
   comps: '仲間', kinds: '4種の品物', gold: '金貨', discontent: '不満', raid: '襲撃', leader: 'リーダー',
 };
 
@@ -2492,7 +2492,7 @@ export function tableScore(v: number, th: number[]): number {
 export function scoreBreakdown(g: Game, p: Player): Record<string, number> {
   const b: Record<string, number> = {
     trophy: p.fame.trophy, quest: p.fame.quest, secret: 0, donate: p.fame.donate, ancient: Math.round(ancientScore(g, p) * (D.ANCIENT_SCALE[g.years] ?? 1)), card: p.fame.card,
-    effect: p.fame.effect, dragon: p.fame.dragon, absent: p.fame.absent, stone: p.fame.stone,
+    effect: p.fame.effect, dragon: p.fame.dragon, absent: p.fame.absent, stone: stoneFame(p),
   };
   const sc = D.POINT_SCALE[g.years] ?? 1;
   if (p.secret) { const q = g.quest.get(p.secret); if (q && checkCond(q.need, g.env(p))) b.secret = Math.round((q.fame ?? D.SECRET_FAME) * sc); }
@@ -2520,15 +2520,14 @@ export function leaderEndFame(g: Game, p: Player): number {
   if (g.is(p, 'merchant')) return Math.floor(p.res.gold / L.merchant.goldDiv);
   return 0;
 }
-/** 金貨の名声：4枚で1点、上限（年数で伸びる。gold_cap で上がる）を超えた分は8枚で1点。gold_div で割る */
-export function goldFame(gold: number, years: number, capAdd = 0, div = 1): number {
-  const cap = Math.round((D.GOLD_FAME_CAP + capAdd) * (D.POINT_SCALE[years] ?? 1));
-  const f = Math.floor(gold / D.GOLD_PER_FAME);
-  const v = f <= cap ? f : cap + Math.floor((gold - cap * D.GOLD_PER_FAME) / (D.GOLD_PER_FAME * 2));
-  return Math.floor(v / Math.max(1, div));
+/** 金貨の名声：GOLD_PER_FAME 枚で1点、上限なし。gold_div で割る */
+export function goldFame(gold: number, _years = 0, _capAdd = 0, div = 1): number {
+  return Math.floor(Math.floor(gold / D.GOLD_PER_FAME) / Math.max(1, div));
 }
 export function score(g: Game, p: Player): number {
   return Object.values(scoreBreakdown(g, p)).reduce((a, n) => a + n, 0);
 }
+/** 魔石の名声：段階ごとに 数 × STONE.fame */
+export function stoneFame(p: Player): number { return p.stones.reduce((a, n, i) => a + n * (D.STONE.fame[i] ?? 0), 0); }
 /** 討伐の証の名声：合計 ÷ TROPHY.fameDiv（四捨五入） */
 export function trophyFame(n: number): number { return Math.round(n / D.TROPHY.fameDiv + 1e-9); }

@@ -106,7 +106,7 @@ export function choiceLabel(g: Game, p: Player | null, x: Choice): { title: stri
     if (x === 'skip') return { title: '何もしない' };
     if (x === 'mage:mana') return { title: `マナ鉱石を${D.LEADER.mage.mana}つ得る`, detail: '最高の魔術師' };
     if (x === 'mage:draw') return { title: `秘術を${D.LEADER.mage.draw}枚引く`, detail: '最高の魔術師' };
-    { const a = g.anc.get(x); if (a) return { title: `${a.name}を修復する`, detail: `試合の終わりに名声${a.fame}`, cost: a.repair }; }
+    { const a = g.anc.get(x.split('~')[0]); if (a) { const rv = p ? g.repairOf(p, x) : null; return { title: `${a.name}を修復する`, detail: `試合の終わりに名声${a.fame}`, cost: rv?.cost ?? a.repair }; } }
     if (x.startsWith('tr:')) { const i = Number(x.slice(3)); return { title: p?.comps[i]?.leader ? 'リーダー' : `仲間${i + 1}` }; }
     if (g.byId.has(x)) {
       const c = g.card(x);
@@ -121,8 +121,6 @@ export function choiceLabel(g: Game, p: Player | null, x: Choice): { title: stri
   if (x.m === 'sell') return { title: `${RES_JP[x.r]}を${x.q}つ売る`, detail: `金貨+${(p ? g.sellPrice(p, x.r) : D.sellPrice(x.r)) * x.q}` };
   if (x.m === 'buy') return { title: `${RES_JP[x.r]}を${x.q}つ買う`, detail: `金貨-${D.BUY[x.r] * x.q}` };
   if (x.m === 'item') return { title: `${g.byId.get(x.id)?.name ?? x.id}を売る`, detail: `金貨+${g.itemSell(x.id)}`, card: x.id };
-  if (x.m === 'tool') return { title: `建てた${g.byId.get(x.id)?.name ?? x.id}を売る`, detail: `金貨+${g.itemSell(x.id)}`, card: x.id };
-  if (x.m === 'relic') return { title: `${x.broken ? '壊れた' : ''}${g.anc.get(x.id)?.name ?? x.id}を売る`, detail: `金貨+${g.relicSell(x.id, x.broken)}` };
   if (x.m !== 'both') return { title: '?' };
   return { title: `${RES_JP[x.sell.r]}${x.sell.q}を売り、${RES_JP[x.buy.r]}${x.buy.q}を買う`, detail: `売値${costJP({ gold: g.sellPrice(p!, x.sell.r) * x.sell.q })}` };
 }
@@ -201,8 +199,6 @@ function opText(op: Record<string, unknown>): string {
     case 'train': return '熟練+1';
     case 'occ': return '職能を出す';
     case 'exchange': return '売り買い';
-    case 'settle': return `魔石を名声に（${D.GUILD.settleMax}つまで）`;
-    case 'sell_item': return '品物・道具・遺物を売る';
     case 'repair': return '遺物を修復';
     case 'relic': return `遺物を${v}枚引く`;
     case 'gain_per': { const g = v as { gain: Cost }; return `${costJP(g.gain)}（数に応じて）`; }

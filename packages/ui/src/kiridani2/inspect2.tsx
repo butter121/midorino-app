@@ -42,7 +42,7 @@ function playerBlock(v: View2, p: PV2): ReactNode {
     <Row k="討伐">{p.trophies.length}体・使い魔{p.pets}</Row>
     {p.tomes.length > 0 && <Row k="身につけた秘術">{p.tomes.map((c) => <CardChip2 key={c} id={c} />)}</Row>}
     <Row k="遺物">直した{p.ancient.length}枚・壊れた{p.broken.length}枚</Row>
-    <Row k="魔石">{p.stones}</Row>
+    <Row k="魔石">{p.stones.map((n, i) => `${DATA.STONE.jp[i]}${n}`).join('・')}</Row>
     <Row k="冬の食料">{foodLine(p)}</Row>
     <Row k="運命の残り"><FateRow2 left={p.fateLeft} inspect={`fate2:${p.seat}`} /><small className="kd2-insp-sub">{p.fateLeft.length ? `${p.fateLeft.length}枚` : '次は混ぜ直し'}</small></Row>
   </>;

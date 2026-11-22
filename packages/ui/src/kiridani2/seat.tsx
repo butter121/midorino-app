@@ -38,8 +38,6 @@ export function choiceItem2(g: Game, p: Player | null, x: Choice, id: string): C
     if (x.m === 'sell') return { id, title: `${DATA.RES_JP[x.r]}を売る`, cost: one(x.r, x.q), gain: { gold: (p ? g.sellPrice(p, x.r) : DATA.sellPrice(x.r)) * x.q } };
     if (x.m === 'buy') return { id, title: `${DATA.RES_JP[x.r]}を買う`, cost: { gold: DATA.BUY[x.r] * x.q }, gain: one(x.r, x.q) };
     if (x.m === 'item') return { id, title: `${cardName(x.id)}を売る`, card: CARD2[x.id] ? x.id : undefined, gain: { gold: g.itemSell(x.id) } };
-    if (x.m === 'tool') return { id, title: `建てた${cardName(x.id)}を売る`, card: CARD2[x.id] ? x.id : undefined, gain: { gold: g.itemSell(x.id) } };
-    if (x.m === 'relic') return { id, title: `${x.broken ? '壊れた' : ''}${g.anc.get(x.id)?.name ?? x.id}を売る`, gain: { gold: g.relicSell(x.id, x.broken) } };
     if (x.m === 'both') return { id, title: `${DATA.RES_JP[x.sell.r]}を売って${DATA.RES_JP[x.buy.r]}を買う`, cost: one(x.sell.r, x.sell.q), gain: one(x.buy.r, x.buy.q) };
   }
   const l = choiceLabel(g, p, x);
@@ -425,7 +423,7 @@ export function optionSheet2(s: SeatSession2, sid: string, opts: Option[]): Choi
   const stage = s.g.space(sid)?.stage;
   const sub = stage ? CARD2[stage]?.text : sid.startsWith('market') ? '1種類を、1回で動かせる数まで（払う→得る）' : undefined;
   const h = hoist(opts.map((o, i) => spaceItem2(s.g, s.player, o, String(i))), sub);
-  const title = sid === 'occhall' ? '出す職能を選ぶ' : sid === 'guild' ? 'ギルドで売るもの' : sid === 'forge' ? '作る武器を選ぶ（武具カードか共通の武器）' : sid === 'workshop' ? '工房で建てるもの' : sid.startsWith('market') ? '交換所で売り買い' : `${placeName(sid)}でできること`;
+  const title = sid === 'guild' ? '出す職能を選ぶ' : sid === 'forge' ? '作る武器を選ぶ（武具カードか共通の武器）' : sid === 'workshop' ? '工房で建てるもの' : sid.startsWith('market') ? '交換所で売り買い' : `${placeName(sid)}でできること`;
   return { title, ...h, cancel: '置き場所を選び直す' };
 }
 

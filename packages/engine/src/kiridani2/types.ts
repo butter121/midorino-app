@@ -125,10 +125,6 @@ export interface Op {
   occ?: number;
   /** 交換所で売るか買う（1種類、最大 market_qty 個） */
   exchange?: boolean;
-  /** ギルド：魔石を GUILD.settleMax 個まで名声に換える */
-  settle?: boolean;
-  /** ギルド：品物（秘術を除く）・建てた道具・遺物を1つ売って金貨 */
-  sell_item?: boolean;
   /** 壊れた遺物を1つ修復する（費用は遺物ごと） */
   repair?: boolean;
   /** 遺物の山から n 枚引く（壊れた状態で手元に） */
@@ -353,8 +349,9 @@ export interface Monster {
   counter: number;
   loot: Cost;
   trophy: number;
-  /** 落とす魔石（戦闘が終わるまで見えない） */
+  /** 落とす魔石の数と段階（0 初級・1 中級・2 上級。戦闘が終わるまで見えない） */
   stones: number;
+  stoneTier: number;
   raid: number;
   boss: boolean;
   /** 出た年（冬の襲撃の対象） */
@@ -428,11 +425,9 @@ export type GameEvent =
   | { t: 'injury'; seat: Seat; companion: number }
   | { t: 'heal'; seat: Seat; companion: number; cost: Cost }
   | { t: 'loot'; seat: Seat; gain: Cost }
-  | { t: 'trophy'; seat: Seat; monster: string; fame: number; trophies?: number; stones?: number }
-  | { t: 'settle'; seat: Seat; stones: number; fame: number }
+  | { t: 'trophy'; seat: Seat; monster: string; fame: number; trophies?: number; stones?: number; stoneTier?: number }
+  | { t: 'stone_use'; seat: Seat; tier: number }
   | { t: 'repair'; seat: Seat; card: string; cost: Cost }
-  | { t: 'sell_relic'; seat: Seat; card: string; gold: number; broken: boolean }
-  | { t: 'sell_tool'; seat: Seat; card: string; gold: number }
   | { t: 'tame'; seat: Seat; monster: string; power?: number }
   | { t: 'release'; seat: Seat; monster: string }
   | { t: 'learn'; seat: Seat; card: string }

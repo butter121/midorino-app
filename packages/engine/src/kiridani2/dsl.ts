@@ -17,12 +17,12 @@ export const OP_KEYS = new Set([
   'gain', 'pay', 'convert', 'fame', 'power', 'guard', 'counter', 'loot', 'trophy', 'str', 'no_injury',
   'extra_worker', 'place_again', 'ignore_full', 'future', 'draw', 'hire', 'hire_free', 'tame', 'train', 'build', 'heal',
   'steal_gain', 'craft', 'occ', 'exchange', 'first', 'donate', 'fame_per', 'gain_per', 'others_gain',
-  'power_per', 'lose', 'injure', 'scrap', 'shard', 'buy_card', 'draw_any', 'settle', 'sell_item', 'repair', 'relic',
+  'power_per', 'lose', 'injure', 'scrap', 'shard', 'buy_card', 'draw_any', 'repair', 'relic',
 ]);
 /** 戦闘中だけ意味のある op */
 export const FIGHT_OPS = new Set(['power', 'guard', 'counter', 'loot', 'trophy', 'str', 'no_injury', 'tame', 'power_per']);
 /** 選択肢を広げる op（最初の1つは置く場所の選択肢に広げ、2つ目からは実行のときに聞く） */
-export const EXPAND_OPS = new Set(['craft', 'occ', 'build', 'exchange', 'train', 'scrap', 'sell_item', 'repair']);
+export const EXPAND_OPS = new Set(['craft', 'occ', 'build', 'exchange', 'train', 'scrap', 'repair']);
 
 export const MOD_KEYS = new Set([
   'market_qty', 'market_both', 'trade_count', 'accum_bonus', 'cost_discount', 'upkeep', 'donate_rate', 'base_guard', 'pet_power',
