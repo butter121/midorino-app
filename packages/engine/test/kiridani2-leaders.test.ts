@@ -39,7 +39,7 @@ describe('kiridani2 リーダー', () => {
     expect(g.drawFate(p)).toBe(0);
     const mon = g.rollMonster(DATA.MONSTERS[0], 0.1, 1);
     const pl = g.makePlan(p, mon, [0, 1], 'normal', false, mon.str);
-    expect(pl.parts.some((x) => x.label.includes('鉄壁の勇者'))).toBe(true);
+    expect(pl.parts.some((x) => x.label.includes('鉄壁ガレス'))).toBe(true);
   });
 
   it('孤高のテイマー：巣の魔物は好物で使い魔にするだけ', () => {
