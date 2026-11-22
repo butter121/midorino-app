@@ -376,6 +376,29 @@ export class AI implements Brain {
     const foes = g.players.filter((q) => q !== p).sort((a, b) => score(g, b) - score(g, a));
     const toW = 4 - ((g.round - 1) % 4) - 1;
     const short = Math.max(0, D.upkeepOf(p.comps.length) - p.res.food);
+    // 冬の直前（冬のラウンドの自分の最後の手番）：相手の食料を取って、相手を食料不足（不満＝名声が減る）にできるなら取る
+    // 冬のラウンドは、取引（1ラウンド1回）を最後の手番まで取っておく
+    if (toW === 0 && p.avail() > 1) return;
+    if (toW === 0) {
+      const lack = (q: Player, food: number) => {
+        const need = g.upkeepNeed(q), wg = g.mods(q).winter_gold || D.WINTER_GOLD;
+        const sh = Math.max(0, need - food - Math.floor(q.res.gold / wg));
+        return Math.ceil(sh / D.UPKEEP) * D.DISCONTENT;
+      };
+      let best: { q: Player; k: number; r: Res; v: number } | null = null;
+      const mine = RES.filter((x) => x !== 'food' && x !== 'gold' && p.res[x] > 0).sort((a, b) => p.res[b] - p.res[a]);
+      for (const q of foes) for (const r of mine) {
+        const k = Math.min(D.LEADER.swindler.tradeMax + g.mods(p).trade_max, q.res.food, p.res[r]);
+        if (k <= 0) continue;
+        // 相手が失う名声（点の高い相手ほど重く）＋自分の食料不足が減る分
+        const v = (lack(q, q.res.food - k) - lack(q, q.res.food)) * (q === foes[0] ? 1.2 : 1) + Math.min(k, short) * 0.5;
+        if (v > 0 && (!best || v > best.v)) best = { q, k, r, v };
+      }
+      if (best) {
+        const give: Cost = { [best.r]: best.k }, get: Cost = { food: best.k };
+        if (!g.tradeOk(p, best.q, give, get)) { g.trade(p, best.q, give, get); return; }
+      }
+    }
     for (const q of foes) {
       const want = (short > 0 && toW <= 1 && q.res.food > 0 ? ['food' as Res] : [])
         .concat(RES.filter((r) => q.res[r] > 0).sort((a, b) => D.RES_VAL[b] * Math.min(q.res[b], D.TRADE_MAX) - D.RES_VAL[a] * Math.min(q.res[a], D.TRADE_MAX)));
