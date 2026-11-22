@@ -136,11 +136,11 @@ export const LEADER = {
   /** 鉄壁ガレス：守りを戦力として数える（guardMult 倍）、運命の影響なし、勝つと（守り − 反撃）÷ fameDiv の名声 */
   shield: { guardMult: 2, fameDiv: 1 },
   /** 餌付け師ハル：好物の数＝切り上げ(強さ ÷ favDiv)、使い魔1体の戦力 petPower、持てる使い魔 +petCap、ラウンドの終わりに使い魔1体ごとに fame（主・古竜は使い魔にできない） */
-  tamer: { favDiv: 4, petCap: 7, fame: 2, petPower: 2 },
+  tamer: { favDiv: 4, petCap: 7, fame: 3, petPower: 2 },
   /** 大物狩り山田：主・古竜と戦うとき戦力 bossMult 倍。一番貢献して勝つと主 bossFame・古竜 dragonFame */
   giant: { bossMult: 3, bossFame: 8, dragonFame: 16 },
   /** 遺物好きイスカ：冬の食料 −upkeep、冒険マスにほかの人がいても置ける、冒険マスの効果 mult 倍、遺物の修復の費用 −repairCut（減らす資源は自分で選ぶ）、終わりに修復した遺物1つにつき ancientFame */
-  explorer: { upkeep: 2, mult: 2, ancientFame: 8, repairCut: 2 },
+  explorer: { upkeep: 2, mult: 2, ancientFame: 6, repairCut: 2 },
   /** 自宅警備員：冬に防いだ襲撃1につき blockedFame、終わりに防壁1つにつき wallFame（防いだ襲撃の合計が lowBlocked 以下ならさらに lowMult 倍になるよう足す） */
   guard: { blockedFame: 1, wallFame: 1, lowBlocked: 10, lowMult: 2 },
   /** 採集家：マスで集める資源 mult 倍（切り捨て）、毎年の終わりに持っている資源の合計 ÷ fameDiv の名声 */
@@ -150,7 +150,7 @@ export const LEADER = {
   /** 職人：道具の費用 −discount（資源・素材あわせて）、道具を作るたび fame、作ったあと山から look 枚の道具を見て1枚取る */
   crafter: { discount: 2, fame: 2, look: 3 },
   /** 成金ミロ：始めに資源（木材・鉄・薬草・マナ鉱石・食料）を start 個ずつ、売値 +sellBonus、終わりに金貨 ÷ goldDiv の名声 */
-  merchant: { start: 10, sellBonus: 1, goldDiv: 3 },
+  merchant: { start: 10, sellBonus: 1, goldDiv: 4 },
 };
 /** テイマーの好物（魔物の種類ごと。食材・資源・素材から） */
 export const FAV_RES = ['food', 'wood', 'iron', 'herb', 'mana', 'mat'] as const;
