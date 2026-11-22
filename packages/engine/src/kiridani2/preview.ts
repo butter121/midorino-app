@@ -105,8 +105,8 @@ export function choiceLabel(g: Game, p: Player | null, x: Choice): { title: stri
     if (x === 'def') return { title: '守りの熟練+1', detail: `選んだ仲間1人の守り+1（${D.MAX_SKILL.def}まで）` };
     if (x === 'skip') return { title: '何もしない' };
     if (x.startsWith('res:')) return { title: `${RES_JP[x.slice(4) as Res]}を1つ得る`, detail: '好きな資源を1つずつ選ぶ' };
-    if (x === 'mage:mana') return { title: `マナ鉱石を${D.LEADER.mage.mana}つ得る`, detail: '最高の魔術師' };
-    if (x === 'mage:draw') return { title: `秘術を${D.LEADER.mage.draw}枚引く`, detail: '最高の魔術師' };
+    if (x === 'mage:mana') return { title: `マナ鉱石を${D.LEADER.mage.mana}つ得る`, detail: '連唱の大魔術師' };
+    if (x === 'mage:draw') return { title: `秘術を${D.LEADER.mage.draw}枚引く`, detail: '連唱の大魔術師' };
     { const a = g.anc.get(x.split('~')[0]); if (a) { const rv = p ? g.repairOf(p, x) : null; return { title: `${a.name}を修復する`, detail: `試合の終わりに名声${a.fame}`, cost: rv?.cost ?? a.repair }; } }
     if (x.startsWith('tr:')) { const i = Number(x.slice(3)); return { title: p?.comps[i]?.leader ? 'リーダー' : `仲間${i + 1}` }; }
     if (g.byId.has(x)) {

@@ -1082,8 +1082,8 @@ export class Game {
   // ------------------------------------------------------------ ラウンドの終わり（§3.4）
   *endRound(): Gen {
     for (const p of this.players) {
-      // 最高の魔術師：このラウンドに戦闘で勝っていれば、使った秘術1つごとに名声
-      if (this.is(p, 'mage') && p.st.mageWon && p.st.castsRound) this.leadFame(p, p.st.castsRound * D.LEADER.mage.fame, '最高の魔術師');
+      // 連唱の大魔術師：このラウンドに戦闘で勝っていれば、使った秘術1つごとに名声
+      if (this.is(p, 'mage') && p.st.mageWon && p.st.castsRound) this.leadFame(p, p.st.castsRound * D.LEADER.mage.fame, '連唱の大魔術師');
       p.st.mageWon = 0;
       yield* this.fire(p, 'round_end', {});
     }
@@ -1139,8 +1139,8 @@ export class Game {
       yield* this.fire(p, 'winter', {});
     }
     // 採集家：毎年の終わり（冬のあと）に、持っている資源の合計 ÷ fameDiv の名声
-    for (const p of this.players) if (this.is(p, 'gatherer')) this.leadFame(p, Math.floor(RES.reduce((a, r) => a + p.res[r], 0) / D.LEADER.gatherer.fameDiv), '採集家');
-    for (const p of this.players) if (this.is(p, 'tamer')) this.leadFame(p, p.pets.length * D.LEADER.tamer.fame, '孤高のテイマー');
+    for (const p of this.players) if (this.is(p, 'gatherer')) this.leadFame(p, Math.floor(RES.reduce((a, r) => a + p.res[r], 0) / D.LEADER.gatherer.fameDiv), '溜め込みの採集家');
+    for (const p of this.players) if (this.is(p, 'tamer')) this.leadFame(p, p.pets.length * D.LEADER.tamer.fame, '不殺のテイマー');
     this.emit({ t: 'winter_end' });
   }
 
@@ -1194,7 +1194,7 @@ export class Game {
     if (hasComp) {
       for (const nd of this.nests) {
         if (!nd.mon) continue;
-        // 孤高のテイマー：巣の魔物は倒せない。好物を払って使い魔にする（主・古竜は倒せる）
+        // 不殺のテイマー：巣の魔物は倒せない。好物を払って使い魔にする（主・古竜は倒せる）
         if (this.is(p, 'tamer')) {
           if ((nd.groups < D.NEST_CAP || p.ignoreFull) && canPay(p, this.captureCost(nd.mon, p))) out.push({ s: nd.id, i: 0, k: 1, mode: 'capture' });
           continue;
@@ -1787,12 +1787,12 @@ export class Game {
       for (let t = 0; t < this.effMult(p, card); t++) yield* this.runOps(p, ops, { ...ctx, card, x, ...(fight ? { fenv: fight } : {}) });
     }
   }
-  /** 戦闘に勝ったときのリーダーの名声（努力家・魔術師・盾の勇者・巨人狩り） */
+  /** 戦闘に勝ったときのリーダーの名声（努力家・魔術師・鉄壁の勇者・巨人狩り） */
   private *leadWin(p: Player, mon: Monster, pl: Plan, plans: Plan[], boss: boolean): Gen {
     const L = D.LEADER;
-    if (this.is(p, 'striver')) this.leadFame(p, Math.floor(pl.idxs.reduce((a, i) => a + p.comps[i].atk + p.comps[i].def, 0) / L.striver.fameDiv), '無限の努力家');
+    if (this.is(p, 'striver')) this.leadFame(p, Math.floor(pl.idxs.reduce((a, i) => a + p.comps[i].atk + p.comps[i].def, 0) / L.striver.fameDiv), '限界知らずの努力家');
     if (this.is(p, 'mage')) p.st.mageWon = 1;
-    if (this.is(p, 'shield')) this.leadFame(p, Math.floor(Math.max(0, this.defense(p, pl) - Math.max(0, mon.counter + pl.counter)) / L.shield.fameDiv), '盾の勇者');
+    if (this.is(p, 'shield')) this.leadFame(p, Math.floor(Math.max(0, this.defense(p, pl) - Math.max(0, mon.counter + pl.counter)) / L.shield.fameDiv), '鉄壁の勇者');
     if (this.is(p, 'giant') && boss && plans.every((q) => q === pl || q.power < pl.power)) this.leadFame(p, mon.type === D.ANCIENT_DRAGON.id ? L.giant.dragonFame : L.giant.bossFame, '巨人狩り');
   }
   /** 秘術を使ったあと（魔術師：マナ鉱石か秘術1枚。1ラウンド perRound 回まで） */
@@ -1802,7 +1802,7 @@ export class Game {
     p.st.mageRound += 1;
     const x: string = this.decks.spell.length ? yield* this.ask({ k: 'pick', g: this, p, what: 'mage', options: ['mage:mana', 'mage:draw'] }) : 'mage:mana';
     if (x === 'mage:draw' && this.decks.spell.length) yield* this.runOps(p, [{ draw: { from: 'spell', look: L.draw, take: L.draw } }], {});
-    else { const g: Cost = { mana: L.mana }; gainRes(p, g); this.emit({ t: 'gain', seat: p.pid, gain: g, reason: '最高の魔術師' }); }
+    else { const g: Cost = { mana: L.mana }; gainRes(p, g); this.emit({ t: 'gain', seat: p.pid, gain: g, reason: '連唱の大魔術師' }); }
   }
   /** カードの効果を何回かけるか（天才：武器の効果は倍） */
   effMult(p: Player, card: string): number { return this.is(p, 'genius') && this.byId.has(card) && this.card(card).kind === 'weapon' ? D.LEADER.genius.effectMult : 1; }
@@ -1879,7 +1879,7 @@ export class Game {
   // ------------------------------------------------------------ 使い魔・遺物の欠片
   /** 捕まえる食料（強さ÷foodDiv の切り上げ） */
   captureCost(mon: Monster, p?: Player): Cost {
-    // 孤高のテイマー：魔物ごとの好物を、強さに応じた数だけ
+    // 不殺のテイマー：魔物ごとの好物を、強さに応じた数だけ
     if (p && this.is(p, 'tamer')) return { [this.favRes(mon)]: Math.max(1, Math.ceil(mon.str / D.LEADER.tamer.favDiv)) };
     return { food: Math.ceil(mon.str / D.CAPTURE.foodDiv) };
   }
@@ -2168,10 +2168,10 @@ export class Game {
       if (o.e >= 0) pl.used.push(`${o.card}#${o.e}`);
       pl.parts.push({ kind: o.spell ? 'spell' : o.card ? 'card' : 'boost', label: labelOf(o), value: pl.power - before, seat: p.pid, ...(o.card ? { ref: o.card } : {}) });
     }
-    // 盾の勇者：守りを戦力として数える
+    // 鉄壁の勇者：守りを戦力として数える
     if (this.is(p, 'shield') && idxs.length) {
       const v = (this.defenseOf(p, idxs) + pl.guard) * D.LEADER.shield.guardMult;
-      pl.power += v; pl.parts.push({ kind: 'mod', label: '盾の勇者（守り）', value: v, seat: p.pid });
+      pl.power += v; pl.parts.push({ kind: 'mod', label: '鉄壁の勇者（守り）', value: v, seat: p.pid });
     }
     // 巨人狩り：主・古竜には戦力 bossMult 倍
     if (this.is(p, 'giant') && mon.boss && pl.power > 0) {
@@ -2342,7 +2342,7 @@ export class Game {
         // 証：倒した人数で等分（四捨五入・最低1）＋自分のカードの分。天才は倍
         const tro = Math.max(1, Math.round(mon.trophy / ps.length)) + pl.trophy;
         const bonusTro = this.is(p, 'genius') ? tro * (D.LEADER.genius.trophyMult - 1) : 0;
-        if (bonusTro) { const b0 = trophyFame(p.bonusTrophies); p.bonusTrophies += bonusTro; this.leadFame(p, trophyFame(p.bonusTrophies) - b0, '戦闘の天才'); }
+        if (bonusTro) { const b0 = trophyFame(p.bonusTrophies); p.bonusTrophies += bonusTro; this.leadFame(p, trophyFame(p.bonusTrophies) - b0, '武器の申し子'); }
         // 魔石：共闘は貢献（戦力）の割合、最低1
         const st = coop ? Math.max(1, Math.round(mon.stones * share)) : mon.stones;
         p.stones[mon.stoneTier] += st;
@@ -2559,7 +2559,7 @@ export function scoreBreakdown(g: Game, p: Player): Record<string, number> {
   b.leader = p.fame.leader + leaderEndFame(g, p);
   return b;
 }
-/** 試合の終わりのリーダーの名声（探検家・自宅警備員・詐欺師・伝説の商人） */
+/** 試合の終わりのリーダーの名声（探検家・自宅警備員・詐欺師・成金の大商人） */
 export function leaderEndFame(g: Game, p: Player): number {
   const L = D.LEADER;
   if (g.is(p, 'explorer')) return p.ancient.length * L.explorer.ancientFame;
