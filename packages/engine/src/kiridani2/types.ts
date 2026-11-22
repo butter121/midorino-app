@@ -275,7 +275,8 @@ export interface GearDef extends CardDef {
 /** 段階カード（新しい行動マスになる） */
 export interface StageDef extends CardDef {
   kind: 'stage';
-  stage: 1 | 2 | 3 | 4 | 5;
+  /** 0＝始めから盤面にある場所。1〜5＝その段階でめくる */
+  stage: 0 | 1 | 2 | 3 | 4 | 5;
   /** 定員（省略は1。0は定員なし） */
   cap?: number;
   /** たまるマスなら毎ラウンド足すもの */
@@ -362,6 +363,8 @@ export interface Monster {
 export interface SpaceDef {
   id: string;
   name: string;
+  /** このマスでできること（画面の説明） */
+  text?: string;
   accum?: Cost;
   /** たまるマス：毎ラウンド足す遺物の欠片 */
   shards?: number;

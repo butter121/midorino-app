@@ -338,6 +338,8 @@ export class Game {
     const pub = opts.cards.quests.filter((q) => !q.secret).map((q) => q.id);
     this.quests = rng.sample(pub, Math.min(3, pub.length)).map((id) => ({ id, done: [] }));
     for (const s of D.SPACES) if ((s.min_p ?? 0) <= n) this.spaces.push({ id: s.id, def: s, stock: {}, occ: [] });
+    // 段階0の場所（訓練場・遺跡の探索）は始めから置く
+    for (const st of opts.cards.stages) if (st.stage === 0) this.addStageSpace(st);
     this.nests = D.NESTS[n].map((id) => ({ id, mon: null, groups: 0, wait: null }));
     this.monDeck = rng.shuffle(D.MONSTERS.map((m) => m.id));
     this.bossTypes = rng.sample(D.BOSS_TYPES, 4);
@@ -352,6 +354,15 @@ export class Game {
   turnPos(pid: number): number { return (pid - this.first + this.n) % this.n; }
   /** 次の冬に要る食料（仲間の数・カードの修正込み） */
   upkeepNeed(p: Player): number { return Math.max(0, D.upkeepOf(p.comps.length) + this.mods(p).upkeep - (this.is(p, 'explorer') ? D.LEADER.explorer.upkeep : 0)); }
+
+  /** 段階カードを行動マスとして盤面に置く */
+  private addStageSpace(st: StageDef) {
+    const opts = st.effects.filter((e) => e.when === 'use' || e.when === `use:${st.id}`);
+    this.spaces.push({
+      id: st.id, stage: st.id, stock: {}, occ: [], optEffects: opts,
+      def: { id: st.id, name: st.name, cap: st.cap ?? 1, ...(st.accum ? { accum: st.accum } : {}), options: opts.map((e) => e.do ?? []) },
+    });
+  }
 
   // ------------------------------------------------------------ 段階カードの予定（§4）
   private scheduleStages() {
@@ -988,11 +999,7 @@ export class Game {
     const sc = this.stageAt[r];
     if (sc) {
       const st = this.card(sc) as StageDef;
-      const opts = st.effects.filter((e) => e.when === 'use' || e.when === `use:${st.id}`);
-      this.spaces.push({
-        id: st.id, stage: st.id, stock: {}, occ: [], optEffects: opts,
-        def: { id: st.id, name: st.name, cap: st.cap ?? 1, ...(st.accum ? { accum: st.accum } : {}), options: opts.map((e) => e.do ?? []) },
-      });
+      this.addStageSpace(st);
       this.emit({ t: 'stage_reveal', card: st.id, stage: st.stage });
     }
     // たまるマス

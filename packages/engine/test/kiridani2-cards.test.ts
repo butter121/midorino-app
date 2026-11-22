@@ -91,9 +91,11 @@ describe('kiridani2 cards', () => {
     expect(SPELLS.filter((c) => c.tome).length).toBe(30);
     expect(PETS.length).toBe(48);
     expect(GEAR.length).toBe(8);
+    expect(STAGES.filter((s) => s.stage === 0).map((s) => s.id)).toEqual(['training', 'ruins']);
     expect(STAGES.filter((s) => s.stage === 1).length).toBe(3);
-    expect(STAGES.filter((s) => s.stage === 2).length).toBe(7);
-    for (const st of [3, 4, 5]) expect(STAGES.filter((s) => s.stage === st).length).toBe(6);
+    expect(STAGES.filter((s) => s.stage === 2).length).toBe(5);
+    for (const st of [3, 4]) expect(STAGES.filter((s) => s.stage === st).length).toBe(4);
+    expect(STAGES.filter((s) => s.stage === 5).length).toBe(3);
     expect(QUESTS.filter((q) => q.secret).length).toBeGreaterThanOrEqual(12);
     expect(ANCIENT.reduce((n, a) => n + (a.copies ?? 3), 0)).toBe(20);
     expect(new Set(ANCIENT.map((a) => a.group)).size).toBe(5);

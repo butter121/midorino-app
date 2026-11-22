@@ -112,7 +112,8 @@ export function choiceLabel(g: Game, p: Player | null, x: Choice): { title: stri
       const c = g.card(x);
       const cost = p ? (c.kind === 'occ' ? g.occCost(p, x) : g.cardCost(p, x)) : c.cost ?? {};
       const stock = c.kind === 'gear' ? `（残り${g.gearStock[x] ?? 0}）` : '';
-      return { title: `${c.name}${stock}`, detail: c.text, card: x, cost };
+      const stat = [c.power ? `戦力+${c.power}` : '', c.guard ? `守り+${c.guard}` : '', c.two_hand ? '両手' : ''].filter(Boolean).join('・');
+      return { title: `${c.name}${stock}`, detail: [stat, c.text].filter(Boolean).join('。') || undefined, card: x, cost };
     }
     const nd = g.nest(x);
     if (nd?.mon) return { title: `${nd.mon.name}を使い魔にする`, detail: `${D.NEST_JP[x] ?? x}・強さ${nd.mon.str}` };
@@ -192,13 +193,15 @@ function opText(op: Record<string, unknown>): string {
     case 'heal': return `負傷を${v}人回復`;
     case 'extra_worker': return 'もう1人置ける';
     case 'place_again': return 'もう一度使う';
-    case 'tame': return '獣を使い魔に';
+    case 'tame': return '巣の魔物を戦わずに使い魔にする';
+    case 'buy_card': { const b = v as { count: number; price: number }; return `品物を金貨${b.price}で${b.count}枚まで買う`; }
+    case 'draw_any': { const d = v as { from: string[]; look: number; take: number }; return `${d.from.map((f) => DRAW_JP[f] ?? f).join('・')}から山を1つ選び${d.look}枚見て${d.take}枚`; }
     case 'donate': { const d = v as { pay: Cost; fame: number }; return `${costJP(d.pay)}で名声${d.fame}`; }
-    case 'craft': return v === 'armor' ? '防具を作る' : v === 'weapon' ? '武器を作る' : '装備を作る';
-    case 'build': return '建てる';
-    case 'train': return '熟練+1';
+    case 'craft': return v === 'armor' ? '防具を作る' : v === 'weapon' ? '武器を作る' : '武器か防具を作る';
+    case 'build': return v === 'bed' ? '寝床を建てる' : v === 'wall' ? '防壁を建てる' : v === 'facility' ? '施設（道具）を建てる' : '寝床・防壁・施設のどれかを建てる';
+    case 'train': return v === 'atk' ? '攻めの熟練+1' : v === 'def' ? '守りの熟練+1' : '熟練+1（攻めか守り）';
     case 'occ': return '職能を出す';
-    case 'exchange': return '売り買い';
+    case 'exchange': return '売るか買うを1回';
     case 'repair': return '遺物を修復';
     case 'relic': return `遺物を${v}枚引く`;
     case 'gain_per': { const g = v as { gain: Cost }; return `${costJP(g.gain)}（数に応じて）`; }
@@ -216,4 +219,4 @@ function opText(op: Record<string, unknown>): string {
     default: return '';
   }
 }
-const DRAW_JP: Record<string, string> = { occ: '職能', item: '品物', weapon: '武具', tool: '道具', spell: '秘術', ancient: '古代の品' };
+const DRAW_JP: Record<string, string> = { occ: '職能', item: '品物', weapon: '武器', armor: '防具', equip: '武器・防具', tool: '道具', spell: '秘術', ancient: '遺物' };

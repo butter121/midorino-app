@@ -45,23 +45,12 @@ describe('kiridani2 訓練', () => {
     expect(q.comps[1].atk).toBe(2);
   });
 
-  it('若手の訓練：まだその熟練がない仲間だけ、1段階目だけ', () => {
-    const ops = stageOps('drill')[0];
-    expect(ops.every((o) => o.fresh)).toBe(true);
-    const { g, p } = bare([1, 0, 0], [0, 1, 2]);
-    const gen = g.runOps(p, ops, { x: 'atk' });
-    const r = gen.next();
-    expect((r.value as { options: string[] }).options).toEqual(['tr:1', 'tr:2']);
-    // 次は守り（選択肢が1つでも聞く）：まず守り+1、次に誰か（守りが0なのはリーダーだけ）
-    expect((gen.next('tr:2').value as { what: string; options: string[] }).options).toEqual(['def']);
-    expect((gen.next('def').value as { options: string[] }).options).toEqual(['tr:0']);
-    expect(gen.next('tr:0').done).toBe(true);
-    expect(p.comps.map((c) => [c.atk, c.def])).toEqual([[1, 1], [0, 1], [1, 2]]);
-  });
-
-  it('若手の訓練：全員がもう攻めの熟練を持っていれば置けない', () => {
-    const { g, p } = bare([1, 1, 2]);
-    expect(g.expand(p, stageOps('drill')[0])).toEqual([]);
+  it('訓練場と遺跡の探索は始めから盤面にある（段階0）', () => {
+    const { g } = bare();
+    expect(g.spaces.some((sp) => sp.id === 'training')).toBe(true);
+    expect(g.spaces.some((sp) => sp.id === 'ruins')).toBe(true);
+    expect(Object.values(g.stageAt)).not.toContain('training');
+    expect(Object.values(g.stageAt)).not.toContain('ruins');
   });
 });
 

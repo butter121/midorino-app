@@ -117,12 +117,12 @@ describe('kiridani2 魔石の段階', () => {
 });
 
 describe('kiridani2 試合', () => {
-  it('段階カードの予定：段階1は R2〜R4、段階2〜5は残りに16枚', () => {
+  it('段階カードの予定：段階1は R2〜R4、段階2〜5は残りに15枚', () => {
     for (const years of [5, 10, 15]) {
       const g = new Game(3, [null, null, null], { seed: years, years, cards: CARD_SET });
       const rounds = Object.keys(g.stageAt).map(Number).sort((a, b) => a - b);
       expect(rounds.slice(0, 3)).toEqual([2, 3, 4]);
-      expect(rounds.length).toBe(3 + 16);
+      expect(rounds.length).toBe(3 + 15);
       expect(Math.max(...rounds)).toBeLessThanOrEqual(g.R);
       const stageOf = (r: number) => (g.card(g.stageAt[r]) as StageDef).stage;
       for (let i = 1; i < rounds.length; i++) expect(stageOf(rounds[i])).toBeGreaterThanOrEqual(stageOf(rounds[i - 1]));

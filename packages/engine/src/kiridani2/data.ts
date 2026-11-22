@@ -160,11 +160,11 @@ export const FAV_RES = ['food', 'wood', 'iron', 'herb', 'mana', 'mat'] as const;
  * 載っていない id はカードの強い動きの種類で分け（SPACE_GROUP_BY_TAG）、それも無ければ「冒険」。
  */
 export const SPACE_GROUPS: { id: string; jp: string; ids: string[] }[] = [
-  { id: 'gather', jp: '資源を集める', ids: ['forest', 'grove', 'mine', 'deepmine', 'meadow', 'herb2', 'spring', 'hunt', 'plaza', 'lodge', 'bazaar', 'explore'] },
-  { id: 'craft', jp: '作る・建てる', ids: ['forge', 'workshop', 'training', 'drill', 'walls', 'upgrade', 'bigforge', 'clearing'] },
-  { id: 'trade', jp: '取引・お金', ids: ['guild', 'market', 'market2', 'peddler', 'outpost', 'caravan', 'tradepost', 'temple', 'envoy', 'treasury'] },
+  { id: 'gather', jp: '資源を集める', ids: ['forest', 'grove', 'mine', 'deepmine', 'meadow', 'herb2', 'spring', 'hunt', 'plaza', 'lodge', 'bazaar'] },
+  { id: 'craft', jp: '作る・建てる', ids: ['forge', 'workshop', 'training', 'walls', 'bigforge', 'clearing'] },
+  { id: 'trade', jp: '取引・お金', ids: ['guild', 'market', 'market2', 'peddler', 'outpost', 'tradepost', 'envoy', 'treasury'] },
   { id: 'people', jp: '仲間・家族', ids: ['hall', 'tavern', 'family', 'hero', 'recommend'] },
-  { id: 'adventure', jp: '冒険', ids: ['board', 'ruins', 'library', 'altar', 'kennel', 'raid', 'pilgrim', 'prepare', 'infirmary', 'triumph'] },
+  { id: 'adventure', jp: '冒険', ids: ['board', 'ruins', 'dig', 'library', 'kennel', 'raid', 'prepare', 'infirmary', 'triumph'] },
 ];
 export const SPACE_GROUP_BY_TAG: Record<string, string> = { gather: 'gather', smith: 'craft', fort: 'craft', trade: 'trade', family: 'people', bridge: 'people' };
 
@@ -175,26 +175,26 @@ export const REFILL_YEARS: Record<number, number[]> = { 5: [3], 10: [4, 7], 15: 
 
 // ---- 行動マス（始めから＋人数で増える）
 export const SPACES: SpaceDef[] = [
-  { id: 'forest', name: '古の森', accum: { wood: 3 }, options: [[]] },
-  { id: 'mine', name: '鉄の坑道', accum: { iron: 3 }, options: [[]] },
-  { id: 'meadow', name: '薬草の野', accum: { herb: 3 }, options: [[]] },
-  { id: 'spring', name: 'マナ鉱石の泉', accum: { mana: 1 }, options: [[]] },
-  { id: 'hunt', name: '狩場', accum: { food: 3 }, options: [[]] },
-  { id: 'board', name: '依頼板', options: [[{ gain: { gold: 2 } }], [{ draw: { from: 'occ', look: 2, take: 1 } }]] },
-  { id: 'guild', name: 'ギルド', options: [[{ occ: 1 }], [{ draw: { from: 'occ', look: 3, take: 1 } }]] },
-  { id: 'forge', name: '鍛冶場', options: [[{ craft: 'any' }], [{ draw: { from: 'equip', look: 2, take: 1 } }]] },
-  { id: 'workshop', name: '工房', options: [[{ build: 'any' }], [{ draw: { from: 'tool', look: 2, take: 1 } }], [{ repair: true }]] },
-  { id: 'market', name: '交換所', cap: 2, options: [[{ exchange: true }]] },
-  { id: 'curio', name: '掘り出し市', cap: 1, cap4: 2, options: [[{ buy_card: { count: 2, price: 1 } }]] },
-  { id: 'dig', name: '古い発掘場', options: [[{ relic: 1 }], [{ repair: true }]] },
-  { id: 'plaza', name: '広場', cap: 0, options: [[{ gain: { food: 1 } }]] },
-  { id: 'hall', name: '集会所', options: [[{ first: true }, { gain: { food: 1 } }], [{ first: true }, { donate: { pay: { gold: 6 }, fame: 2 } }]] },
-  { id: 'grove', name: '雑木林', accum: { wood: 2 }, min_p: 4, options: [[]] },
-  { id: 'market2', name: '小さな交換所', min_p: 4, options: [[{ exchange: true }]] },
-  { id: 'deepmine', name: '深い坑道', accum: { iron: 1 }, min_p: 5, options: [[]] },
-  { id: 'peddler', name: '行商', min_p: 5, options: [[{ gain: { gold: 1, food: 1 } }]] },
-  { id: 'herb2', name: '霧の沢', accum: { herb: 1 }, min_p: 6, options: [[]] },
-  { id: 'outpost', name: '見張り小屋', min_p: 6, options: [[{ gain: { food: 1, gold: 1 } }]] },
+  { id: 'forest', name: '古の森', text: 'たまるマス（毎ラウンド木材+3）。たまった木材を全部得る。', accum: { wood: 3 }, options: [[]] },
+  { id: 'mine', name: '鉄の坑道', text: 'たまるマス（毎ラウンド鉄+3）。たまった鉄を全部得る。', accum: { iron: 3 }, options: [[]] },
+  { id: 'meadow', name: '薬草の野', text: 'たまるマス（毎ラウンド薬草+3）。たまった薬草を全部得る。', accum: { herb: 3 }, options: [[]] },
+  { id: 'spring', name: 'マナ鉱石の泉', text: 'たまるマス（毎ラウンドマナ鉱石+1）。たまったマナ鉱石を全部得る。', accum: { mana: 1 }, options: [[]] },
+  { id: 'hunt', name: '狩場', text: 'たまるマス（毎ラウンド食料+3）。たまった食料を全部得る。', accum: { food: 3 }, options: [[]] },
+  { id: 'board', name: '依頼板', text: '次のどれか：金貨2を得る／職能の山から2枚見て1枚を手札に。', options: [[{ gain: { gold: 2 } }], [{ draw: { from: 'occ', look: 2, take: 1 } }]] },
+  { id: 'guild', name: 'ギルド', text: '次のどれか：手札の職能を1枚出す（費用を払う）／職能の山から3枚見て1枚を手札に。', options: [[{ occ: 1 }], [{ draw: { from: 'occ', look: 3, take: 1 } }]] },
+  { id: 'forge', name: '鍛冶場', text: '次のどれか：武器か防具を1つ作る（手札の武器・防具か、いつでも作れる基本の装備。素材を払う。足りない資源は金貨で払える）／武器・防具の山から2枚見て1枚を手札に。', options: [[{ craft: 'any' }], [{ draw: { from: 'equip', look: 2, take: 1 } }]] },
+  { id: 'workshop', name: '工房', text: '次のどれか：寝床（木材4）・防壁（木材2・鉄1）・手札の道具（施設）のどれかを1つ建てる／道具の山から2枚見て1枚を手札に／壊れた遺物を1つ修復する。', options: [[{ build: 'any' }], [{ draw: { from: 'tool', look: 2, take: 1 } }], [{ repair: true }]] },
+  { id: 'market', name: '交換所', text: '売るか買うを1回（1種類を3つまで。ほかの人が先にいると2つまで）。売り＋買いを一緒にもできる。手持ちの品物を売ることもできる。2人まで置ける。', cap: 2, options: [[{ exchange: true }]] },
+  { id: 'curio', name: '掘り出し市', text: '並んでいる品物（種類ごとに1枚）から、金貨1で1枚ずつ2枚まで買って手札に。', cap: 1, cap4: 2, options: [[{ buy_card: { count: 2, price: 1 } }]] },
+  { id: 'dig', name: '古い発掘場', text: '次のどれか：遺物を1枚引く／壊れた遺物を1つ修復する。', options: [[{ relic: 1 }], [{ repair: true }]] },
+  { id: 'plaza', name: '広場', text: '食料1を得る。何人でも置ける。', cap: 0, options: [[{ gain: { food: 1 } }]] },
+  { id: 'hall', name: '集会所', text: '次のどれか：次のラウンドの先手になり食料1を得る／先手になり金貨6を献上して名声2。', options: [[{ first: true }, { gain: { food: 1 } }], [{ first: true }, { donate: { pay: { gold: 6 }, fame: 2 } }]] },
+  { id: 'grove', name: '雑木林', text: 'たまるマス（毎ラウンド木材+2）。たまった木材を全部得る。4人以上で使う。', accum: { wood: 2 }, min_p: 4, options: [[]] },
+  { id: 'market2', name: '小さな交換所', text: '売るか買うを1回（交換所と同じ）。4人以上で使う。', min_p: 4, options: [[{ exchange: true }]] },
+  { id: 'deepmine', name: '深い坑道', text: 'たまるマス（毎ラウンド鉄+1）。たまった鉄を全部得る。5人以上で使う。', accum: { iron: 1 }, min_p: 5, options: [[]] },
+  { id: 'peddler', name: '行商', text: '金貨1と食料1を得る。5人以上で使う。', min_p: 5, options: [[{ gain: { gold: 1, food: 1 } }]] },
+  { id: 'herb2', name: '霧の沢', text: 'たまるマス（毎ラウンド薬草+1）。たまった薬草を全部得る。6人以上で使う。', accum: { herb: 1 }, min_p: 6, options: [[]] },
+  { id: 'outpost', name: '見張り小屋', text: '食料1と金貨1を得る。6人以上で使う。', min_p: 6, options: [[{ gain: { food: 1, gold: 1 } }]] },
 ];
 export const SPACE: Record<string, SpaceDef> = Object.fromEntries(SPACES.map((s) => [s.id, s]));
 

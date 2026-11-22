@@ -62,7 +62,7 @@ export const LOOPS: Record<EngineTag, string[][]> = {
   beast: [['tame', 'win', 'fight'], ['food', 'pay:food']],
   quest: [['board', 'donate', 'quest', 'gold'], ['win', 'build', 'craft', 'occ', 'fight', 'train']],
   ally: [['coop', 'trade', 'fight'], ['accum', 'sell', 'buy', 'food']],
-  ruins: [['draw', 'sp:ruins', 'sp:altar', 'sp:treasury', 'sp:dig', 'sp:curio'], ['sell', 'craft', 'build', 'occ', 'mana', 'spell']],
+  ruins: [['draw', 'sp:ruins', 'sp:treasury', 'sp:dig', 'sp:curio'], ['sell', 'craft', 'build', 'occ', 'mana', 'spell']],
   boss: [['fight', 'train'], ['craft', 'heal', 'herb', 'iron', 'buy', 'pay:mat', 'build', 'trade']],
   bridge: [['build', 'craft', 'occ'], ['win', 'sell', 'buy']],
 };
