@@ -2394,7 +2394,7 @@ export class Game {
         if (costUnits(loot)) this.emit({ t: 'loot', seat: p.pid, gain: loot });
         // 証：倒した人数で等分（四捨五入・最低1）＋自分のカードの分。天才は倍
         const tro = Math.max(1, Math.round(mon.trophy / ps.length)) + pl.trophy;
-        const bonusTro = this.is(p, 'genius') ? tro * (D.LEADER.genius.trophyMult - 1) : 0;
+        const bonusTro = this.is(p, 'genius') ? Math.floor(tro * (D.LEADER.genius.trophyMult - 1)) : 0;
         if (bonusTro) { const b0 = trophyFame(p.bonusTrophies); p.bonusTrophies += bonusTro; this.leadFame(p, trophyFame(p.bonusTrophies) - b0, '武器狂いアカネ'); }
         // 魔石：共闘は貢献（戦力）の割合、最低1
         const st = coop ? Math.max(1, Math.round(mon.stones * share)) : mon.stones;

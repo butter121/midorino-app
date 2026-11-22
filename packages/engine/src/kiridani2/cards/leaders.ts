@@ -18,7 +18,7 @@ export const LEADERS: CardDef[] = [
   // ---- 戦闘
   def('l_akane', '武器狂いアカネ', ['hunt', 'smith'], [
     `武器の戦力と、武器の効果が${x(V.genius.weaponMult)}。`,
-    `戦闘に勝ったとき、得る証が${x(V.genius.trophyMult)}（増えた分はリーダーの名声）。`,
+    `戦闘に勝ったとき、得る証が${x(V.genius.trophyMult)}（切り捨て。増えた分はリーダーの名声）。`,
   ]),
   def('l_jin', '修行の鬼ジン', ['hunt'], [
     `熟練の上限+${V.striver.skillCap}。熟練の効き目が${x(V.striver.skillMult)}。`,
@@ -74,7 +74,7 @@ export const LEADERS: CardDef[] = [
   ]),
   def('l_miro', '成金ミロ', ['trade'], [
     `試合の始めに、資源（木材・鉄・薬草・マナ鉱石・食料）を${V.merchant.start}個ずつ持つ。`,
-    `資源・素材の売値+${V.merchant.sellBonus}。`,
+    ...(V.merchant.sellBonus ? [`資源・素材の売値+${V.merchant.sellBonus}。`] : []),
     `試合の終わりに、持っている金貨÷${V.merchant.goldDiv}の名声。`,
   ]),
 ];
