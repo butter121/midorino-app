@@ -238,7 +238,8 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
     case 'trade':
       add(P(ev.a).res, ev.give, -1); add(P(ev.a).res, ev.get);
       add(P(ev.b).res, ev.give); add(P(ev.b).res, ev.get, -1);
-      log(`${who(v, ev.a)}と${who(v, ev.b)}が取引（${costText(ev.give)} ⇄ ${costText(ev.get)}）`);
+      if (ev.stone != null) { P(ev.a).stones[ev.stone] = Math.max(0, P(ev.a).stones[ev.stone] - 1); P(ev.b).stones[ev.stone] += 1; }
+      log(`${who(v, ev.a)}と${who(v, ev.b)}が取引（${ev.stone != null ? `${DATA.STONE.jp[ev.stone]}の魔石` : costText(ev.give)} ⇄ ${costText(ev.get)}）`);
       break;
     case 'donate': { const p = P(ev.seat); add(p.res, ev.cost, -1); p.fame += ev.fame; log(`${who(v, ev.seat)}が寄進（名声+${ev.fame}）`); break; }
     case 'draw': {

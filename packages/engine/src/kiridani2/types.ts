@@ -454,7 +454,7 @@ export type GameEvent =
   | { t: 'hire'; seat: Seat; companion: number }
   | { t: 'train'; seat: Seat; companion: number; stat: 'atk' | 'def' }
   | { t: 'market'; seat: Seat; kind: 'buy' | 'sell'; res: Res | string; qty: number; gold: number }
-  | { t: 'trade'; a: Seat; b: Seat; give: Cost; get: Cost }
+  | { t: 'trade'; a: Seat; b: Seat; give: Cost; get: Cost; /** 押し売りモモ：渡した魔石の段階（0〜2）。give のかわり */ stone?: number }
   | { t: 'donate'; seat: Seat; cost: Cost; fame: number }
   | { t: 'draw'; seat: Seat; card: string; from: string }
   | { t: 'combat_start'; nest: string; monster: Monster; seats: Seat[]; mode: FightMode }

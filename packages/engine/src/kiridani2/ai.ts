@@ -394,6 +394,18 @@ export class AI implements Brain {
         const v = (lack(q, q.res.food - k) - lack(q, q.res.food)) * (q === foes[0] ? 1.2 : 1) + Math.min(k, short) * 0.5;
         if (v > 0 && (!best || v > best.v)) best = { q, k, r, v };
       }
+      // 魔石1つを渡して、同じ価値の食料を取る（上級なら食料6）。渡した魔石の名声は相手のものになるので、その分を引く
+      let bestS: { q: Player; t: number; v: number } | null = null;
+      for (const q of foes) for (let t = 0; t < D.STONE.value.length; t++) {
+        const k = D.STONE.value[t];
+        if (!(p.stones[t] > 0) || q.res.food < k) continue;
+        const v = (lack(q, q.res.food - k) - lack(q, q.res.food)) * (q === foes[0] ? 1.2 : 1) + Math.min(k, short) * 0.5 - 2 * D.STONE.fame[t] * 0.5;
+        if (v > 0 && (!bestS || v > bestS.v)) bestS = { q, t, v };
+      }
+      if (bestS && (!best || bestS.v > best.v)) {
+        const get: Cost = { food: D.STONE.value[bestS.t] };
+        if (!g.stoneTradeOk(p, bestS.q, bestS.t, get)) { g.tradeStone(p, bestS.q, bestS.t, get); return; }
+      }
       if (best) {
         const give: Cost = { [best.r]: best.k }, get: Cost = { food: best.k };
         if (!g.tradeOk(p, best.q, give, get)) { g.trade(p, best.q, give, get); return; }

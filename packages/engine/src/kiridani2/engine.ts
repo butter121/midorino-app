@@ -2482,6 +2482,28 @@ export class Game {
   }
   /** 取引を同期で（効果の選択は既定の答え） */
   trade(a: Player, b: Player, give: Cost, get: Cost) { drive(this.tradeGen(a, b, give, get)); }
+  /** 押し売りモモだけ：魔石1つを渡して、同じ価値（初級2・中級4・上級6）の資源1種類を受け取る（金貨の上限はない。相手の了承もいらない） */
+  stoneTradeOk(a: Player, b: Player, tier: number, get: Cost): string | null {
+    if (a === b) return '相手がいない';
+    if (!this.is(a, 'swindler')) return '魔石の取引は押し売りモモだけ';
+    if (a.tradesUsed >= this.tradeLimit(a)) return 'このラウンドの取引は終わり';
+    if (!(a.stones[tier] > 0)) return '魔石がない';
+    const ks = Object.entries(get).filter(([, n]) => n);
+    if (ks.length !== 1) return '1種類ずつ';
+    if (ks.reduce((s, [r, n]) => s + D.VALUE[r as Res] * (n as number), 0) !== D.STONE.value[tier]) return '同じ価値どうし';
+    if (!canPay(b, get)) return '相手の持ち物が足りない';
+    return null;
+  }
+  *stoneTradeGen(a: Player, b: Player, tier: number, get: Cost): Gen {
+    a.stones[tier] -= 1; b.stones[tier] += 1; payRes(b, get); gainRes(a, get);
+    a.tradesUsed += 1;
+    a.st.trades += 1; b.st.trades += 1;
+    a.acts.push('trade'); b.acts.push('trade');
+    this.emit({ t: 'trade', a: a.pid, b: b.pid, give: {}, get: cleanCost(get), stone: tier });
+    yield* this.fire(a, 'trade', {});
+    yield* this.fire(b, 'trade', {});
+  }
+  tradeStone(a: Player, b: Player, tier: number, get: Cost) { drive(this.stoneTradeGen(a, b, tier, get)); }
 
   // ------------------------------------------------------------ 依頼（§9）
   /** 共通の依頼を確かめる（人ごとに達成した数を返す。呼ぶ側が when 'quest' を出す）。
