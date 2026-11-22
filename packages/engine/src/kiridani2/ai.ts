@@ -8,6 +8,7 @@ import {
   ancientScore, costValue, drive, Game, ITEM_KINDS, Player, score, type Brain, type Choice, type Option, type Ratio, type Req,
 } from './engine';
 import { Rng } from './rng';
+import { LEADER_W, type WeightMul } from './ai_weights';
 import type { CardDef, Cost, EngineTag, Op, Res } from './types';
 import { ENGINES, RES } from './types';
 
@@ -30,6 +31,15 @@ export const DEFAULT_W: W = {
   res: { wood: 0.35, iron: 0.5, herb: 0.4, mana: 0.7, food: 0.55, gold: 0.2, mat: 0.5 },
   act: 0.5, short: 1.6, inj: 0.9, perm: 1.0, defn: 0.4, wall: 0.5, hand: 0.35, played: 1.0, quest: 0.5, tag: 0.35, loop: 3.0, pet: 0.5, ancient: 0.6,
 };
+/** 重みに倍率をかける（act は手数の見込みに後からかける） */
+export function applyMul(w: W, m?: WeightMul) {
+  if (!m) return;
+  for (const [k, v] of Object.entries(m)) {
+    if (k === 'res') { for (const [r, x] of Object.entries(v as Record<string, number>)) w.res[r as Res] *= x; continue; }
+    if (k === 'act') continue;
+    (w as unknown as Record<string, number>)[k] *= v as number;
+  }
+}
 /** 強い動きごとの重み（v1 の ARCHETYPES に当たる） */
 export const ENGINE_W: Partial<Record<EngineTag, (w: W) => void>> = {
   hunt: (w) => { w.perm += 0.12; w.res.iron += 0.1; },
@@ -158,7 +168,16 @@ export class AI implements Brain {
   /** 測定：わざと目指す動きを決める（sim で強い動きごとの名声を比べるため） */
   forced?: EngineTag;
 
-  constructor(level: Level = 'normal', opts: { seed?: number; trade?: boolean; target?: EngineTag } = {}) {
+  /** 選んだリーダー（重みを選ぶのに使う） */
+  leaderId = '';
+  /** 重みの倍率（調整用に外から与える。なければリーダーごとの調整済みの倍率 LEADER_W） */
+  wmul?: WeightMul;
+  /** false ならリーダーごとの調整済みの倍率を使わない */
+  tuned: boolean;
+
+  constructor(level: Level = 'normal', opts: { seed?: number; trade?: boolean; target?: EngineTag; wmul?: WeightMul; tuned?: boolean } = {}) {
+    this.wmul = opts.wmul;
+    this.tuned = opts.tuned ?? true;
     this.level = level;
     this.noise = NOISE[level];
     this.rng = new Rng(opts.seed ?? 0);
@@ -185,7 +204,8 @@ export class AI implements Brain {
     p.target = [...this.targets];
     this.W = structuredClone(DEFAULT_W);
     for (const t of this.targets) ENGINE_W[t]?.(this.W);
-    this.W.act = this.actVal;
+    applyMul(this.W, this.wmul ?? (this.tuned ? LEADER_W[this.leaderId || p.leader || ''] : undefined));
+    this.W.act = this.actVal * (this.wmul?.act ?? (this.tuned ? LEADER_W[this.leaderId || p.leader || '']?.act : undefined) ?? 1);
   }
 
   respond(req: Req): any {
@@ -200,6 +220,7 @@ export class AI implements Brain {
         if (req.why === 'leader') {
           const pick = this.forced ? (req.cards.find((id) => g.card(id).engine.includes(this.forced!)) ?? this.best(req.cards, () => 0)) : this.best(req.cards, (id) => cardValue(g.card(id)));
           this.note(g.card(pick).engine, 3);
+          this.leaderId = pick;
           this.setTargets(p);
           return pick;
         }
@@ -278,7 +299,7 @@ export class AI implements Brain {
     }
     if (best.s !== '@spell') {
       this.actVal = 0.9 * this.actVal + 0.1 * Math.max(0.3, Math.min(6, raw));
-      this.W.act = this.actVal;
+      this.W.act = this.actVal * (this.wmul?.act ?? (this.tuned ? LEADER_W[this.leaderId || p.leader || '']?.act : undefined) ?? 1);
     }
     return best;
   }

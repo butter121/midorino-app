@@ -15,8 +15,6 @@ import type {
 import { RES } from './types';
 
 const SEASONS: Season[] = ['spring', 'summer', 'autumn', 'winter'];
-/** 定員を無視して置く効果が使えないマス（取り合いのマスを独り占めしないように） */
-const NO_IGNORE_FULL = new Set(['market', 'market2', 'ruins', 'dig', 'curio']);
 export const ITEM_KINDS = ['weapon', 'armor', 'tool', 'spell'] as const;
 /** リーダーの効果（K さんの案。効果は変えず、数字だけ data.ts の LEADER で変える）。値はカードの id */
 export const LEAD = {
@@ -243,6 +241,8 @@ export interface GameOptions {
   events?: { me: number; names: string[] };
   /** 始めの先手（試しの試合だけ。省略すれば種からくじ：startSeat） */
   first?: number;
+  /** 席ごとのリーダーを決めておく（測定・AI の調整用。null の席はふつうに選ぶ） */
+  leaders?: (string | null)[];
 }
 
 /** 始めの先手（種から決まる。本体の乱数の流れとは別にして、ほかのくじは変えない） */
@@ -293,6 +293,8 @@ export class Game {
   quests: { id: string; done: number[] }[] = [];
   first = 0;
   nextFirst: number | null = null;
+  /** 席ごとに決めておいたリーダー（GameOptions.leaders） */
+  fixedLeaders: (string | null)[] = [];
   round = 0;
   uid = 0;
   over = false;
@@ -348,6 +350,7 @@ export class Game {
     this.monDeck = rng.shuffle(D.MONSTERS.map((m) => m.id));
     this.bossTypes = rng.sample(D.BOSS_TYPES, 4);
     this.scheduleStages();
+    this.fixedLeaders = opts.leaders ?? [];
     this.first = opts.first !== undefined ? ((opts.first % n) + n) % n : startSeat(opts.seed ?? 0, n);
     if (opts.events) { this.E = []; this.me = opts.events.me; this.names = opts.events.names; }
   }
@@ -798,7 +801,9 @@ export class Game {
         const i = d.findIndex((c) => this.card(c).role === role);
         return i >= 0 ? d.splice(i, 1) : d.splice(0, 1);
       };
-      const shows = order.map((p) => { const show = [...take('fight'), ...take('explore')]; this.emit({ t: 'leader_offer', seat: p.pid, cards: [...show] }); return show; });
+      const fixed = this.fixedLeaders;
+      for (const id of fixed) { if (!id) continue; const j = this.decks.leader.indexOf(id); if (j >= 0) this.decks.leader.splice(j, 1); }
+      const shows = order.map((p) => { const show = fixed[p.pid] ? [fixed[p.pid]!] : [...take('fight'), ...take('explore')]; this.emit({ t: 'leader_offer', seat: p.pid, cards: [...show] }); return show; });
       const picks: string[] = yield* this.askAll(order.map((p, i) => ({ k: 'card', g: this, p, why: 'leader', cards: shows[i] }) as Req));
       order.forEach((p, i) => {
         const c = picks[i];
@@ -1193,8 +1198,8 @@ export class Game {
     if (p.avail() <= 0) return out;
     for (const s of this.spaces) {
       const cap = this.capOf(s);
-      // 定員を無視して置く効果は、交換所・遺跡の探索・発掘場には使えない（取り合いのマスを独り占めしないように）
-      if (cap > 0 && s.occ.length >= cap && (!p.ignoreFull || NO_IGNORE_FULL.has(s.id)) && !(s.id === 'workshop' && this.is(p, 'crafter')) && !((this.is(p, 'explorer') || this.mods(p).adv_free) && this.isAdventure(s.id))) continue;
+      // 定員を無視して置く効果（ignore_full）は巣だけ。冒険のマスの相乗りは、もう1人置けるマス（討伐隊）には使えない（置き続けられてしまうので）
+      if (cap > 0 && s.occ.length >= cap && !(s.id === 'workshop' && this.is(p, 'crafter')) && !((this.is(p, 'explorer') || this.mods(p).adv_free) && this.isAdventure(s.id) && !s.def.options.some((ops) => ops.some((op) => op.extra_worker)))) continue;
       s.def.options.forEach((ops, i) => {
         const eff = s.optEffects?.[i];
         if (eff) {
