@@ -17,7 +17,7 @@ export const OP_KEYS = new Set([
   'gain', 'pay', 'convert', 'fame', 'power', 'guard', 'counter', 'loot', 'trophy', 'str', 'no_injury',
   'extra_worker', 'place_again', 'ignore_full', 'future', 'draw', 'hire', 'hire_free', 'tame', 'train', 'build', 'heal',
   'steal_gain', 'craft', 'occ', 'exchange', 'first', 'donate', 'fame_per', 'gain_per', 'others_gain',
-  'power_per', 'lose', 'injure', 'scrap', 'shard', 'buy_card', 'draw_any', 'repair', 'relic',
+  'power_per', 'lose', 'injure', 'scrap', 'shard', 'buy_card', 'draw_any', 'gain_pick', 'repair', 'relic',
 ]);
 /** 戦闘中だけ意味のある op */
 export const FIGHT_OPS = new Set(['power', 'guard', 'counter', 'loot', 'trophy', 'str', 'no_injury', 'tame', 'power_per']);

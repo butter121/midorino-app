@@ -104,6 +104,7 @@ export function choiceLabel(g: Game, p: Player | null, x: Choice): { title: stri
     if (x === 'atk') return { title: '攻めの熟練+1', detail: `選んだ仲間1人の戦力+1（${D.MAX_SKILL.atk}まで）` };
     if (x === 'def') return { title: '守りの熟練+1', detail: `選んだ仲間1人の守り+1（${D.MAX_SKILL.def}まで）` };
     if (x === 'skip') return { title: '何もしない' };
+    if (x.startsWith('res:')) return { title: `${RES_JP[x.slice(4) as Res]}を1つ得る`, detail: '好きな資源を1つずつ選ぶ' };
     if (x === 'mage:mana') return { title: `マナ鉱石を${D.LEADER.mage.mana}つ得る`, detail: '最高の魔術師' };
     if (x === 'mage:draw') return { title: `秘術を${D.LEADER.mage.draw}枚引く`, detail: '最高の魔術師' };
     { const a = g.anc.get(x.split('~')[0]); if (a) { const rv = p ? g.repairOf(p, x) : null; return { title: `${a.name}を修復する`, detail: `試合の終わりに名声${a.fame}`, cost: rv?.cost ?? a.repair }; } }
@@ -121,6 +122,7 @@ export function choiceLabel(g: Game, p: Player | null, x: Choice): { title: stri
   }
   if (x.m === 'sell') return { title: `${RES_JP[x.r]}を${x.q}つ売る`, detail: `金貨+${(p ? g.sellPrice(p, x.r) : D.sellPrice(x.r)) * x.q}` };
   if (x.m === 'buy') return { title: `${RES_JP[x.r]}を${x.q}つ買う`, detail: `金貨-${D.BUY[x.r] * x.q}` };
+  if (x.m === 'stone') { const st = `${D.STONE.jp[x.tier]}魔石`; return x.dir === 'sell' ? { title: `${st}1つを${RES_JP[x.r]}${x.q}に換える` } : { title: `${RES_JP[x.r]}${x.q}を${st}1つに換える` }; }
   if (x.m === 'item') return { title: `${g.byId.get(x.id)?.name ?? x.id}を売る`, detail: `金貨+${g.itemSell(x.id)}`, card: x.id };
   if (x.m !== 'both') return { title: '?' };
   return { title: `${RES_JP[x.sell.r]}${x.sell.q}を売り、${RES_JP[x.buy.r]}${x.buy.q}を買う`, detail: `売値${costJP({ gold: g.sellPrice(p!, x.sell.r) * x.sell.q })}` };
@@ -195,6 +197,7 @@ function opText(op: Record<string, unknown>): string {
     case 'place_again': return 'もう一度使う';
     case 'tame': return '巣の魔物を戦わずに使い魔にする';
     case 'buy_card': { const b = v as { count: number; price: number }; return `品物を金貨${b.price}で${b.count}枚まで買う`; }
+    case 'gain_pick': { const gp = v as { n: number }; return `好きな資源を${gp.n}つ`; }
     case 'draw_any': { const d = v as { from: string[]; look: number; take: number }; return `${d.from.map((f) => DRAW_JP[f] ?? f).join('・')}から山を1つ選び${d.look}枚見て${d.take}枚`; }
     case 'donate': { const d = v as { pay: Cost; fame: number }; return `${costJP(d.pay)}で名声${d.fame}`; }
     case 'craft': return v === 'armor' ? '防具を作る' : v === 'weapon' ? '武器を作る' : '武器か防具を作る';

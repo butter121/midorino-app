@@ -128,3 +128,33 @@ describe('kiridani2 選択肢が1つでも人には見せる', () => {
     expect(req.cards).toHaveLength(1);
   });
 });
+
+describe('取引と交換所の決まり（等価・1種類・魔石は1つ）', () => {
+  it('交換所の価値は魔石のほかすべて金貨1、魔石は2・4・6', async () => {
+    const D = await import('../src/kiridani2/data');
+    for (const v of Object.values(D.VALUE)) expect(v).toBe(1);
+    expect(D.STONE.value).toEqual([2, 4, 6]);
+  });
+});
+
+describe('詐欺師の取引と交換所の魔石', () => {
+  it('詐欺師は1種類ずつ・同じ価値・金貨3枚分まで。ほかの人は制限なし', () => {
+    const { g, p } = bare();
+    const q = g.players[1];
+    p.res.wood = 9; p.res.iron = 9; q.res.food = 9; q.res.herb = 9;
+    expect(g.tradeOk(p, q, { wood: 5 }, { food: 1 })).toBeNull();
+    p.leader = 'l_momo';
+    expect(g.tradeOk(p, q, { wood: 3 }, { food: 3 })).toBeNull();
+    expect(g.tradeOk(p, q, { wood: 4 }, { food: 4 })).not.toBeNull();
+    expect(g.tradeOk(p, q, { wood: 2 }, { food: 1 })).not.toBeNull();
+    expect(g.tradeOk(p, q, { wood: 1, iron: 1 }, { food: 2 })).not.toBeNull();
+    expect(g.occCost(p).food).toBe(DATA.OCC_FOOD[0] + 1);
+  });
+  it('交換所で魔石を1つ出すと、同じ価値の資源1種類を受け取れる', () => {
+    const { g, p } = bare();
+    p.stones = [0, 0, 1];
+    const xs = g.expand(p, [{ exchange: true }]);
+    expect(xs).toContainEqual({ m: 'stone', dir: 'sell', tier: 2, r: 'iron', q: 6 });
+    expect(xs.some((x) => typeof x === 'object' && x?.m === 'stone' && x.dir === 'sell' && x.tier === 0)).toBe(false);
+  });
+});

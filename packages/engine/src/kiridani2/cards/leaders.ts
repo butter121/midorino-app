@@ -11,7 +11,7 @@ export const LEADER_ROLE: Record<string, 'fight' | 'explore'> = {
   l_iska: 'explore', l_goro: 'explore', l_popo: 'explore', l_momo: 'explore', l_kai: 'explore', l_miro: 'explore',
 };
 
-const x = (n: number) => (n === 2 ? '2倍' : n === 3 ? '3倍' : `${n}倍`);
+const x = (n: number) => `${n}倍`;
 const def = (id: string, name: string, engine: EngineTag[], lines: string[]): CardDef => ({ ...L(id, name, engine, []), role: LEADER_ROLE[id], text: lines.join('\n') });
 
 export const LEADERS: CardDef[] = [
@@ -48,7 +48,7 @@ export const LEADERS: CardDef[] = [
   def('l_iska', '偉大な探検家', ['ruins', 'quest'], [
     `冬に要る食料−${V.explorer.upkeep}。`,
     '冒険のまとまりのマスに、ほかの人がいても置ける。',
-    `冒険のまとまりのマス（依頼板・掘り出し市・古い発掘場・遺跡の探索など）の効果が${x(V.explorer.mult)}。`,
+    `冒険のまとまりのマス（依頼板・古い発掘場・遺跡の探索など）の効果が${x(V.explorer.mult)}。`,
     `遺物の修復の費用−${V.explorer.repairCut}（減らす資源は自分で選ぶ）。`,
     `試合の終わりに、修復した遺物の数×${V.explorer.ancientFame}の名声。`,
   ]),
@@ -58,11 +58,12 @@ export const LEADERS: CardDef[] = [
     `試合の終わりに、防壁1つごとに名声${V.guard.wallFame}（防いだ襲撃の合計が${V.guard.lowBlocked}以下なら${x(V.guard.lowMult)}）。`,
   ]),
   def('l_popo', '採集家', ['gather'], [
-    `マスで集める資源が${x(V.gatherer.mult)}。`,
+    `マスで集める資源が${x(V.gatherer.mult)}（切り捨て）。`,
     `毎年の終わりに、持っている資源の数÷${V.gatherer.fameDiv}の名声。`,
   ]),
   def('l_momo', '詐欺師', ['trade'], [
-    '取引に相手の了承がいらない（出す数と受け取る数は同じ）。',
+    `取引に相手の了承がいらない。そのかわり1回の取引は1種類ずつ・同じ価値どうしで、金貨${V.swindler.tradeMax}枚分まで。`,
+    `職能を出すとき、食料を${V.swindler.occFood}つ多く払う。`,
     `試合の終わりに、取引1回ごとに名声${V.swindler.fame}。`,
   ]),
   def('l_kai', '器用な職人', ['gather', 'fort'], [

@@ -62,7 +62,7 @@ export const LOOPS: Record<EngineTag, string[][]> = {
   beast: [['tame', 'win', 'fight'], ['food', 'pay:food']],
   quest: [['board', 'donate', 'quest', 'gold'], ['win', 'build', 'craft', 'occ', 'fight', 'train']],
   ally: [['coop', 'trade', 'fight'], ['accum', 'sell', 'buy', 'food']],
-  ruins: [['draw', 'sp:ruins', 'sp:treasury', 'sp:dig', 'sp:curio'], ['sell', 'craft', 'build', 'occ', 'mana', 'spell']],
+  ruins: [['draw', 'sp:ruins', 'sp:treasury', 'sp:dig'], ['sell', 'craft', 'build', 'occ', 'mana', 'spell']],
   boss: [['fight', 'train'], ['craft', 'heal', 'herb', 'iron', 'buy', 'pay:mat', 'build', 'trade']],
   bridge: [['build', 'craft', 'occ'], ['win', 'sell', 'buy']],
 };
@@ -240,6 +240,7 @@ export class AI implements Brain {
       if (x === 'mage:draw') return 1.2;
       if (x === 'mage:mana') return 1;
       if (x === 'skip') return 0;
+      if (x.startsWith('res:')) return this.W.res[x.slice(4) as Res] ?? 0;
       if (x === 'wall') return 1.5 + (this.targets.includes('fort') ? 1 : 0);
       if (x === 'atk') return 1 + (this.targets.some((t) => WEAPON_TAGS.has(t)) ? 0.5 : 0);
       if (x === 'def') return 0.8;
@@ -252,6 +253,8 @@ export class AI implements Brain {
     if (x.m === 'sell') return D.sellPrice(x.r) * x.q * this.W.res.gold - this.W.res[x.r] * x.q;
     if (x.m === 'buy') return this.W.res[x.r] * x.q - D.BUY[x.r] * x.q * this.W.res.gold;
     if (x.m === 'item') return g.itemSell(x.id) * this.W.res.gold;
+    if (x.m === 'stone') return (x.dir === 'sell' ? 1 : -1) * (this.W.res[x.r] * x.q - D.STONE.fame[x.tier] * 1.2);
+    if (x.m === 'both') return this.W.res[x.buy.r] * x.buy.q - this.W.res[x.sell.r] * x.sell.q;
     return 0;
   }
 
@@ -283,6 +286,8 @@ export class AI implements Brain {
       const q = g.marketQty(p);
       return o.x.q === 1 || o.x.q === q || (o.x.m === 'sell' && o.x.q === p.res[o.x.r]);
     }
+    if (o.x && typeof o.x === 'object' && o.x.m === 'both') return o.x.sell.q === Math.min(g.marketQty(p), p.res[o.x.sell.r]);
+    if (o.x && typeof o.x === 'object' && o.x.m === 'stone') return o.x.dir === 'sell';
     return true;
   }
 

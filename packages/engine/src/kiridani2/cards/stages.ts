@@ -45,15 +45,8 @@ export const STAGES: StageDef[] = [
   // ---------------- 段階2（候補5から4枚）
   {
     id: 'bazaar', kind: 'stage', stage: 2, name: '大市', engine: ['gather', 'smith'], mech: 'action',
-    effects: [
-      opt([{ gain: { wood: 1, iron: 1 } }]),
-      opt([{ gain: { wood: 1, herb: 1 } }]),
-      opt([{ gain: { iron: 1 } }]),
-      opt([{ gain: { herb: 1, mana: 1 } }]),
-      opt([{ gain: { food: 1 } }]),
-      opt([{ gain: { wood: 1, mana: 1 } }]),
-    ],
-    text: '資源を1つずつ得る（木材＋鉄／木材＋薬草／鉄／薬草＋マナ鉱石／食料／木材＋マナ鉱石から1つ）。',
+    effects: [opt([{ gain_pick: { n: 3, from: ['wood', 'iron', 'herb', 'food', 'mana', 'mat'] } }])],
+    text: '好きな資源を3つ得る（木材・鉄・薬草・食料・マナ鉱石・素材から。同じ種類でも別々でもよい）。',
   },
   {
     id: 'family', kind: 'stage', stage: 2, name: '対家の家族', engine: ['family'], mech: 'action',
@@ -79,11 +72,16 @@ export const STAGES: StageDef[] = [
     ],
     text: '次のどれか：巣にいる魔物1体を戦わずに使い魔にする（捕まえる食料＝強さ÷4は払う）／食料1を得る。',
   },
-  // ---------------- 段階3（4枚全部）
+  // ---------------- 段階3（候補5から4枚）
   {
     id: 'raid', kind: 'stage', stage: 3, name: '討伐隊', engine: ['hunt', 'boss'], mech: 'action',
     effects: [opt([{ extra_worker: 1 }, { ignore_full: true }])],
     text: 'このラウンド、仲間をもう1人置ける。その仲間は定員の埋まった巣にも置ける（巣に2回挑める）。',
+  },
+  {
+    id: 'drill', kind: 'stage', stage: 3, name: '若手の訓練', engine: ['fort', 'hunt'], mech: 'action',
+    effects: [opt([{ train: 'atk', fresh: true }, { train: 'def', fresh: true }])],
+    text: 'まだ攻めの熟練がない仲間1人に攻め+1、まだ守りの熟練がない仲間1人に守り+1（1段階目だけ。別の仲間でもよい）。',
   },
   {
     id: 'tradepost', kind: 'stage', stage: 3, name: '交易所の拡張', engine: ['trade'], mech: 'accrue',

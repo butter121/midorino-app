@@ -154,6 +154,8 @@ export interface Op {
   /** 掘り出し市：並んだ品物から count 枚まで、1枚 price 金貨で手札に */
   buy_card?: { count: number; price: number };
   /** 山を選んでから引く（look 枚見て take 枚。from は選べる山） */
+  /** 好きな資源を n 個（1つずつ選ぶ。同じ種類でもよい） */
+  gain_pick?: { n: number; from: Res[] };
   draw_any?: { from: ('occ' | 'weapon' | 'armor' | 'tool' | 'spell')[]; look: number; take: number };
 }
 

@@ -34,7 +34,9 @@ export type Choice =
   | string
   | { m: 'sell' | 'buy'; r: Res; q: number }
   | { m: 'both'; sell: { r: Res; q: number }; buy: { r: Res; q: number } }
-  | { m: 'item'; id: string };
+  | { m: 'item'; id: string }
+  /** 魔石を1つ出して同じ価値の資源1種類を受け取る（sell）／資源1種類を出して魔石を1つ受け取る（buy） */
+  | { m: 'stone'; dir: 'sell' | 'buy'; tier: number; r: Res; q: number };
 
 /** 置く場所の選択肢。s＝マス（巣・'lair'・秘術は '@spell'）、i＝そのマスの何番目の手順（−1 は instead のカード効果） */
 export interface Option {
@@ -608,7 +610,7 @@ export class Game {
   /** ギルドで職能を出す費用（食料1、2枚目から2。カードの cost はその上乗せ） */
   occCost(p: Player, id?: string): Cost {
     const playedViaGuild = Math.max(0, p.occs.length - 1);
-    const base = addCost({ food: D.OCC_FOOD[Math.min(playedViaGuild, D.OCC_FOOD.length - 1)] + this.mods(p).occ_food }, id ? this.card(id).cost ?? {} : {});
+    const base = addCost({ food: D.OCC_FOOD[Math.min(playedViaGuild, D.OCC_FOOD.length - 1)] + this.mods(p).occ_food + (this.is(p, 'swindler') ? D.LEADER.swindler.occFood : 0) }, id ? this.card(id).cost ?? {} : {});
     return this.adjust(p, base, ['occ']);
   }
   bedCost(p: Player, disc: Cost = {}) { return subCost(this.adjust(p, D.BED_COST, ['bed']), disc); }
@@ -1290,11 +1292,14 @@ export class Game {
       for (const s of sells) out.push({ m: 'sell', ...s });
       for (const b of buys) out.push({ m: 'buy', ...b });
       for (const id of new Set(this.storage(p))) out.push({ m: 'item', id });
-      {
-        for (const s of sells) {
-          if (s.q !== Math.min(q, p.res[s.r])) continue;
-          const gold = p.res.gold + this.sellPrice(p, s.r) * s.q - (base.gold ?? 0);
-          for (const b of buys) if (b.r !== s.r && D.BUY[b.r] * b.q <= gold) out.push({ m: 'both', sell: s, buy: b });
+      // 資源1種類 ⇄ 別の資源1種類（同じ価値＝同じ数）
+      for (const s of sells) for (const r of RES) if (r !== 'gold' && r !== s.r) out.push({ m: 'both', sell: s, buy: { r, q: s.q * D.VALUE[s.r] / D.VALUE[r] } });
+      // 魔石は1つずつ、同じ価値の資源1種類と（3つの上限は魔石のときはない）
+      for (let t = 0; t < D.STONE.value.length; t++) {
+        const v = D.STONE.value[t];
+        for (const r of RES) {
+          if (p.stones[t] > 0) out.push({ m: 'stone', dir: 'sell', tier: t, r, q: v });
+          if (p.res[r] - (base[r] ?? 0) >= v) out.push({ m: 'stone', dir: 'buy', tier: t, r, q: v });
         }
       }
     }
@@ -1336,7 +1341,7 @@ export class Game {
         for (const r of Object.keys(sp.def.accum)) if (bonus[sp.id]) got[r as Res] = (got[r as Res] ?? 0) + (bonus[sp.id] ?? 0);
         // 採集家は集める量が倍、探検家は冒険マスの効果が倍
         const gm = (this.is(p, 'gatherer') ? D.LEADER.gatherer.mult : 1) * (adv ? D.LEADER.explorer.mult : 1);
-        if (gm > 1) for (const r of Object.keys(got)) got[r as Res] = (got[r as Res] ?? 0) * gm;
+        if (gm > 1) for (const r of Object.keys(got)) got[r as Res] = Math.floor((got[r as Res] ?? 0) * gm);
         sp.stock = {};
         gainRes(p, got);
         this.emit({ t: 'gather', seat: p.pid, space: sp.id, gain: got });
@@ -1480,6 +1485,21 @@ export class Game {
         }
         case 'future': for (const r of op.future!.rounds) p.future.push({ round: this.round + r, gain: { ...op.future!.gain } }); break;
         case 'draw': yield* this.drawCards(p, op.draw!.from, op.draw!.look, op.draw!.take); break;
+        case 'gain_pick': {
+          const gp = op.gain_pick!;
+          const xs = gp.from.map((r) => `res:${r}`);
+          const got: Cost = {};
+          for (let j = 0; j < gp.n; j++) {
+            const x: string = yield* this.askOne(p, xs, { k: 'pick', g: this, p, what: 'gain_pick', options: xs });
+            const r = x.slice(4) as Res;
+            if (!gp.from.includes(r)) throw new Error('bad res');
+            got[r] = (got[r] ?? 0) + 1;
+          }
+          gainRes(p, got);
+          this.emit({ t: 'gain', seat: p.pid, gain: got, reason: ctx.card ?? ctx.space ?? '' });
+          this.actGain(p, got);
+          break;
+        }
         case 'draw_any': {
           const from = op.draw_any!.from.filter((f) => this.decks[f].length > 0);
           if (!from.length) break;
@@ -1654,6 +1674,20 @@ export class Game {
             this.actGain(p, { [b.r]: b.q });
             p.acts.push('buy');
             yield* this.fire(p, 'buy', {});
+          }
+          if (x.m === 'stone') {
+            if (x.dir === 'sell') {
+              if (p.stones[x.tier] <= 0) break;
+              p.stones[x.tier] -= 1; p.res[x.r] += x.q;
+              this.emit({ t: 'stone_use', seat: p.pid, tier: x.tier });
+              this.emit({ t: 'gain', seat: p.pid, gain: { [x.r]: x.q }, reason: 'market' });
+              this.actGain(p, { [x.r]: x.q });
+            } else {
+              if (p.res[x.r] < x.q) break;
+              p.res[x.r] -= x.q; p.stones[x.tier] += 1;
+              this.emit({ t: 'pay', seat: p.pid, cost: { [x.r]: x.q }, reason: 'market' });
+            }
+            p.acts.push('stone');
           }
           if (x.m === 'item') {
             const i = p.items.indexOf(x.id);
@@ -2371,7 +2405,14 @@ export class Game {
     if (a === b) return '相手がいない';
     if (a.tradesUsed >= this.tradeLimit(a)) return 'このラウンドの取引は終わり';
     if (!costUnits(give) || !costUnits(get)) return '渡すものと受け取るものを選ぶ';
-    if (costUnits(give) > D.TRADE_MAX || costUnits(get) > D.TRADE_MAX) return `片側${D.TRADE_MAX}個まで`;
+    // 詐欺師だけ：1種類ずつ・同じ価値・金貨 tradeMax 枚分まで（ほかの人どうしの取引に制限はない。相手の了承で決まる）
+    if (this.is(a, 'swindler')) {
+      const kinds = (c: Cost) => Object.values(c).filter((n) => n).length;
+      const val = (c: Cost) => Object.entries(c).reduce((s, [r, n]) => s + D.VALUE[r as Res] * (n ?? 0), 0);
+      if (kinds(give) !== 1 || kinds(get) !== 1) return '1種類ずつ';
+      if (val(give) !== val(get)) return '同じ価値どうし';
+      if (val(give) > D.LEADER.swindler.tradeMax) return `金貨${D.LEADER.swindler.tradeMax}枚分まで`;
+    }
     if (!canPay(a, give)) return '渡すものが足りない';
     if (!canPay(b, get)) return '相手の持ち物が足りない';
     return null;

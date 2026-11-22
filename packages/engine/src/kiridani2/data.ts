@@ -54,12 +54,12 @@ export const TROPHY = { div: 2.5, boss: 7.5, dragon: 15, fameDiv: 2.5 };
 /** 魔石：魔物が必ず落とす。段階（初級・中級・上級）は強さで決まる。段階の幅＝その試合で巣の魔物がいちばん強くなる場合の強さ ÷ 3（主・古竜を除く）。
  *  数は段階の中の下半分で1、上半分で2（ゆらぎ noise を足す）。主・古竜は上級。戦闘が終わるまで見えない。共闘は貢献の割合（最低1）。
  *  ゲームの終わりに 1つ fame[段階] の名声。武器・防具を作るときに、重さ（軽い・中・重い）に合う段階の魔石を1つ払う */
-export const STONE = { fame: [1, 2, 4], max: 2, noise: 0.15, jp: ['初級', '中級', '上級'] };
+export const STONE = { fame: [1, 2, 4], max: 2, noise: 0.15, jp: ['初級', '中級', '上級'], /** 取引・交換所での価値（金貨に換えた値。名声とは別） */ value: [2, 4, 6] };
 export const WEIGHT_TIER: Record<string, number> = { light: 0, mid: 1, heavy: 2 };
 
 // ---- 交換所
-/** 交換所の価値の表（金貨に換えた値）。売るのも買うのもこの値。2つを交換するときもこの重みで（出した価値まで受け取れる） */
-export const VALUE: Record<Res, number> = { wood: 1, iron: 2, herb: 1, food: 1, mana: 3, mat: 2, gold: 1 };
+/** 取引・交換所の価値の表（金貨に換えた値）。魔石（STONE.value）のほかはすべて金貨1。交換は1種類ずつ、同じ価値どうし */
+export const VALUE: Record<Res, number> = { wood: 1, iron: 1, herb: 1, food: 1, mana: 1, mat: 1, gold: 1 };
 export const BUY: Record<Res, number> = { ...VALUE, gold: 0 };
 export const MARKET_QTY = 3;
 /** 装備を売る値段＝費用（交換所の買値で数えた金貨）× この割合（調整：仕様は半分） */
@@ -140,15 +140,15 @@ export const LEADER = {
   /** 巨人狩り山田：主・古竜と戦うとき戦力 bossMult 倍。一番貢献して勝つと主 bossFame・古竜 dragonFame */
   giant: { bossMult: 3, bossFame: 8, dragonFame: 16 },
   /** 偉大な探検家：冬の食料 −upkeep、冒険マスにほかの人がいても置ける、冒険マスの効果 mult 倍、遺物の修復の費用 −repairCut（減らす資源は自分で選ぶ）、終わりに修復した遺物1つにつき ancientFame */
-  explorer: { upkeep: 2, mult: 2, ancientFame: 2, repairCut: 2 },
+  explorer: { upkeep: 2, mult: 2, ancientFame: 8, repairCut: 2 },
   /** 自宅警備員：冬に防いだ襲撃1につき blockedFame、終わりに防壁1つにつき wallFame（防いだ襲撃の合計が lowBlocked 以下ならさらに lowMult 倍になるよう足す） */
   guard: { blockedFame: 1, wallFame: 1, lowBlocked: 10, lowMult: 2 },
-  /** 採集家：マスで集める資源 mult 倍、毎年の終わりに持っている資源の合計 ÷ fameDiv の名声 */
-  gatherer: { mult: 2, fameDiv: 10 },
-  /** 詐欺師：相手の了承なしに取引（出す数＝受け取る数）、終わりに取引1回につき fame */
-  swindler: { fame: 1 },
+  /** 採集家：マスで集める資源 mult 倍（切り捨て）、毎年の終わりに持っている資源の合計 ÷ fameDiv の名声 */
+  gatherer: { mult: 1.5, fameDiv: 11 },
+  /** 詐欺師：相手の了承なしに取引（1種類ずつ・同じ価値・金貨 tradeMax 枚分まで）、職能を出す食料 +occFood、終わりに取引1回につき fame */
+  swindler: { fame: 1, tradeMax: 3, occFood: 1 },
   /** 職人：道具の費用 −discount（資源・素材あわせて）、道具を作るたび fame、作ったあと山から look 枚の道具を見て1枚取る */
-  crafter: { discount: 2, fame: 1, look: 3 },
+  crafter: { discount: 2, fame: 4, look: 3 },
   /** 伝説の商人：始めに資源（木材・鉄・薬草・マナ鉱石・食料）を start 個ずつ、売値 +sellBonus、終わりに金貨 ÷ goldDiv の名声 */
   merchant: { start: 10, sellBonus: 1, goldDiv: 3 },
 };
@@ -178,19 +178,18 @@ export const SPACES: SpaceDef[] = [
   { id: 'forest', name: '古の森', text: 'たまるマス（毎ラウンド木材+3）。たまった木材を全部得る。', accum: { wood: 3 }, options: [[]] },
   { id: 'mine', name: '鉄の坑道', text: 'たまるマス（毎ラウンド鉄+3）。たまった鉄を全部得る。', accum: { iron: 3 }, options: [[]] },
   { id: 'meadow', name: '薬草の野', text: 'たまるマス（毎ラウンド薬草+3）。たまった薬草を全部得る。', accum: { herb: 3 }, options: [[]] },
-  { id: 'spring', name: 'マナ鉱石の泉', text: 'たまるマス（毎ラウンドマナ鉱石+1）。たまったマナ鉱石を全部得る。', accum: { mana: 1 }, options: [[]] },
+  { id: 'spring', name: 'マナ鉱石の泉', text: 'たまるマス（毎ラウンドマナ鉱石+2）。たまったマナ鉱石を全部得る。', accum: { mana: 2 }, options: [[]] },
   { id: 'hunt', name: '狩場', text: 'たまるマス（毎ラウンド食料+3）。たまった食料を全部得る。', accum: { food: 3 }, options: [[]] },
   { id: 'board', name: '依頼板', text: '次のどれか：金貨2を得る／職能の山から2枚見て1枚を手札に。', options: [[{ gain: { gold: 2 } }], [{ draw: { from: 'occ', look: 2, take: 1 } }]] },
   { id: 'guild', name: 'ギルド', text: '次のどれか：手札の職能を1枚出す（費用を払う）／職能の山から3枚見て1枚を手札に。', options: [[{ occ: 1 }], [{ draw: { from: 'occ', look: 3, take: 1 } }]] },
   { id: 'forge', name: '鍛冶場', text: '次のどれか：武器か防具を1つ作る（手札の武器・防具か、いつでも作れる基本の装備。素材を払う。足りない資源は金貨で払える）／武器・防具の山から2枚見て1枚を手札に。', options: [[{ craft: 'any' }], [{ draw: { from: 'equip', look: 2, take: 1 } }]] },
   { id: 'workshop', name: '工房', text: '次のどれか：寝床（木材4）・防壁（木材2・鉄1）・手札の道具（施設）のどれかを1つ建てる／道具の山から2枚見て1枚を手札に／壊れた遺物を1つ修復する。', options: [[{ build: 'any' }], [{ draw: { from: 'tool', look: 2, take: 1 } }], [{ repair: true }]] },
-  { id: 'market', name: '交換所', text: '売るか買うを1回（1種類を3つまで。ほかの人が先にいると2つまで）。売り＋買いを一緒にもできる。手持ちの品物を売ることもできる。2人まで置ける。', cap: 2, options: [[{ exchange: true }]] },
-  { id: 'curio', name: '掘り出し市', text: '並んでいる品物（種類ごとに1枚）から、金貨1で1枚ずつ2枚まで買って手札に。', cap: 1, cap4: 2, options: [[{ buy_card: { count: 2, price: 1 } }]] },
+  { id: 'market', name: '交換所', text: '1種類を3つまで、同じ価値のもの1種類と交換する（金貨も資源も1つ金貨1。ほかの人が先にいると2つまで）。魔石は1つずつ、初級2・中級4・上級6の価値で交換できる。手持ちの品物を売ることもできる。2人まで置ける。', cap: 2, options: [[{ exchange: true }]] },
   { id: 'dig', name: '古い発掘場', text: '次のどれか：遺物を1枚引く／壊れた遺物を1つ修復する。', options: [[{ relic: 1 }], [{ repair: true }]] },
   { id: 'plaza', name: '広場', text: '食料1を得る。何人でも置ける。', cap: 0, options: [[{ gain: { food: 1 } }]] },
   { id: 'hall', name: '集会所', text: '次のどれか：次のラウンドの先手になり食料1を得る／先手になり金貨6を献上して名声2。', options: [[{ first: true }, { gain: { food: 1 } }], [{ first: true }, { donate: { pay: { gold: 6 }, fame: 2 } }]] },
   { id: 'grove', name: '雑木林', text: 'たまるマス（毎ラウンド木材+2）。たまった木材を全部得る。4人以上で使う。', accum: { wood: 2 }, min_p: 4, options: [[]] },
-  { id: 'market2', name: '小さな交換所', text: '売るか買うを1回（交換所と同じ）。4人以上で使う。', min_p: 4, options: [[{ exchange: true }]] },
+  { id: 'market2', name: '小さな交換所', text: '交換を1回（交換所と同じ決まり）。4人以上で使う。', min_p: 4, options: [[{ exchange: true }]] },
   { id: 'deepmine', name: '深い坑道', text: 'たまるマス（毎ラウンド鉄+1）。たまった鉄を全部得る。5人以上で使う。', accum: { iron: 1 }, min_p: 5, options: [[]] },
   { id: 'peddler', name: '行商', text: '金貨1と食料1を得る。5人以上で使う。', min_p: 5, options: [[{ gain: { gold: 1, food: 1 } }]] },
   { id: 'herb2', name: '霧の沢', text: 'たまるマス（毎ラウンド薬草+1）。たまった薬草を全部得る。6人以上で使う。', accum: { herb: 1 }, min_p: 6, options: [[]] },

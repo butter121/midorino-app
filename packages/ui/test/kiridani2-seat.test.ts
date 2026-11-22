@@ -58,7 +58,7 @@ describe('kiridani2 シートは短く（説明は見出しの下に1回）・�
     expect(spec.sub).toBeTruthy();
     for (const it of spec.items) {
       expect(it.detail).toBeUndefined();
-      expect(it.gain).toBeTruthy();
+      if (!it.title.endsWith('と換える')) expect(it.gain).toBeTruthy();  // 魔石を受け取る交換は資源を払うだけ
       expect(it.title.length).toBeLessThanOrEqual(16);
     }
   });

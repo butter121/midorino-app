@@ -56,7 +56,7 @@ const ALL_OCCUPATIONS: CardDef[] = withText([
   O('o_relic_hunter', '遺物狩り', ['ruins', 'hunt'], [win([{ shard: 1 }])]),
   O('o_curator', '学芸員', ['ruins'], [end([famePer('ancient', 2, 4)])]),
   O('o_explorer', '探検家', ['ruins', 'arcane'], [on('use:dig', [{ gain: { mana: 1 } }]), passive({ ancient_look: 1 })]),
-  O('o_relic_trader', '古物商', ['ruins', 'trade'], [on('use:curio', [{ shard: 1 }])]),
+  O('o_relic_trader', '古物商', ['ruins', 'trade'], [on('use:dig', [{ shard: 1 }])]),
   // ---- 戦い
   O('o_hunter', '狩人', ['hunt'], [win([{ loot: 1 }])]),
   O('o_bounty', '賞金稼ぎ', ['hunt', 'trade'], [win([{ gain: { gold: 1 } }])]),

@@ -43,6 +43,7 @@ export function choiceItem2(g: Game, p: Player | null, x: Choice, id: string): C
     if (x.m === 'sell') return { id, title: `${DATA.RES_JP[x.r]}を売る`, cost: one(x.r, x.q), gain: { gold: (p ? g.sellPrice(p, x.r) : DATA.sellPrice(x.r)) * x.q } };
     if (x.m === 'buy') return { id, title: `${DATA.RES_JP[x.r]}を買う`, cost: { gold: DATA.BUY[x.r] * x.q }, gain: one(x.r, x.q) };
     if (x.m === 'item') return { id, title: `${cardName(x.id)}を売る`, card: CARD2[x.id] ? x.id : undefined, gain: { gold: g.itemSell(x.id) } };
+    if (x.m === 'stone') { const st = `${DATA.STONE.jp[x.tier]}魔石`; return x.dir === 'sell' ? { id, title: `${st}1つを換える`, gain: one(x.r, x.q) } : { id, title: `${st}1つと換える`, cost: one(x.r, x.q) }; }
     if (x.m === 'both') return { id, title: `${DATA.RES_JP[x.sell.r]}を売って${DATA.RES_JP[x.buy.r]}を買う`, cost: one(x.sell.r, x.sell.q), gain: one(x.buy.r, x.buy.q) };
   }
   const l = choiceLabel(g, p, x);

@@ -19,7 +19,7 @@ const ALL_TOOLS: CardDef[] = withText([
   T('t_lucky_charm', '招き猫', ['trade'], { wood: 1, gold: 1 }, [on('winter', [{ gain: { gold: 2 } }])], { weight: 'light' }),
   T('t_altar_stone', '祭壇石', ['arcane'], { wood: 1, mana: 2 }, [on('spell', [{ gain: { herb: 1 } }], undefined, 'round')], { weight: 'light' }),
   T('t_tool_shed', '道具小屋', ['fort', 'gather'], { wood: 2 }, [end([famePer('tools', 3, 3)])], { weight: 'light' }),
-  T('t_curio_cabinet', '骨董棚', ['ruins', 'trade'], { wood: 2, mana: 1 }, [on('use:curio', [{ shard: 1 }])], { weight: 'light' }),
+  T('t_curio_cabinet', '骨董棚', ['ruins', 'trade'], { wood: 2, mana: 1 }, [on('use:dig', [{ shard: 1 }])], { weight: 'light' }),
   T('t_pawnshop', '質屋', ['trade'], { wood: 2, gold: 1 }, [on('buy', [{ gain: { mat: 1 } }], undefined, 'round')], { weight: 'light' }),
   T('t_spike_pit', '落とし穴', ['fort', 'hunt'], { wood: 2, iron: 1 }, [fight([{ str: -1 }], undefined, 'round')], { weight: 'light' }),
   T('t_hunting_lodge', '狩猟小屋', ['hunt', 'family'], { wood: 3 }, [win([{ gain: { food: 1 } }], undefined, 'round')], { weight: 'light' }),
