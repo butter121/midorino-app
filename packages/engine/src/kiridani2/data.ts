@@ -78,8 +78,6 @@ export const CAPTURE = { ease: { '-1': 1, '0': 2, '1': 4 } as Record<string, num
 export const MERC: [Cost, number] = [{ gold: 2 }, 1];
 /** 足りない資源を金貨で：作る・建てる・職能を出すとき、1回に max 個まで、買値+premium の金貨で */
 export const GOLD_SUB = { max: 2, premium: 1 };
-/** 冬の食料が足りないとき、金貨 n 枚で食料1の代わり */
-export const WINTER_GOLD = 2;
 /** 武器・防具・道具・秘術を全部使っている（持たせた武器・防具、建てた道具、唱えた秘術が1つ以上）：名声（5年の値） */
 export const FOUR_KINDS_FAME = 2;
 /** 主・古竜に勝った人：好きな品物の山から look 枚見て1枚。主を倒すと遺物も1枚 */

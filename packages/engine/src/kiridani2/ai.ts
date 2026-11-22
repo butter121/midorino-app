@@ -381,8 +381,8 @@ export class AI implements Brain {
     if (toW === 0 && p.avail() > 1) return;
     if (toW === 0) {
       const lack = (q: Player, food: number) => {
-        const need = g.upkeepNeed(q), wg = g.mods(q).winter_gold || D.WINTER_GOLD;
-        const sh = Math.max(0, need - food - Math.floor(q.res.gold / wg));
+        const need = g.upkeepNeed(q), wg = g.mods(q).winter_gold;
+        const sh = Math.max(0, need - food - (wg ? Math.floor(q.res.gold / wg) : 0));
         return Math.ceil(sh / D.UPKEEP) * D.DISCONTENT;
       };
       let best: { q: Player; k: number; r: Res; v: number } | null = null;

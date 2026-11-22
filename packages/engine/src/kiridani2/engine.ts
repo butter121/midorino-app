@@ -1133,9 +1133,9 @@ export class Game {
       const need = this.upkeepNeed(p);
       let paid = Math.min(need, p.res.food);
       p.res.food -= paid;
-      // 足りない食料は金貨 WINTER_GOLD 枚で1つの代わり（あるだけ）
-      const wg = this.mods(p).winter_gold || D.WINTER_GOLD;
-      const byGold = Math.min(need - paid, Math.floor(p.res.gold / wg));
+      // 足りない食料は、カードの winter_gold があるときだけ金貨 winter_gold 枚で1つの代わり（あるだけ）
+      const wg = this.mods(p).winter_gold;
+      const byGold = wg ? Math.min(need - paid, Math.floor(p.res.gold / wg)) : 0;
       if (byGold > 0) { p.res.gold -= byGold * wg; paid += byGold; this.emit({ t: 'pay', seat: p.pid, cost: { gold: byGold * wg }, reason: 'winter' }); }
       const short = need - paid;
       const dis = Math.ceil(short / D.UPKEEP);
