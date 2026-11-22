@@ -48,7 +48,7 @@ export const LEADERS: CardDef[] = [
   def('l_iska', '遺物好きイスカ', ['ruins', 'quest'], [
     `冬に要る食料−${V.explorer.upkeep}。`,
     '冒険のまとまりのマスに、ほかの人がいても置ける。',
-    `冒険のまとまりのマス（依頼板・古い発掘場・遺跡の探索など）の効果が${x(V.explorer.mult)}。`,
+    `冒険のまとまりのマス（依頼板・古い発掘場・遺跡の探索など）の効果が${x(V.explorer.mult)}（切り捨て）。`,
     `遺物の修復の費用−${V.explorer.repairCut}（減らす資源は自分で選ぶ）。`,
     `試合の終わりに、修復した遺物の数×${V.explorer.ancientFame}の名声。`,
   ]),

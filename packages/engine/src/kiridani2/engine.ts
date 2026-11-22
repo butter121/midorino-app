@@ -1372,7 +1372,7 @@ export class Game {
         p.acts.push('accum');
       }
       if (sp.def.shards) {
-        const n = (sp.shards ?? 0) * (adv ? D.LEADER.explorer.mult : 1);
+        const n = Math.floor((sp.shards ?? 0) * (adv ? D.LEADER.explorer.mult : 1));
         sp.shards = 0;
         p.acts.push('accum');
         if (n) yield* this.gainShards(p, n);
@@ -1382,8 +1382,12 @@ export class Game {
       // 「試合で1回」の名声は年数の倍率をかける（凱旋など）
       const fameScale = eff?.limit === 'game' ? D.POINT_SCALE[this.years] ?? 1 : undefined;
       // 探検家の倍：もう1人置ける・先手などは倍にしない（無限に置けてしまうので）
-      for (let t = 0; t < (adv ? D.LEADER.explorer.mult : 1); t++) {
-        const ops = t === 0 ? sp.def.options[o.i] : sp.def.options[o.i].filter((op) => !op.extra_worker && !op.ignore_full && !op.place_again && !op.first);
+      // 倍率が整数でないとき（1.5倍など）は、数（資源・名声・引く枚数など）に倍率をかけて切り捨て、1回だけ行う
+      const mult = adv ? D.LEADER.explorer.mult : 1;
+      const reps = Number.isInteger(mult) ? mult : 1;
+      for (let t = 0; t < reps; t++) {
+        let ops = t === 0 ? sp.def.options[o.i] : sp.def.options[o.i].filter((op) => !op.extra_worker && !op.ignore_full && !op.place_again && !op.first);
+        if (!Number.isInteger(mult)) ops = ops.map((op) => scaleOp(op, mult));
         if (ops.length) yield* this.runOps(p, ops, { space: sp.id, x: o.x, card: sp.stage, opIndex: o.i, ...(fameScale ? { fameScale } : {}) });
       }
     }
@@ -2627,5 +2631,19 @@ export function score(g: Game, p: Player): number {
 }
 /** 魔石の名声：段階ごとに 数 × STONE.fame */
 export function stoneFame(p: Player): number { return p.stones.reduce((a, n, i) => a + n * (D.STONE.fame[i] ?? 0), 0); }
+/** 操作の数（得る資源・名声・引く枚数など）に倍率をかけて切り捨てる。払うもの・もう1人置けるなどはそのまま */
+function scaleOp(op: Op, m: number): Op {
+  const f = (n: number) => Math.floor(n * m);
+  const fc = (c: Cost) => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, f(v as number)])) as Cost;
+  const o: Op = { ...op };
+  if (o.gain) o.gain = fc(o.gain);
+  if (o.convert) o.convert = { from: o.convert.from, to: fc(o.convert.to) };
+  for (const k of ['fame', 'relic', 'heal', 'loot', 'trophy', 'hire', 'hire_free'] as const) if (typeof o[k] === 'number' && (o[k] as number) > 0) (o as any)[k] = f(o[k] as number);
+  if (o.draw) o.draw = { ...o.draw, take: f(o.draw.take), look: Math.max(o.draw.look, f(o.draw.take)) };
+  if (o.gain_per) o.gain_per = { ...o.gain_per, gain: fc(o.gain_per.gain) };
+  if (o.future) o.future = { ...o.future, gain: fc(o.future.gain) };
+  return o;
+}
+
 /** 討伐の証の名声：合計 ÷ TROPHY.fameDiv（四捨五入） */
 export function trophyFame(n: number): number { return Math.round(n / D.TROPHY.fameDiv + 1e-9); }
