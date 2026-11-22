@@ -109,6 +109,12 @@ export function opsValue(ops: Op[]): number {
     if (o.fame_per) v += 0.6 * Math.min(o.fame_per.max ?? 4, 4);
     if (o.gain_per) v += costValue(o.gain_per.gain) * 0.6 * Math.min(o.gain_per.max ?? 3, 3);
     if (o.others_gain) v -= 0.3 * costValue(o.others_gain);
+    if (o.trade_bonus) v += 0.6 * o.trade_bonus;
+    if (o.ward) v += 0.8 * o.ward;
+    if (o.accum_add) v += 1.5;
+    if (o.gain_pick) v += 0.5 * o.gain_pick.n;
+    if (o.relic) v += 1.5 * o.relic;
+    if (o.repair) v += 1.5;
   }
   return v;
 }

@@ -131,11 +131,13 @@ export class Player {
   broken: string[] = [];
   /** 怒り（mod rage：負傷のかわりにためた反撃） */
   rage = 0;
+  /** この冬の襲撃の守り（秘術の ward。冬のあと 0 に戻る） */
+  ward = 0;
   /** 直前の反撃で負傷する分（hit の効果の中で stat dmg） */
   lastDmg = 0;
   kills = 0;
   races: Race[] = [];
-  st = { boss: 0, coop: 0, spells: 0, donations: 0, trades: 0, fights: 0, wins: 0, casts: 0, castsRound: 0, sold: 0, returns: 0, mageRound: 0, blocked: 0, mageWon: 0 };
+  st = { boss: 0, coop: 0, spells: 0, donations: 0, trades: 0, fights: 0, wins: 0, casts: 0, castsRound: 0, sold: 0, returns: 0, mageRound: 0, blocked: 0, mageWon: 0, blockedLast: 0 };
   quests: string[] = [];
   secret: string | null = null;
   discontent = 0;
@@ -174,7 +176,7 @@ export class Player {
     q.beds = this.beds; q.walls = this.walls;
     q.tools = [...this.tools]; q.occs = [...this.occs]; q.hand = [...this.hand]; q.items = [...this.items]; q.ancient = [...this.ancient];
     q.pets = this.pets.map((x) => ({ ...x })); q.kills = this.kills;
-    q.tomes = [...this.tomes]; q.tomeUses = { ...this.tomeUses }; q.shards = this.shards; q.trophies = this.trophies; q.bonusTrophies = this.bonusTrophies; q.stones = [...this.stones]; q.broken = [...this.broken]; q.rage = this.rage; q.lastDmg = this.lastDmg;
+    q.tomes = [...this.tomes]; q.tomeUses = { ...this.tomeUses }; q.shards = this.shards; q.trophies = this.trophies; q.bonusTrophies = this.bonusTrophies; q.stones = [...this.stones]; q.broken = [...this.broken]; q.rage = this.rage; q.ward = this.ward; q.lastDmg = this.lastDmg;
     q.races = [...this.races];
     q.st = { ...this.st };
     q.quests = [...this.quests];
@@ -540,6 +542,9 @@ export class Game {
       case 'trades': return p.st.trades;
       case 'year': return this.year();
       case 'round': return this.round;
+      case 'broken': return p.broken.length;
+      case 'blocked': return p.st.blockedLast;
+      case 'res_total': return RES.reduce((a, r) => a + (r === 'gold' ? 0 : p.res[r]), 0);
     }
   }
 
@@ -592,8 +597,9 @@ export class Game {
   cardCost(p: Player, id: string, extraDiscount: Cost = {}): Cost {
     const c = this.card(id);
     // 何度でもの秘術：手札にあるうちは身につける費用ではなく唱える費用（cost）で数える
-    const kinds = [c.kind];
+    const kinds: string[] = [c.kind];
     if (c.kind === 'gear') { const sl = slotOf(c); if (sl) kinds.push(sl); }
+    if (c.two_hand) kinds.push('two_hand');
     const out = subCost(this.adjust(p, c.cost ?? {}, kinds), extraDiscount);
     // 職人：道具の費用を資源・素材あわせて discount 減らす（多いものから）
     if (c.kind === 'tool' && this.is(p, 'crafter')) {
@@ -672,7 +678,9 @@ export class Game {
     for (const e of eq) { const i = left.indexOf(e); if (i >= 0) left.splice(i, 1); }
     return left;
   }
-  homeGuard(p: Player) { return p.walls + this.mods(p).base_guard; }
+  homeGuard(p: Player) { const m = this.mods(p); return p.walls + m.base_guard + m.home_guard + p.ward; }
+  /** 1回に送れる仲間 */
+  sendCap(p: Player) { return D.MAX_SEND + this.mods(p).send_cap; }
   fightGuardBase(p: Player) { return Math.floor(p.walls / D.WALLS_PER_GUARD) + this.mods(p).base_guard; }
   healCost(p: Player): Cost { return { herb: Math.max(0, D.HEAL_COST - this.mods(p).heal_discount) }; }
 
@@ -716,7 +724,7 @@ export class Game {
   repairVariants(p: Player, id: string): { key: string; cost: Cost }[] {
     const a = this.anc.get(id);
     if (!a) return [];
-    const cut = this.is(p, 'explorer') ? D.LEADER.explorer.repairCut : 0;
+    const cut = (this.is(p, 'explorer') ? D.LEADER.explorer.repairCut : 0) + this.mods(p).repair_cut;
     if (!cut) return [{ key: id, cost: a.repair }];
     const units: Res[] = [];
     for (const [r, n] of Object.entries(a.repair)) for (let k = 0; k < (n as number); k++) units.push(r as Res);
@@ -739,10 +747,14 @@ export class Game {
     return v ? { id, cost: v.cost } : null;
   }
   /** 作るのに要る魔石の段階（武器・防具の重さ。なければ null） */
-  stoneNeed(id: string): number | null {
+  stoneNeed(id: string, p?: Player): number | null {
     const c = this.card(id);
     if (c.kind !== 'weapon' && c.kind !== 'armor') return null;
-    return D.WEIGHT_TIER[c.weight ?? ''] ?? null;
+    const t = D.WEIGHT_TIER[c.weight ?? ''];
+    if (t === undefined) return null;
+    const dn = p ? this.mods(p).stone_down : [];
+    const down = dn.includes(c.kind) || (c.two_hand && dn.includes('two_hand')) ? 1 : 0;
+    return Math.max(0, t - down);
   }
   private refillForecast() {
     const nr = this.round + 1;
@@ -1117,8 +1129,9 @@ export class Game {
       let paid = Math.min(need, p.res.food);
       p.res.food -= paid;
       // 足りない食料は金貨 WINTER_GOLD 枚で1つの代わり（あるだけ）
-      const byGold = Math.min(need - paid, Math.floor(p.res.gold / D.WINTER_GOLD));
-      if (byGold > 0) { p.res.gold -= byGold * D.WINTER_GOLD; paid += byGold; this.emit({ t: 'pay', seat: p.pid, cost: { gold: byGold * D.WINTER_GOLD }, reason: 'winter' }); }
+      const wg = this.mods(p).winter_gold || D.WINTER_GOLD;
+      const byGold = Math.min(need - paid, Math.floor(p.res.gold / wg));
+      if (byGold > 0) { p.res.gold -= byGold * wg; paid += byGold; this.emit({ t: 'pay', seat: p.pid, cost: { gold: byGold * wg }, reason: 'winter' }); }
       const short = need - paid;
       const dis = Math.ceil(short / D.UPKEEP);
       p.discontent += dis;
@@ -1129,17 +1142,22 @@ export class Game {
     let raid = 0;
     for (const nd of this.nests) if (nd.mon && nd.mon.year === y) raid += nd.mon.raid;
     if (this.bossFailedYear.has(y)) raid += this.bossOf[this.round]?.raid ?? 0;
+    // 魔物呼び：全員の襲撃を倍に（切り捨て）
+    const rm = Math.max(1, ...this.players.map((q) => this.mods(q).raid_mult));
+    if (rm > 1) raid = Math.floor(raid * rm);
     for (const p of this.players) {
       const blocked = Math.min(raid, this.homeGuard(p));
       p.st.blocked += blocked;
+      p.st.blockedLast = blocked;
       if (this.is(p, 'guard')) this.leadFame(p, blocked * D.LEADER.guard.blockedFame, '自宅警備員ゴロー');
       const dmg = raid - blocked;
       p.raidLoss += dmg;
       if (raid) this.emit({ t: 'raid', seat: p.pid, damage: dmg, blocked });
       yield* this.fire(p, 'winter', {});
+      p.ward = 0;
     }
     // 採集家：毎年の終わり（冬のあと）に、持っている資源の合計 ÷ fameDiv の名声
-    for (const p of this.players) if (this.is(p, 'gatherer')) this.leadFame(p, Math.floor(RES.reduce((a, r) => a + p.res[r], 0) / D.LEADER.gatherer.fameDiv), '溜め込みポポ');
+    for (const p of this.players) if (this.is(p, 'gatherer')) { const m = this.mods(p); this.leadFame(p, Math.floor((RES.reduce((a, r) => a + p.res[r], 0) + m.hoard_bonus) / (m.hoard_div || D.LEADER.gatherer.fameDiv)), '溜め込みポポ'); }
     for (const p of this.players) if (this.is(p, 'tamer')) this.leadFame(p, p.pets.length * D.LEADER.tamer.fame, '餌付け師ハル');
     this.emit({ t: 'winter_end' });
   }
@@ -1176,7 +1194,7 @@ export class Game {
     for (const s of this.spaces) {
       const cap = this.capOf(s);
       // 定員を無視して置く効果は、交換所・遺跡の探索・発掘場には使えない（取り合いのマスを独り占めしないように）
-      if (cap > 0 && s.occ.length >= cap && (!p.ignoreFull || NO_IGNORE_FULL.has(s.id)) && !(s.id === 'workshop' && this.is(p, 'crafter')) && !(this.is(p, 'explorer') && this.isAdventure(s.id))) continue;
+      if (cap > 0 && s.occ.length >= cap && (!p.ignoreFull || NO_IGNORE_FULL.has(s.id)) && !(s.id === 'workshop' && this.is(p, 'crafter')) && !((this.is(p, 'explorer') || this.mods(p).adv_free) && this.isAdventure(s.id))) continue;
       s.def.options.forEach((ops, i) => {
         const eff = s.optEffects?.[i];
         if (eff) {
@@ -1201,11 +1219,11 @@ export class Game {
         }
         if (nd.wait) {
           if (nd.wait.pid === p.pid) continue;
-          for (let k = 1; k <= Math.min(D.MAX_SEND, nfree); k++) for (const mode of ['normal', 'safe', 'gamble', 'guard'] as FightMode[]) out.push({ s: nd.id, i: 0, k, mode, join: true });
+          for (let k = 1; k <= Math.min(this.sendCap(p), nfree); k++) for (const mode of ['normal', 'safe', 'gamble', 'guard'] as FightMode[]) out.push({ s: nd.id, i: 0, k, mode, join: true });
           continue;
         }
         if (nd.groups >= D.NEST_CAP && !p.ignoreFull) continue;
-        for (let k = 1; k <= Math.min(D.MAX_SEND, nfree); k++) {
+        for (let k = 1; k <= Math.min(this.sendCap(p), nfree); k++) {
           for (const mode of ['normal', 'safe', 'gamble', 'chip', 'guard', 'wait'] as FightMode[]) {
             if (mode === 'wait' && (nd.groups > 0 || this.n < 2)) continue;
             out.push({ s: nd.id, i: 0, k, mode });
@@ -1221,7 +1239,7 @@ export class Game {
       }
       const boss = this.bossOf[this.round];
       if (boss && !this.lairQ.some((e) => e.pid === p.pid)) {
-        for (let k = 1; k <= Math.min(D.MAX_SEND, nfree); k++) for (const mode of ['normal', 'safe', 'gamble', 'guard'] as FightMode[]) out.push({ s: 'lair', i: 0, k, mode });
+        for (let k = 1; k <= Math.min(this.sendCap(p), nfree); k++) for (const mode of ['normal', 'safe', 'gamble', 'guard'] as FightMode[]) out.push({ s: 'lair', i: 0, k, mode });
       }
     }
     if (!out.some((o) => o.s !== '@spell' && o.s !== '@learn')) out.push({ s: 'plaza', i: 0 });
@@ -1259,7 +1277,7 @@ export class Game {
       for (const c of new Set(p.hand)) {
         const cd = this.card(c);
         const ok = (want === 'weapon' || want === 'any') && cd.kind === 'weapon' || (want === 'armor' || want === 'any') && cd.kind === 'armor';
-        const sn = this.stoneNeed(c);
+        const sn = this.stoneNeed(c, p);
         if (ok && this.prereqOk(p, c) && (sn === null || p.stones[sn] > 0) && after(this.cardCost(p, c, disc))) out.push(c);
       }
       for (const gd of this.cs.gear) {
@@ -1362,6 +1380,7 @@ export class Game {
     }
     yield* this.fire(p, `use:${sp.id}`, { space: sp.id });
     if (sp.def.accum) yield* this.fire(p, 'use:any_accum', { space: sp.id });
+    if (this.isAdventure(sp.id) && sp.id !== 'plaza') yield* this.fire(p, 'use:adventure', { space: sp.id });
     for (const q of this.players) if (q !== p) yield* this.fire(q, `other:${sp.id}`, { space: sp.id });
   }
 
@@ -1627,7 +1646,7 @@ export class Game {
           if (!id) break;
           const c = this.goldPlan(p, this.cardCost(p, id));
           if (!c) break;
-          const sn = this.stoneNeed(id);
+          const sn = this.stoneNeed(id, p);
           if (sn !== null && p.stones[sn] <= 0) break;
           this.spend(p, c);
           if (sn !== null) { p.stones[sn] -= 1; this.emit({ t: 'stone_use', seat: p.pid, tier: sn }); }
@@ -1713,6 +1732,7 @@ export class Game {
           p.broken.splice(i, 1); p.ancient.push(rv.id);
           p.acts.push('repair');
           this.emit({ t: 'repair', seat: p.pid, card: rv.id, cost: rv.cost });
+          yield* this.fire(p, 'repair', {});
           break;
         }
         case 'first': this.nextFirst = p.pid; break;
@@ -1753,6 +1773,9 @@ export class Game {
           break;
         }
         case 'others_gain': for (const q of this.players) if (q !== p) { gainRes(q, op.others_gain!); this.emit({ t: 'gain', seat: q.pid, gain: op.others_gain!, reason: ctx.card ?? 'other' }); } break;
+        case 'trade_bonus': p.tradesUsed -= op.trade_bonus!; break;
+        case 'ward': p.ward += op.ward!; break;
+        case 'accum_add': for (const s of this.spaces) if (s.def.accum) { const r = Object.keys(s.def.accum)[0] as Res; s.stock = addCost(s.stock, { [r]: op.accum_add! }); } break;
         default: throw new Error(`unknown op ${k}`);
       }
     }
@@ -1762,7 +1785,7 @@ export class Game {
   trainCands(p: Player, s: 'atk' | 'def', fresh = false): number[] {
     const out: number[] = [];
     if (s === 'atk' && this.mods(p).no_atk_train) return out;
-    const cap = D.MAX_SKILL[s] + (this.is(p, 'striver') ? D.LEADER.striver.skillCap : 0);
+    const cap = D.MAX_SKILL[s] + (this.is(p, 'striver') ? D.LEADER.striver.skillCap : 0) + this.mods(p).skill_cap;
     p.comps.forEach((c, i) => { if (c[s] < cap && (!fresh || c[s] === 0)) out.push(i); });
     return out.sort((a, b) => p.comps[a][s] - p.comps[b][s] || a - b);
   }
@@ -1880,8 +1903,9 @@ export class Game {
   /** 捕まえる食料（強さ÷foodDiv の切り上げ） */
   captureCost(mon: Monster, p?: Player): Cost {
     // 餌付け師ハル：魔物ごとの好物を、強さに応じた数だけ
-    if (p && this.is(p, 'tamer')) return { [this.favRes(mon)]: Math.max(1, Math.ceil(mon.str / D.LEADER.tamer.favDiv)) };
-    return { food: Math.ceil(mon.str / D.CAPTURE.foodDiv) };
+    const cut = p ? this.mods(p).fav_cut : 0;
+    if (p && this.is(p, 'tamer')) return { [this.favRes(mon)]: Math.max(1, Math.ceil(mon.str / D.LEADER.tamer.favDiv) - cut) };
+    return { food: Math.max(1, Math.ceil(mon.str / D.CAPTURE.foodDiv) - cut) };
   }
   /** 捕まえるのに要る戦力（残りの強さ＋格ごとの捕まえにくさ − capture_ease） */
   captureNeed(p: Player, mon: Monster): number {
@@ -2265,7 +2289,7 @@ export class Game {
   }
   private absentPenalty(boss: Monster, absent: Player[]) {
     const reason = boss.type === D.ANCIENT_DRAGON.id ? '古竜に参加しなかった' : '主に参加しなかった';
-    for (const p of absent) { p.fame.absent -= D.BOSS_ABSENT; this.emit({ t: 'fame', seat: p.pid, amount: -D.BOSS_ABSENT, reason }); }
+    for (const p of absent) { if (this.mods(p).no_absent) continue; p.fame.absent -= D.BOSS_ABSENT; this.emit({ t: 'fame', seat: p.pid, amount: -D.BOSS_ABSENT, reason }); }
   }
   private failBoss(boss: Monster) {
     this.bossFailedYear.add(this.year());
@@ -2411,7 +2435,8 @@ export class Game {
       const val = (c: Cost) => Object.entries(c).reduce((s, [r, n]) => s + D.VALUE[r as Res] * (n ?? 0), 0);
       if (kinds(give) !== 1 || kinds(get) !== 1) return '1種類ずつ';
       if (val(give) !== val(get)) return '同じ価値どうし';
-      if (val(give) > D.LEADER.swindler.tradeMax) return `金貨${D.LEADER.swindler.tradeMax}枚分まで`;
+      const mx = D.LEADER.swindler.tradeMax + this.mods(a).trade_max;
+      if (val(give) > mx) return `金貨${mx}枚分まで`;
     }
     if (!canPay(a, give)) return '渡すものが足りない';
     if (!canPay(b, get)) return '相手の持ち物が足りない';

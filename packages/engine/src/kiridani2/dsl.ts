@@ -9,7 +9,7 @@ export class DslError extends Error {
 
 export const WHEN_FIXED = new Set([
   'use', 'fight', 'win', 'lose', 'round_start', 'round_end', 'winter', 'game_end', 'setup',
-  'build', 'hire', 'craft', 'sell', 'buy', 'trade', 'donate', 'spell', 'tame', 'play', 'passive', 'occ', 'quest', 'hit', 'injure',
+  'build', 'hire', 'craft', 'sell', 'buy', 'trade', 'donate', 'spell', 'tame', 'play', 'passive', 'occ', 'quest', 'hit', 'injure', 'repair',
 ]);
 export const WHEN_PREFIX = ['use:', 'instead:', 'other:', 'win_race:'];
 
@@ -17,7 +17,7 @@ export const OP_KEYS = new Set([
   'gain', 'pay', 'convert', 'fame', 'power', 'guard', 'counter', 'loot', 'trophy', 'str', 'no_injury',
   'extra_worker', 'place_again', 'ignore_full', 'future', 'draw', 'hire', 'hire_free', 'tame', 'train', 'build', 'heal',
   'steal_gain', 'craft', 'occ', 'exchange', 'first', 'donate', 'fame_per', 'gain_per', 'others_gain',
-  'power_per', 'lose', 'injure', 'scrap', 'shard', 'buy_card', 'draw_any', 'gain_pick', 'repair', 'relic',
+  'power_per', 'lose', 'injure', 'scrap', 'shard', 'buy_card', 'draw_any', 'gain_pick', 'repair', 'relic', 'trade_bonus', 'ward', 'accum_add',
 ]);
 /** 戦闘中だけ意味のある op */
 export const FIGHT_OPS = new Set(['power', 'guard', 'counter', 'loot', 'trophy', 'str', 'no_injury', 'tame', 'power_per']);
@@ -29,13 +29,14 @@ export const MOD_KEYS = new Set([
   'hand_limit', 'power', 'heal_discount', 'sell_bonus', 'bed_cap',
   'cost_extra', 'pet_cap', 'pet_bring', 'capture_ease', 'gold_mana', 'gold_cap', 'gold_div', 'sell_full', 'shard_need', 'ancient_look',
   'spell_return', 'comp_cap', 'occ_food', 'two_hand_armor', 'rage', 'no_atk_train', 'tool_yield', 'leader_no_weapon',
+  'skill_cap', 'stone_down', 'send_cap', 'fav_cut', 'repair_cut', 'home_guard', 'adv_free', 'raid_mult', 'hoard_bonus', 'hoard_div', 'no_absent', 'trade_max', 'winter_gold',
 ]);
 export const COND_KEYS = new Set(['season', 'min', 'max', 'race', 'coop', 'k_min', 'k_max', 'boss', 'has', 'res_min', 't_min', 't_max']);
 export const STAT_KEYS = new Set<StatKey>([
   'comps', 'occs', 'walls', 'beds', 'facilities', 'gear', 'pets', 'kills', 'races', 'trophies', 'hand', 'ancient', 'quests', 'skills',
   'injured', 'boss', 'coop', 'spells', 'donations', 'trades', 'year', 'round',
   'weapons', 'armors', 'tools', 'tomes', 'casts', 'shards', 'kinds', 'sold', 'gold', 'atk', 'def', 'dmg',
-  'sent_atk', 'sent_wpow', 'sent_k', 'exposed', 'casts_round',
+  'sent_atk', 'sent_wpow', 'sent_k', 'exposed', 'casts_round', 'broken', 'blocked', 'res_total',
 ]);
 /** 戦闘中だけ数える stat（fight の環境がないと 0） */
 export const FIGHT_STATS = new Set<StatKey>(['sent_atk', 'sent_wpow', 'sent_k', 'exposed']);
@@ -192,6 +193,8 @@ export interface ModSum {
   cost_extra: { kind: string; res: Cost }[]; pet_cap: number; pet_bring: number; capture_ease: number; gold_mana: number; gold_cap: number;
   gold_div: number; sell_full: boolean; shard_need: number; ancient_look: number; spell_return: number; comp_cap: number; occ_food: number;
   two_hand_armor: boolean; rage: number; no_atk_train: boolean; tool_yield: number; leader_no_weapon: boolean;
+  skill_cap: number; stone_down: string[]; send_cap: number; fav_cut: number; repair_cut: number; home_guard: number; adv_free: boolean;
+  raid_mult: number; hoard_bonus: number; hoard_div: number; no_absent: boolean; trade_max: number; winter_gold: number;
 }
 export function emptyMods(): ModSum {
   return {
@@ -200,6 +203,8 @@ export function emptyMods(): ModSum {
     cost_extra: [], pet_cap: 0, pet_bring: 0, capture_ease: 0, gold_mana: 0, gold_cap: 0, gold_div: 1, sell_full: false, shard_need: 0,
     ancient_look: 0, spell_return: 0, comp_cap: 0, occ_food: 0, two_hand_armor: false, rage: 0, no_atk_train: false, tool_yield: 0,
     leader_no_weapon: false,
+    skill_cap: 0, stone_down: [], send_cap: 0, fav_cut: 0, repair_cut: 0, home_guard: 0, adv_free: false,
+    raid_mult: 1, hoard_bonus: 0, hoard_div: 0, no_absent: false, trade_max: 0, winter_gold: 0,
   };
 }
 export function addMod(s: ModSum, m: Mod) {
@@ -237,6 +242,19 @@ export function addMod(s: ModSum, m: Mod) {
       case 'no_atk_train': s.no_atk_train = s.no_atk_train || !!m.no_atk_train; break;
       case 'tool_yield': s.tool_yield += m.tool_yield!; break;
       case 'leader_no_weapon': s.leader_no_weapon = s.leader_no_weapon || !!m.leader_no_weapon; break;
+      case 'skill_cap': s.skill_cap += m.skill_cap!; break;
+      case 'stone_down': s.stone_down.push(m.stone_down!); break;
+      case 'send_cap': s.send_cap += m.send_cap!; break;
+      case 'fav_cut': s.fav_cut += m.fav_cut!; break;
+      case 'repair_cut': s.repair_cut += m.repair_cut!; break;
+      case 'home_guard': s.home_guard += m.home_guard!; break;
+      case 'adv_free': s.adv_free = s.adv_free || !!m.adv_free; break;
+      case 'raid_mult': s.raid_mult = Math.max(s.raid_mult, m.raid_mult!); break;
+      case 'hoard_bonus': s.hoard_bonus += m.hoard_bonus!; break;
+      case 'hoard_div': s.hoard_div = s.hoard_div ? Math.min(s.hoard_div, m.hoard_div!) : m.hoard_div!; break;
+      case 'no_absent': s.no_absent = s.no_absent || !!m.no_absent; break;
+      case 'trade_max': s.trade_max += m.trade_max!; break;
+      case 'winter_gold': s.winter_gold = s.winter_gold ? Math.min(s.winter_gold, m.winter_gold!) : m.winter_gold!; break;
       default: throw new DslError(`unknown mod "${k}"`);
     }
   }

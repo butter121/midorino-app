@@ -40,7 +40,7 @@ export type When =
   | 'fight' | 'win' | 'lose' | `win_race:${Race}`
   | 'round_start' | 'round_end' | 'winter' | 'game_end' | 'setup'
   | 'build' | 'hire' | 'craft' | 'sell' | 'buy' | 'trade' | 'donate' | 'spell' | 'tame'
-  | 'occ' | 'quest' | 'hit' | 'injure'
+  | 'occ' | 'quest' | 'hit' | 'injure' | 'repair'
   | `other:${string}`
   | 'play'
   | 'passive';
@@ -62,7 +62,9 @@ export type StatKey =
   /** 戦闘中だけ：送った仲間の攻めの熟練の合計・武器の戦力の合計・人数、守りを超える反撃（守りが足りない分） */
   | 'sent_atk' | 'sent_wpow' | 'sent_k' | 'exposed'
   /** このラウンドに唱えた回数 */
-  | 'casts_round';
+  | 'casts_round'
+  /** 壊れたままの遺物の数・直前の冬に防いだ襲撃・持っている資源の合計（金貨を除く） */
+  | 'broken' | 'blocked' | 'res_total';
 
 /** 効果の条件（すべて満たしたら効く）。知らないキーはエンジンが例外にする */
 export interface Cond {
@@ -156,6 +158,12 @@ export interface Op {
   /** 山を選んでから引く（look 枚見て take 枚。from は選べる山） */
   /** 好きな資源を n 個（1つずつ選ぶ。同じ種類でもよい） */
   gain_pick?: { n: number; from: Res[] };
+  /** このラウンドに取引をあと n 回できる */
+  trade_bonus?: number;
+  /** この冬の襲撃の守り +n */
+  ward?: number;
+  /** すべてのたまるマスに資源を1つずつ足す */
+  accum_add?: number;
   draw_any?: { from: ('occ' | 'weapon' | 'armor' | 'tool' | 'spell')[]; look: number; take: number };
 }
 
@@ -165,7 +173,7 @@ export interface Mod {
   market_both?: boolean;
   trade_count?: number;
   accum_bonus?: Partial<Record<string, number>>;
-  cost_discount?: { kind: 'weapon' | 'armor' | 'tool' | 'spell' | 'occ' | 'gear' | 'bed' | 'wall' | 'any'; res: Cost };
+  cost_discount?: { kind: 'weapon' | 'armor' | 'tool' | 'spell' | 'occ' | 'gear' | 'bed' | 'wall' | 'two_hand' | 'any'; res: Cost };
   upkeep?: number;
   donate_rate?: Cost;
   base_guard?: number;
@@ -217,6 +225,33 @@ export interface Mod {
   tool_yield?: number;
   /** 武器を持てるのはリーダー以外 */
   leader_no_weapon?: boolean;
+  // ---- 300枚のリストで足したもの
+  /** 熟練の上限 +n */
+  skill_cap?: number;
+  /** 作るときの魔石の段階を1つ下げる（weapon・armor・two_hand） */
+  stone_down?: 'weapon' | 'armor' | 'two_hand';
+  /** 1回に送れる仲間 +n */
+  send_cap?: number;
+  /** 使い魔にする費用（好物・食料）−n（最低1） */
+  fav_cut?: number;
+  /** 遺物の修復の費用 −n（減らす資源は選ぶ） */
+  repair_cut?: number;
+  /** 冬の襲撃の守り +n（戦闘の守りには入らない） */
+  home_guard?: number;
+  /** 冒険のまとまりのマスに、ほかの人がいても置ける */
+  adv_free?: boolean;
+  /** 全員の冬の襲撃を倍にする（切り捨て） */
+  raid_mult?: number;
+  /** 溜め込みポポ：年の終わりの名声で資源を +n として数える */
+  hoard_bonus?: number;
+  /** 溜め込みポポ：年の終わりの名声の割る数をこれにする */
+  hoard_div?: number;
+  /** 主・古竜に参加しなくても減点なし */
+  no_absent?: boolean;
+  /** 押し売りモモ：1回の取引の上限 +n */
+  trade_max?: number;
+  /** 冬の食料を金貨 n 枚で1つの代わりに払える */
+  winter_gold?: number;
 }
 
 export interface Effect {

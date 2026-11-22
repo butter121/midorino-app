@@ -96,11 +96,11 @@ describe('kiridani2 魔石の段階', () => {
   it('軽い武器は初級の魔石が1つ要り、作ると減る。魔石は最後に 1・2・4 の名声', () => {
     const g = new Game(2, [null, null], { cards: CARD_SET });
     const p = g.players[0];
-    p.hand.push('w_woodaxe'); p.res.wood = 5; p.res.iron = 5;
-    expect(g.expand(p, [{ craft: 'weapon' }])).not.toContain('w_woodaxe');
+    p.hand.push('w_po1'); p.res.wood = 5; p.res.iron = 5;
+    expect(g.expand(p, [{ craft: 'weapon' }])).not.toContain('w_po1');
     p.stones = [1, 1, 1];
-    expect(g.expand(p, [{ craft: 'weapon' }])).toContain('w_woodaxe');
-    const gen = g.runOps(p, [{ craft: 'weapon' }], { x: 'w_woodaxe' });
+    expect(g.expand(p, [{ craft: 'weapon' }])).toContain('w_po1');
+    const gen = g.runOps(p, [{ craft: 'weapon' }], { x: 'w_po1' });
     let r = gen.next(); while (!r.done) r = gen.next(undefined as never);
     expect(p.stones).toEqual([0, 1, 1]);
     expect(stoneFame(p)).toBe(6);

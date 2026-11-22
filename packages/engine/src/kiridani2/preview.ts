@@ -219,6 +219,9 @@ function opText(op: Record<string, unknown>): string {
     case 'no_injury': return `負傷を${v}人防ぐ`;
     case 'steal_gain': return `${costJP(v)}を得る`;
     case 'ignore_full': return '定員の埋まった巣にも置ける';
+    case 'trade_bonus': return `このラウンド取引をあと${v}回`;
+    case 'ward': return `この冬の襲撃の守り+${v}`;
+    case 'accum_add': return 'たまるマスすべてに資源+1';
     default: return '';
   }
 }
