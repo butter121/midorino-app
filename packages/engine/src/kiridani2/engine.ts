@@ -1376,7 +1376,11 @@ export class Game {
       if (eff) this.markLimit(p, sp.id, o.i, eff.limit);
       // 「試合で1回」の名声は年数の倍率をかける（凱旋など）
       const fameScale = eff?.limit === 'game' ? D.POINT_SCALE[this.years] ?? 1 : undefined;
-      for (let t = 0; t < (adv ? D.LEADER.explorer.mult : 1); t++) yield* this.runOps(p, sp.def.options[o.i], { space: sp.id, x: o.x, card: sp.stage, opIndex: o.i, ...(fameScale ? { fameScale } : {}) });
+      // 探検家の倍：もう1人置ける・先手などは倍にしない（無限に置けてしまうので）
+      for (let t = 0; t < (adv ? D.LEADER.explorer.mult : 1); t++) {
+        const ops = t === 0 ? sp.def.options[o.i] : sp.def.options[o.i].filter((op) => !op.extra_worker && !op.ignore_full && !op.place_again && !op.first);
+        if (ops.length) yield* this.runOps(p, ops, { space: sp.id, x: o.x, card: sp.stage, opIndex: o.i, ...(fameScale ? { fameScale } : {}) });
+      }
     }
     yield* this.fire(p, `use:${sp.id}`, { space: sp.id });
     if (sp.def.accum) yield* this.fire(p, 'use:any_accum', { space: sp.id });
@@ -2180,6 +2184,22 @@ export class Game {
         }
         if (pw >= target || mode === 'safe' || mode === 'wait' || mode === 'capture') chosen = pick;
         else cost = {};
+      }
+      // 自動で選ぶとき（AI）：勝てる見込みなら秘術も使う。
+      // 連唱魔女ミナは使った秘術ごとに名声とマナ鉱石が返るので、払える秘術は全部。ほかの人は守りを超える反撃があれば、反撃を下げる・守る秘術を1つ
+      if (mode !== 'wait' && mode !== 'capture') {
+        const won = pl.power + chosen.reduce((a, o) => a + gainOf(o), 0) >= (target ?? need - 1 + pl.str);
+        const left = optional.filter((o) => o.spell && !chosen.includes(o));
+        const exposed = Math.max(0, mon.counter - this.defenseOf(p, idxs));
+        for (const o of left) {
+          const mage = this.is(p, 'mage') && won;
+          const shield = exposed > 0 && o.ops.some((op) => (op.counter ?? 0) < 0 || (op.guard ?? 0) > 0 || (op.no_injury ?? 0) > 0);
+          if (!mage && !shield) continue;
+          const tot = addCost(cost, o.cost);
+          if (!canPay(p, tot)) continue;
+          cost = tot; chosen.push(o);
+          if (!mage) break;
+        }
       }
     }
     for (const o of chosen) {

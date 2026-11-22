@@ -148,7 +148,7 @@ export const LEADER = {
   /** 詐欺師：相手の了承なしに取引（1種類ずつ・同じ価値・金貨 tradeMax 枚分まで）、職能を出す食料 +occFood、終わりに取引1回につき fame */
   swindler: { fame: 1, tradeMax: 3, occFood: 1 },
   /** 職人：道具の費用 −discount（資源・素材あわせて）、道具を作るたび fame、作ったあと山から look 枚の道具を見て1枚取る */
-  crafter: { discount: 2, fame: 4, look: 3 },
+  crafter: { discount: 2, fame: 2, look: 3 },
   /** 成金ミロ：始めに資源（木材・鉄・薬草・マナ鉱石・食料）を start 個ずつ、売値 +sellBonus、終わりに金貨 ÷ goldDiv の名声 */
   merchant: { start: 10, sellBonus: 1, goldDiv: 3 },
 };

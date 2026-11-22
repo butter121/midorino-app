@@ -28,7 +28,7 @@ export interface W {
 }
 export const DEFAULT_W: W = {
   res: { wood: 0.35, iron: 0.5, herb: 0.4, mana: 0.7, food: 0.55, gold: 0.2, mat: 0.5 },
-  act: 0.5, short: 1.6, inj: 0.9, perm: 0.35, defn: 0.15, wall: 0.5, hand: 0.35, played: 1.0, quest: 0.5, tag: 0.35, loop: 3.0, pet: 0.5, ancient: 0.6,
+  act: 0.5, short: 1.6, inj: 0.9, perm: 1.0, defn: 0.4, wall: 0.5, hand: 0.35, played: 1.0, quest: 0.5, tag: 0.35, loop: 3.0, pet: 0.5, ancient: 0.6,
 };
 /** 強い動きごとの重み（v1 の ARCHETYPES に当たる） */
 export const ENGINE_W: Partial<Record<EngineTag, (w: W) => void>> = {
@@ -458,14 +458,27 @@ export function evaluate(g: Game, p: Player, W: W, targets: EngineTag[] = []): n
   const sm = g.skillMult(p);
   let sk = 0;
   for (const c of p.comps) {
-    pw += c.atk * sm * SKILL_BONUS + (c.weapon ? g.card(c.weapon).power ?? 0 : 0);
-    df += c.def * sm * SKILL_BONUS + (c.armor ? g.card(c.armor).guard ?? 0 : 0);
+    // 武器の戦力は武器狂いアカネなら倍。武器の守りも守りに入る
+    pw += c.atk * sm * SKILL_BONUS + (c.weapon ? (g.card(c.weapon).power ?? 0) * g.weaponMult(p) : 0);
+    df += c.def * sm * SKILL_BONUS + (c.armor ? g.card(c.armor).guard ?? 0 : 0) + (c.weapon ? g.card(c.weapon).guard ?? 0 : 0);
     sk += c.atk + c.def;
   }
   // 努力家：勝つたびに送った仲間の熟練の合計 ÷ fameDiv の名声。残りの戦闘の見込み（4ラウンドに約3回）で数える
   if (g.is(p, 'striver')) v += sk / D.LEADER.striver.fameDiv * Math.min(rl, 12) * 0.35;
-  v += W.perm * pw * Math.min(rl, 10) / 4;
-  v += W.defn * df * Math.min(rl, 10) / 4;
+  // 鉄壁ガレス：守りが戦力として倍で効く
+  if (g.is(p, 'shield')) pw += df * D.LEADER.shield.guardMult;
+  // 戦力1の値打ち：残りのラウンドで、勝つ見込みが上がる分（1ラウンドに約0.25）。終盤ほど小さい
+  v += W.perm * pw * Math.min(rl, 12) * 0.25;
+  v += W.defn * df * Math.min(rl, 12) * 0.25;
+  // このラウンドにもう1人置ける・このラウンドの秘術の後押し（戦闘にまだ出られるなら）
+  v += W.act * p.extra;
+  if (rl >= 0 && p.fightable() > 0) v += 0.3 * (p.rbuf.power - p.rbuf.str) + 0.15 * (p.rbuf.guard - p.rbuf.counter);
+  // 先手（次のラウンドに好きなマスを先に取れる）
+  if (g.nextFirst === p.pid && g.first !== p.pid && rl > 0) v += 0.4 + 0.2 * g.n;
+  // 連唱魔女ミナ：このラウンドに使った秘術は、勝てば1つ名声2になる
+  if (g.is(p, 'mage') && p.st.castsRound) v += p.st.castsRound * D.LEADER.mage.fame * (p.st.mageWon ? 1 : p.fightable() > 0 ? 0.5 : 0);
+  // 魔石は名声として score に入っているが、手札の武器・防具を作る元にもなる（作れる段階の魔石を少し高く見る）
+  for (const c of p.hand) { const t = g.stoneNeed(c, p); if (t !== null && p.stones[t] > 0) v += 0.4; }
   v += W.pet * p.pets.length * Math.min(rl, 12) / 12;
   const wAfter = wintersFrom(g, g.round + 1) + (g.isWinter() ? 1 : 0);
   v += W.wall * Math.min(g.homeGuard(p), 4) * Math.min(wAfter, 3) * 0.5;
