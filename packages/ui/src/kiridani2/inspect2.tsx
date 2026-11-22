@@ -41,7 +41,8 @@ function playerBlock(v: View2, p: PV2): ReactNode {
     <Row k="施設・防壁">{p.tools.map((c) => <CardChip2 key={c} id={c} />)}寝床{p.beds}・防壁{p.walls}</Row>
     <Row k="討伐">{p.trophies.length}体・使い魔{p.pets}</Row>
     {p.tomes.length > 0 && <Row k="身につけた秘術">{p.tomes.map((c) => <CardChip2 key={c} id={c} />)}</Row>}
-    <Row k="遺物">{p.ancient.length}枚・欠片{p.shards}/{DATA.SHARD_NEED}</Row>
+    <Row k="遺物">直した{p.ancient.length}枚・壊れた{p.broken.length}枚</Row>
+    <Row k="魔石">{p.stones}</Row>
     <Row k="冬の食料">{foodLine(p)}</Row>
     <Row k="運命の残り"><FateRow2 left={p.fateLeft} inspect={`fate2:${p.seat}`} /><small className="kd2-insp-sub">{p.fateLeft.length ? `${p.fateLeft.length}枚` : '次は混ぜ直し'}</small></Row>
   </>;
@@ -61,7 +62,7 @@ function body(target: string, v: View2): { kind: string; title: string; node: Re
           {c?.prereq && <Row k="条件">{Object.entries(c.prereq).map(([kk, n]) => `${kk === 'occs' ? '職能' : kk === 'comps' ? '仲間' : kk === 'walls' ? '防壁' : kk === 'facilities' ? '施設' : kk === 'kills' ? '討伐' : kk}${typeof n === 'number' ? `${n}以上` : `：${cardName(String(n))}`}`).join('・')}</Row>}
           {c && (c.kind === 'weapon' || c.kind === 'armor' || c.kind === 'gear') && <Row k="装備">{c.slot === 'armor' ? '防具の枠' : '武器の枠'}{c.power ? `・戦力+${c.power}` : ''}{c.guard ? `・守り+${c.guard}` : ''}{c.two_hand ? '・両手（防具なし）' : ''}</Row>}
           {c?.kind === 'gear' && <Row k="作る場所">{(c as { place?: string }).place === 'training' ? '訓練場' : '鍛冶場'}</Row>}
-          {a && <Row k="組">同じ種類2つ＝名声{DATA.ANCIENT_SAME[2]}・3つ＝{DATA.ANCIENT_SAME[3]}・4種そろい＝{DATA.ANCIENT_ALL}</Row>}
+          {a && <Row k="修復"><CostRow cost={a.repair} size={18} />・名声{a.fame}</Row>}
         </>,
       };
     }

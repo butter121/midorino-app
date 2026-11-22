@@ -64,22 +64,40 @@ describe('kiridani2 名声', () => {
     expect(DATA.tableFor(15).kills).toEqual([2, 8, 14, 20]);
     expect(DATA.tableFor(15).races).toEqual([1, 3, 4, 5]);
   });
-  it('遺物：同じ種類2つ＝3、3つ＝6、4つ＝9、5種そろい＝6（重複なし）', () => {
+  it('遺物：4種×6枚、名声3〜6。直した遺物の名声だけ数える（壊れた遺物は0点）', () => {
     const g = new Game(2, [null, null], { cards: CARD_SET });
     const p = g.players[0];
     const ids = [...g.anc.values()];
-    const grp = (k: string) => ids.filter((a) => a.group === k).map((a) => a.id);
-    const groups = [...new Set(ids.map((a) => a.group))];
-    p.ancient = grp(groups[0]).slice(0, 2);
-    expect(ancientScore(g, p)).toBe(3);
-    p.ancient = grp(groups[0]).slice(0, 3);
-    expect(ancientScore(g, p)).toBe(6);
-    p.ancient = grp(groups[0]).slice(0, 4);
-    expect(ancientScore(g, p)).toBe(9);
-    p.ancient = groups.map((k) => grp(k)[0]);
-    expect(ancientScore(g, p)).toBe(6);
-    p.ancient = [...groups.map((k) => grp(k)[0]), grp(groups[0])[1]];
-    expect(ancientScore(g, p)).toBe(6);
+    expect(ids).toHaveLength(24);
+    expect(new Set(ids.map((a) => a.group))).toEqual(new Set(['cup', 'vessel', 'idol', 'crown']));
+    expect(ids.every((a) => a.fame >= 3 && a.fame <= 6)).toBe(true);
+    p.broken = [ids[0].id];
+    expect(ancientScore(g, p)).toBe(0);
+    p.ancient = [ids[0].id, ids[5].id];
+    expect(ancientScore(g, p)).toBe(ids[0].fame + ids[5].fame);
+  });
+
+  it('修復：費用を払うと壊れた遺物が直る', () => {
+    const g = new Game(2, [null, null], { cards: CARD_SET });
+    const p = g.players[0];
+    const a = [...g.anc.values()][0];
+    p.broken = [a.id];
+    for (const [r, n] of Object.entries(a.repair)) p.res[r as 'wood'] = n as number;
+    expect(g.expand(p, [{ repair: true }])).toEqual([a.id]);
+    const gen = g.runOps(p, [{ repair: true }], { x: a.id });
+    expect(gen.next().done).toBe(true);
+    expect(p.broken).toEqual([]);
+    expect(p.ancient).toEqual([a.id]);
+  });
+
+  it('ギルド：魔石を1回3つまで名声に換える', () => {
+    const g = new Game(2, [null, null], { cards: CARD_SET });
+    const p = g.players[0];
+    p.stones = 5;
+    const gen = g.runOps(p, [{ settle: true }], {});
+    expect(gen.next().done).toBe(true);
+    expect(p.stones).toBe(5 - DATA.GUILD.settleMax);
+    expect(p.fame.stone).toBe(DATA.GUILD.settleMax / DATA.GUILD.fameDiv);
   });
 });
 

@@ -15,6 +15,8 @@ export interface PV2 {
   secret?: string; ratio?: Record<string, number>; spellsUsed: string[];
   /** 身につけた（何度でも使える）秘術・遺物の欠片 */
   tomes: string[]; shards: number;
+  /** 壊れた遺物・魔石 */
+  broken: string[]; stones: number;
   /** 運命の山の残り（小さい順。空＝次にめくるとき混ぜ直し）。めくった値は全員に見えるので公開 */
   fateLeft: number[];
   /** 冬の食料のカードの修正（合わせで届いた「要る食料」− 仲間の数から出す値） */
@@ -89,7 +91,7 @@ const newComp = (leader: boolean): CompView => ({ atk: 0, def: 0, weapon: null, 
 function newPlayer(seat: Seat, name: string): PV2 {
   return {
     seat, name, fame: 0, res: emptyRes(), beds: DATA.START.beds, walls: 0, tools: [], occs: [], items: [], hand: [], ancient: [],
-    comps: [newComp(true), newComp(false)], pets: 0, petList: [], trophies: [], discontent: 0, raidLoss: 0, quests: [], spellsUsed: [], tomes: [], shards: 0,
+    comps: [newComp(true), newComp(false)], pets: 0, petList: [], trophies: [], discontent: 0, raidLoss: 0, quests: [], spellsUsed: [], tomes: [], shards: 0, broken: [], stones: 0,
     fateLeft: fullFate(), upkeepMod: 0,
   };
 }
@@ -241,7 +243,7 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
     case 'donate': { const p = P(ev.seat); add(p.res, ev.cost, -1); p.fame += ev.fame; log(`${who(v, ev.seat)}が寄進（名声+${ev.fame}）`); break; }
     case 'draw': {
       const p = P(ev.seat);
-      if (ev.from === 'ancient') p.ancient.push(ev.card); else p.hand.push(ev.card);
+      if (ev.from === 'ancient') p.broken.push(ev.card); else p.hand.push(ev.card);
       break;
     }
     case 'combat_start':
@@ -261,18 +263,22 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
     case 'loot': add(P(ev.seat).res, ev.gain); if (v.combat) v.combat.loot = ev.gain; break;
     case 'trophy': {
       const p = P(ev.seat);
-      p.trophies.push(ev.monster); p.fame += ev.fame;
+      p.trophies.push(ev.monster); p.fame += ev.fame; p.stones += ev.stones ?? 0;
       if (v.combat) v.combat.trophy = ev.fame;
       const uid = v.combat?.monster.uid;
       const n = v.nests.find((x) => x.mon && (x.mon.uid === uid));
       if (n) n.mon = undefined;
       if (v.lair.boss && v.lair.boss.uid === uid) v.lair.defeated = true;
-      log(`${who(v, ev.seat)}が${v.combat?.monster.name ?? '魔物'}を倒した（証${ev.trophies ?? ev.fame}・名声+${ev.fame}）`);
+      log(`${who(v, ev.seat)}が${v.combat?.monster.name ?? '魔物'}を倒した（証${ev.trophies ?? ev.fame}・魔石${ev.stones ?? 0}・名声+${ev.fame}）`);
       break;
     }
     case 'learn': { const p = P(ev.seat); dropHand(p, ev.card); if (!p.tomes.includes(ev.card)) p.tomes.push(ev.card); log(`${who(v, ev.seat)}が秘術「${cardName(ev.card)}」を身につけた`); break; }
     case 'release': { const p = P(ev.seat); p.pets = Math.max(0, p.pets - 1); const k = p.petList.findIndex((x) => x.type === ev.monster); if (k >= 0) p.petList.splice(k, 1); log(`${who(v, ev.seat)}が使い魔を放した`); break; }
     case 'shards': { P(ev.seat).shards = ev.total; break; }
+    case 'settle': { const p = P(ev.seat); p.stones = Math.max(0, p.stones - ev.stones); p.fame += ev.fame; log(`${who(v, ev.seat)}が魔石${ev.stones}つを名声に換えた（名声+${ev.fame}）`); break; }
+    case 'repair': { const p = P(ev.seat); add(p.res, ev.cost, -1); const i = p.broken.indexOf(ev.card); if (i >= 0) p.broken.splice(i, 1); p.ancient.push(ev.card); log(`${who(v, ev.seat)}が${ANC2[ev.card]?.name ?? '遺物'}を修復した`); break; }
+    case 'sell_relic': { const p = P(ev.seat); p.res.gold += ev.gold; const l = ev.broken ? p.broken : p.ancient; const i = l.indexOf(ev.card); if (i >= 0) l.splice(i, 1); log(`${who(v, ev.seat)}が遺物を売った（金貨+${ev.gold}）`); break; }
+    case 'sell_tool': { const p = P(ev.seat); p.res.gold += ev.gold; p.tools = p.tools.filter((c) => c !== ev.card); log(`${who(v, ev.seat)}が${cardName(ev.card)}を売った（金貨+${ev.gold}）`); break; }
     case 'scrap': { const p = P(ev.seat); p.tools = p.tools.filter((c) => c !== ev.card); log(`${who(v, ev.seat)}が${cardName(ev.card)}を壊した`); break; }
     case 'curio': v.curio = [...ev.cards]; break;
     case 'tame': {

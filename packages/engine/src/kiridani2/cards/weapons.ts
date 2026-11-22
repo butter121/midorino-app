@@ -49,7 +49,7 @@ const ALL_WEAPONS: CardDef[] = withText([
   W('w_oath_blade', '誓いの剣', ['boss', 'quest'], { iron: 3, gold: 2 }, 3, [win([{ fame: 3 }], { boss: true })], { weight: 'mid' }),
   W('w_bulwark_mace', '城兵の鎚矛', ['fort'], { iron: 3 }, 3, [fight([powPer('walls', 2, 1, 2)])], { weight: 'mid' }),
   W('w_guard_spear', '守り手の槍', ['fort', 'family'], { wood: 2, iron: 1 }, 2, [on('hit', [{ gain: { herb: 1 } }], undefined, 'round')], { guard: 1, weight: 'mid' }),
-  W('w_mana_blade', '魔石の刃', ['arcane', 'hunt'], { iron: 2, mana: 2 }, 3, [fight([{ pay: { mana: 1 } }, { power: 2 }])], { weight: 'mid' }),
+  W('w_mana_blade', 'マナ鉱石の刃', ['arcane', 'hunt'], { iron: 2, mana: 2 }, 3, [fight([{ pay: { mana: 1 } }, { power: 2 }])], { weight: 'mid' }),
   W('w_arcane_orb', '星詠みの宝珠', ['arcane'], { mana: 3, mat: 2 }, 2, [fight([powPer('tomes', 1, 1, 3)])], { weight: 'mid' }),
   W('w_spellsword', '魔法剣士の剣', ['arcane', 'hunt'], { iron: 3, mana: 1 }, 3, [fight([{ power: 2 }], { min: { casts_round: 1 } })], { weight: 'mid' }),
   W('w_rune_axe', '刻印の斧', ['arcane', 'boss'], { iron: 3, mana: 1 }, 4, [fight([{ counter: -2 }], { min: { casts_round: 1 } })], { weight: 'mid' }),

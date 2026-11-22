@@ -188,7 +188,7 @@ export class AI implements Brain {
       case 'card': {
         if (req.why === 'quest') return this.best(req.cards, (id) => this.questFit(g, id));
         if (req.kind === 'ancient' || req.cards.every((id) => g.anc.has(id))) {
-          return this.best(req.cards, (id) => { const q = p.clone(); q.ancient.push(id); return ancientScore(g, q); });
+          return this.best(req.cards, (id) => (g.anc.get(id)?.fame ?? 0) - 0.3 * costValue(g.anc.get(id)?.repair ?? {}));
         }
         const cs = req.cards.map((id) => ({ id, c: g.byId.get(id) }));
         if (req.why === 'leader') {
@@ -243,6 +243,7 @@ export class AI implements Brain {
       if (x === 'wall') return 1.5 + (this.targets.includes('fort') ? 1 : 0);
       if (x === 'atk') return 1 + (this.targets.some((t) => WEAPON_TAGS.has(t)) ? 0.5 : 0);
       if (x === 'def') return 0.8;
+      { const an = g.anc.get(x); if (an) return an.fame - 0.3 * costValue(an.repair); }
       if (g.byId.has(x)) return cardValue(g.card(x), this.targets) - 0.1 * costValue(g.card(x).cost ?? {});
       const nd = g.nest(x);
       if (nd?.mon) return nd.mon.str;
@@ -251,6 +252,8 @@ export class AI implements Brain {
     if (x.m === 'sell') return D.sellPrice(x.r) * x.q * this.W.res.gold - this.W.res[x.r] * x.q;
     if (x.m === 'buy') return this.W.res[x.r] * x.q - D.BUY[x.r] * x.q * this.W.res.gold;
     if (x.m === 'item') return g.itemSell(x.id) * this.W.res.gold;
+    if (x.m === 'tool') return g.itemSell(x.id) * this.W.res.gold - cardValue(g.card(x.id), this.targets);
+    if (x.m === 'relic') return g.relicSell(x.id, x.broken) * this.W.res.gold - (g.anc.get(x.id)?.fame ?? 0) * (x.broken ? 0.45 : 1);
     return 0;
   }
 
@@ -404,6 +407,8 @@ export function sumAtLeast(decks: number[][], need: number): number {
 }
 
 // ------------------------------------------------------------ 評価関数
+const SETTLE_PUSH = 3;
+const REPAIR_PUSH = 2;
 function wintersFrom(g: Game, r: number) { let n = 0; for (let w = 4; w <= g.R; w += 4) if (w >= r) n++; return n; }
 
 export function evaluate(g: Game, p: Player, W: W, targets: EngineTag[] = []): number {
@@ -453,7 +458,11 @@ export function evaluate(g: Game, p: Player, W: W, targets: EngineTag[] = []): n
   for (const c of p.hand) v += W.hand * cardValue(g.card(c), targets) * Math.min(1, rl / 6);
   for (const c of g.activeCards(p)) v += W.played * cardValue(g.card(c), targets) * Math.min(rl, 12) / 12;
   for (const c of g.storage(p)) v += 0.3 * g.itemSell(c);
-  v += W.ancient * p.ancient.length + W.ancient * 0.3 * p.shards;
+  // 魔石（ギルドで名声に換える見込み）・壊れた遺物（修復すれば名声）
+  // 魔石はギルドで換えないと0点。ギルドに行く手を少し後押しする（このラウンドに精算した）
+  if (p.acts.includes('settle')) v += SETTLE_PUSH;
+  if (p.acts.includes('repair')) v += REPAIR_PUSH;
+  for (const id of p.broken) v += (rl > 0 ? 0.3 : 0) * (g.anc.get(id)?.fame ?? 0);
   // 依頼の進み具合
   for (const q of g.quests) {
     if (q.done.includes(p.pid) || q.done.length >= D.QUEST_FAME.length) continue;

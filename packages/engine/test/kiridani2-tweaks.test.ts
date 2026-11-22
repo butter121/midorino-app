@@ -66,10 +66,10 @@ describe('kiridani2 訓練', () => {
 });
 
 describe('kiridani2 遺跡の探索', () => {
-  it('武器・防具・道具・秘術の山を選んで3枚見て1枚／遺物の欠片+2', () => {
+  it('武器・防具・道具・秘術の山を選んで3枚見て1枚／遺物1枚', () => {
     const ops = stageOps('ruins');
     expect(ops[0][0].draw_any?.from).toEqual(['weapon', 'armor', 'tool', 'spell']);
-    expect(ops[1][0].shard).toBe(2);
+    expect(ops[1][0].relic).toBe(1);
   });
 
   it('選んだ山からだけ見る', () => {
@@ -86,15 +86,15 @@ describe('kiridani2 遺跡の探索', () => {
     expect(p.hand).toContain(req.cards[0]);
   });
 
-  it('欠片が3つたまると遺物を1枚引く', () => {
+  it('遺物を引くと壊れた状態で手元に来る（欠片はない）', () => {
     const { g, p } = bare();
-    const gen = g.runOps(p, [{ shard: 3 }], {});
+    const gen = g.runOps(p, [{ relic: 1 }], {});
     const r = gen.next();
     const req = r.value as { k: string; cards: string[] };
     expect(req.k).toBe('card');
     gen.next(req.cards[0]);
-    expect(p.ancient).toEqual([req.cards[0]]);
-    expect(p.shards).toBe(0);
+    expect(p.broken).toEqual([req.cards[0]]);
+    expect(p.ancient).toEqual([]);
   });
 });
 

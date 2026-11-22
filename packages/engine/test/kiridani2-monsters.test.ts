@@ -30,11 +30,12 @@ describe('kiridani2 魔物の強さ', () => {
     expect('rage' in m).toBe(false);
   });
 
-  it('古竜は主より強く（20 固定ではない）、証は DRAGON.trophy', () => {
+  it('古竜は主より強く（20 固定ではない）、証は強さ÷2.5＋15 前後。魔石は1〜3', () => {
     const g = game(4, 10);
     const d = rolls(g, 'dragon', 1);
     expect(avg(d.map((m) => m.str))).toBeGreaterThan(avg(rolls(g, 'boss', 0.8).map((m) => m.str)));
-    expect(d.every((m) => m.trophy === DATA.DRAGON.trophy && m.raid === 0 && !('rage' in m))).toBe(true);
+    expect(d.every((m) => Math.abs(m.trophy - (m.str / DATA.TROPHY.div + DATA.TROPHY.dragon)) <= 2 && m.raid === 0 && !('rage' in m))).toBe(true);
+    expect(d.every((m) => m.stones >= DATA.STONE.min && m.stones <= DATA.STONE.max)).toBe(true);
   });
 
   it('荒ぶりはない：clash に rage は出ず、同じ種なら同じ試合になる', () => {

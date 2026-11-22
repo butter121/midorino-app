@@ -75,7 +75,7 @@ const ALL_OCCUPATIONS: CardDef[] = withText([
   O('o_miner', '鉱夫', ['gather', 'smith'], [on('use:mine', [{ gain: { iron: 1 } }])]),
   O('o_herbalist', '薬師', ['gather', 'boss'], [on('use:meadow', [{ gain: { herb: 1 } }]), passive({ heal_discount: 1 })]),
   O('o_fisher', '漁師', ['family', 'gather'], [on('use:hunt', [{ gain: { food: 1 } }])]),
-  O('o_mana_digger', '魔石掘り', ['arcane', 'gather'], [on('use:spring', [{ gain: { mana: 1 } }])]),
+  O('o_mana_digger', 'マナ鉱石掘り', ['arcane', 'gather'], [on('use:spring', [{ gain: { mana: 1 } }])]),
   O('o_fortifier', '築城家', ['fort'], [end([famePer('walls', 1, 5)]), on('build', [{ gain: { food: 1 } }])]),
   O('o_guard_captain', '衛兵隊長', ['fort'], [passive({ base_guard: 1 }), on('winter', [famePer('walls', 2, 3)])]),
   // ---- 依頼・共闘・つなぎ

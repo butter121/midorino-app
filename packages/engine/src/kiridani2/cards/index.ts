@@ -10,9 +10,9 @@ import { PETS } from './pets';
 import { GEAR } from './gear';
 import { STAGES } from './stages';
 import { QUESTS } from './quests';
-import { ANCIENT, ANCIENT_SET_FAME } from './ancient';
+import { ANCIENT } from './ancient';
 
-export { LEADERS, OCCUPATIONS, WEAPONS, ARMORS, TOOLS, SPELLS, PETS, GEAR, STAGES, QUESTS, ANCIENT, ANCIENT_SET_FAME };
+export { LEADERS, OCCUPATIONS, WEAPONS, ARMORS, TOOLS, SPELLS, PETS, GEAR, STAGES, QUESTS, ANCIENT };
 
 export const CARD_SET: CardSet = {
   leaders: LEADERS,

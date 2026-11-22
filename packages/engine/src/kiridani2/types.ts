@@ -125,6 +125,14 @@ export interface Op {
   occ?: number;
   /** 交換所で売るか買う（1種類、最大 market_qty 個） */
   exchange?: boolean;
+  /** ギルド：魔石を GUILD.settleMax 個まで名声に換える */
+  settle?: boolean;
+  /** ギルド：品物（秘術を除く）・建てた道具・遺物を1つ売って金貨 */
+  sell_item?: boolean;
+  /** 壊れた遺物を1つ修復する（費用は遺物ごと） */
+  repair?: boolean;
+  /** 遺物の山から n 枚引く（壊れた状態で手元に） */
+  relic?: number;
   /** 先手になる */
   first?: boolean;
   /** 寄進：pay を払って fame を得る（donate_rate で値引き、donate の効果が効く） */
@@ -183,7 +191,7 @@ export interface Mod {
   pet_bring?: number;
   /** 捕まえにくさを下げる */
   capture_ease?: number;
-  /** 魔石の代わりに金貨を払える（魔石1につき金貨この数） */
+  /** マナ鉱石の代わりに金貨を払える（マナ鉱石1につき金貨この数） */
   gold_mana?: number;
   /** 終わりの金貨の名声の上限を足す（5年の値。年数の倍率がかかる） */
   gold_cap?: number;
@@ -195,7 +203,7 @@ export interface Mod {
   shard_need?: number;
   /** 遺物を引くとき余分に見る枚数 */
   ancient_look?: number;
-  /** 使い切りの秘術を唱えたあと、魔石1で手札に戻せる（ラウンドにこの枚数まで） */
+  /** 使い切りの秘術を唱えたあと、マナ鉱石1で手札に戻せる（ラウンドにこの枚数まで） */
   spell_return?: number;
   /** 仲間の上限を変える（負で減る） */
   comp_cap?: number;
@@ -284,10 +292,14 @@ export interface AncientDef {
   id: string;
   kind: 'ancient';
   name: string;
-  /** 種類（5種） */
+  /** 種類（4種） */
   group: string;
-  /** 枚数（省略は4） */
+  /** 枚数（省略は1） */
   copies?: number;
+  /** 修復したときの名声（試合の終わり） */
+  fame: number;
+  /** 修復の費用 */
+  repair: Cost;
   text: string;
 }
 
@@ -341,6 +353,8 @@ export interface Monster {
   counter: number;
   loot: Cost;
   trophy: number;
+  /** 落とす魔石（戦闘が終わるまで見えない） */
+  stones: number;
   raid: number;
   boss: boolean;
   /** 出た年（冬の襲撃の対象） */
@@ -414,7 +428,11 @@ export type GameEvent =
   | { t: 'injury'; seat: Seat; companion: number }
   | { t: 'heal'; seat: Seat; companion: number; cost: Cost }
   | { t: 'loot'; seat: Seat; gain: Cost }
-  | { t: 'trophy'; seat: Seat; monster: string; fame: number; trophies?: number }
+  | { t: 'trophy'; seat: Seat; monster: string; fame: number; trophies?: number; stones?: number }
+  | { t: 'settle'; seat: Seat; stones: number; fame: number }
+  | { t: 'repair'; seat: Seat; card: string; cost: Cost }
+  | { t: 'sell_relic'; seat: Seat; card: string; gold: number; broken: boolean }
+  | { t: 'sell_tool'; seat: Seat; card: string; gold: number }
   | { t: 'tame'; seat: Seat; monster: string; power?: number }
   | { t: 'release'; seat: Seat; monster: string }
   | { t: 'learn'; seat: Seat; card: string }

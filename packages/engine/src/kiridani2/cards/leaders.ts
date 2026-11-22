@@ -25,7 +25,7 @@ export const LEADERS: CardDef[] = [
     `戦闘に勝ったとき、送った仲間全員の熟練の合計÷${V.striver.fameDiv}の名声。`,
   ]),
   def('l_mina', '最高の魔術師', ['arcane'], [
-    `秘術を使ったあと、魔石${V.mage.mana}を得るか、秘術を${V.mage.draw}枚引く（1ラウンド${V.mage.perRound}回まで）。`,
+    `秘術を使ったあと、マナ鉱石${V.mage.mana}を得るか、秘術を${V.mage.draw}枚引く（1ラウンド${V.mage.perRound}回まで）。`,
     `戦闘に勝ったとき、そのラウンドで使った秘術1枚ごとに名声${V.mage.fame}。`,
   ]),
   def('l_gareth', '盾の勇者', ['fort'], [
@@ -35,7 +35,7 @@ export const LEADERS: CardDef[] = [
   ]),
   def('l_haru', '孤高のテイマー', ['beast'], [
     '巣の魔物は倒せない。かわりに好物をあげて使い魔にできる（主・古竜は倒せるが、使い魔にはできない）。',
-    `好物は魔物ごとに食料・木・鉄・薬草・魔石・素材のどれか1つ。強さ÷${V.tamer.favDiv}（切り上げ）個いる。`,
+    `好物は魔物ごとに食料・木・鉄・薬草・マナ鉱石・素材のどれか1つ。強さ÷${V.tamer.favDiv}（切り上げ）個いる。`,
     `使い魔は1体ごとに戦力+${V.tamer.petPower}。持てる数は${3 + V.tamer.petCap}体。`,
     `年の終わりに、使い魔1体ごとに名声${V.tamer.fame}。`,
   ]),

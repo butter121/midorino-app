@@ -49,8 +49,15 @@ export const BOSS_ABSENT = 5;
 /** 主・古竜の強さにかける人数（人数が多いほど強いが、1人あたりの戦力は人数が多いと下がるので、人数そのままよりゆるく） */
 export const BOSS_N: Record<number, number> = { 1: 1, 2: 2, 3: 2.7, 4: 3.2, 5: 3.7, 6: 4.2 };
 export const TRADE_MAX = 3;
-/** 討伐の証：持っている証の合計 ÷ TROPHY_DIV（切り捨て）が名声 */
-export const TROPHY_DIV = 2.5;
+/** 討伐の証：魔物の証＝round(強さ ÷ div ＋ ゆらぎ ＋ 主なら boss・古竜なら dragon)。共闘は倒した人数で等分。
+ *  名声＝持っている証の合計 ÷ fameDiv（四捨五入） */
+export const TROPHY = { div: 2.5, boss: 7.5, dragon: 15, fameDiv: 2.5 };
+/** 魔石：魔物が必ず落とす。round(強さ ÷ div ＋ ゆらぎ) を min〜max に収める。戦闘が終わるまで見えない。共闘は貢献の割合（最低1） */
+export const STONE = { div: 5, min: 1, max: 3 };
+/** ギルド：1回置くごとに魔石を settleMax 個まで名声に（魔石 ÷ fameDiv） */
+export const GUILD = { settleMax: 3, fameDiv: 1 };
+/** 遺物を売る値段（金貨）＝遺物の名声 × 倍率（直していない遺物 broken・直した遺物 repaired）。仮の値 */
+export const RELIC_SELL = { broken: 1, repaired: 2 };
 
 // ---- 交換所
 export const BUY: Record<Res, number> = { wood: 1, iron: 2, herb: 1, food: 1, mana: 3, mat: 2, gold: 0 };
@@ -59,15 +66,8 @@ export const MARKET_QTY = 3;
 export const ITEM_SELL_RATE = 0.8;
 export const sellPrice = (r: Res) => Math.max(1, BUY[r] - 1);
 
-// ---- 古代の品（遺物）の組：同じ種類 2つ＝2、3つ＝5、4つ＝8。5種そろい（各1つ以上）＝6
-export const ANCIENT_SAME = [0, 0, 3, 6, 9];
-/** 遺物の組の名声の年数の倍率（遺物は20枚しかないので、長い試合でも数が伸びにくい分を補う） */
+// ---- 古代の遺物：修復した遺物の名声（カードの fame）の年数の倍率（遺物は24枚しかないので、長い試合でも数が伸びにくい分を補う）
 export const ANCIENT_SCALE: Record<number, number> = { 5: 1, 10: 1.4, 15: 2.2 };
-export const ANCIENT_ALL = 6;
-/** 遺物1枚に要る欠片の数 */
-export const SHARD_NEED = 3;
-/** 倒すと遺物の欠片1つ（古い魂の残る種族） */
-export const SHARD_RACES: string[] = ['undead', 'spirit'];
 
 // ---- 再設計で足した決まり
 /** 準備で取る品物の数（武器・防具・道具・秘術の割合の合計） */
@@ -131,7 +131,7 @@ export const LEADER = {
   genius: { weaponMult: 2, effectMult: 2, trophyMult: 2 },
   /** 無限の努力家：熟練の上限 +skillCap、熟練の効き目 skillMult 倍、勝つと送った仲間の熟練の合計 ÷ fameDiv の名声 */
   striver: { skillCap: 1, skillMult: 3, fameDiv: 2 },
-  /** 最高の魔術師：秘術を使ったあと魔石 mana か秘術 draw 枚（1ラウンド perRound 回まで）。勝つとその戦闘で使った秘術 1枚につき fame */
+  /** 最高の魔術師：秘術を使ったあとマナ鉱石 mana か秘術 draw 枚（1ラウンド perRound 回まで）。勝つとその戦闘で使った秘術 1枚につき fame */
   mage: { perRound: 2, mana: 1, draw: 1, fame: 2 },
   /** 盾の勇者：守りを戦力として数える（guardMult 倍）、運命の影響なし、勝つと（守り − 反撃）÷ fameDiv の名声 */
   shield: { guardMult: 2, fameDiv: 1 },
@@ -162,8 +162,8 @@ export const FAV_RES = ['food', 'wood', 'iron', 'herb', 'mana', 'mat'] as const;
 export const SPACE_GROUPS: { id: string; jp: string; ids: string[] }[] = [
   { id: 'gather', jp: '資源を集める', ids: ['forest', 'grove', 'mine', 'deepmine', 'meadow', 'herb2', 'spring', 'hunt', 'plaza', 'lodge', 'bazaar', 'explore'] },
   { id: 'craft', jp: '作る・建てる', ids: ['forge', 'workshop', 'training', 'drill', 'walls', 'upgrade', 'bigforge', 'clearing'] },
-  { id: 'trade', jp: '取引・お金', ids: ['market', 'market2', 'peddler', 'outpost', 'caravan', 'tradepost', 'temple', 'envoy', 'treasury'] },
-  { id: 'people', jp: '仲間・家族', ids: ['guild', 'hall', 'tavern', 'family', 'hero', 'recommend'] },
+  { id: 'trade', jp: '取引・お金', ids: ['guild', 'market', 'market2', 'peddler', 'outpost', 'caravan', 'tradepost', 'temple', 'envoy', 'treasury'] },
+  { id: 'people', jp: '仲間・家族', ids: ['occhall', 'hall', 'tavern', 'family', 'hero', 'recommend'] },
   { id: 'adventure', jp: '冒険', ids: ['board', 'ruins', 'library', 'altar', 'kennel', 'raid', 'pilgrim', 'prepare', 'infirmary', 'triumph'] },
 ];
 export const SPACE_GROUP_BY_TAG: Record<string, string> = { gather: 'gather', smith: 'craft', fort: 'craft', trade: 'trade', family: 'people', bridge: 'people' };
@@ -178,15 +178,16 @@ export const SPACES: SpaceDef[] = [
   { id: 'forest', name: '古の森', accum: { wood: 3 }, options: [[]] },
   { id: 'mine', name: '鉄の坑道', accum: { iron: 3 }, options: [[]] },
   { id: 'meadow', name: '薬草の野', accum: { herb: 3 }, options: [[]] },
-  { id: 'spring', name: '魔石の泉', accum: { mana: 1 }, options: [[{ gain: { mat: 1 } }]] },
+  { id: 'spring', name: 'マナ鉱石の泉', accum: { mana: 1 }, options: [[{ gain: { mat: 1 } }]] },
   { id: 'hunt', name: '狩場', accum: { food: 3 }, options: [[]] },
   { id: 'board', name: '依頼板', options: [[{ gain: { gold: 2 } }], [{ draw: { from: 'occ', look: 2, take: 1 } }]] },
-  { id: 'guild', name: 'ギルド', options: [[{ occ: 1 }], [{ draw: { from: 'occ', look: 3, take: 1 } }]] },
+  { id: 'guild', name: 'ギルド', cap: 0, options: [[{ settle: true }], [{ sell_item: true }]] },
+  { id: 'occhall', name: '職能の館（仮）', options: [[{ occ: 1 }], [{ draw: { from: 'occ', look: 3, take: 1 } }]] },
   { id: 'forge', name: '鍛冶場', options: [[{ craft: 'any' }], [{ draw: { from: 'equip', look: 2, take: 1 } }]] },
-  { id: 'workshop', name: '工房', options: [[{ build: 'any' }], [{ draw: { from: 'tool', look: 2, take: 1 } }]] },
+  { id: 'workshop', name: '工房', options: [[{ build: 'any' }], [{ draw: { from: 'tool', look: 2, take: 1 } }], [{ repair: true }]] },
   { id: 'market', name: '交換所', cap: 2, options: [[{ exchange: true }]] },
   { id: 'curio', name: '掘り出し市', cap: 1, cap4: 2, options: [[{ buy_card: { count: 2, price: 1 } }]] },
-  { id: 'dig', name: '古い発掘場', shards: 1, options: [[]] },
+  { id: 'dig', name: '古い発掘場', options: [[{ relic: 1 }], [{ repair: true }]] },
   { id: 'plaza', name: '広場', cap: 0, options: [[{ gain: { food: 1 } }], [{ gain: { mat: 1 } }]] },
   { id: 'hall', name: '集会所', options: [[{ first: true }, { gain: { food: 1 } }], [{ first: true }, { donate: { pay: { gold: 6 }, fame: 2 } }]] },
   { id: 'grove', name: '雑木林', accum: { wood: 2 }, min_p: 4, options: [[]] },
@@ -304,4 +305,4 @@ export const MON_ROLL = {
 };
 /** AI・評価用の資源の目安 */
 export const RES_VAL: Record<Res, number> = { wood: 0.4, iron: 0.6, herb: 0.45, mana: 0.9, food: 0.55, gold: 0.3, mat: 0.6 };
-export const RES_JP: Record<Res, string> = { wood: '木材', iron: '鉄', herb: '薬草', mana: '魔石', food: '食料', gold: '金貨', mat: '素材' };
+export const RES_JP: Record<Res, string> = { wood: '木材', iron: '鉄', herb: '薬草', mana: 'マナ鉱石', food: '食料', gold: '金貨', mat: '素材' };

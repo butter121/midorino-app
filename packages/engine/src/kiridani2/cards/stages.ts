@@ -24,7 +24,7 @@ export const STAGES: StageDef[] = [
     id: 'ruins', kind: 'stage', stage: 1, name: '遺跡の探索', engine: ['ruins'], mech: 'action',
     effects: [
       opt([{ draw_any: { from: ['weapon', 'armor', 'tool', 'spell'], look: 3, take: 1 } }]),
-      opt([{ shard: 2 }]),
+      opt([{ relic: 1 }]),
     ],
     text: '次のどれか：武器・防具・道具・秘術から山を1つ選び、3枚見て1枚を手札に／遺物の欠片+2（3つで遺物1枚）。',
   },
@@ -60,7 +60,7 @@ export const STAGES: StageDef[] = [
       opt([{ gain: { food: 1, mat: 1 } }]),
       opt([{ gain: { wood: 1, mana: 1 } }]),
     ],
-    text: '資源2種を1つずつ得る（木材＋鉄／木材＋薬草／鉄＋素材／薬草＋魔石／食料＋素材／木材＋魔石から1つ）。',
+    text: '資源2種を1つずつ得る（木材＋鉄／木材＋薬草／鉄＋素材／薬草＋マナ鉱石／食料＋素材／木材＋マナ鉱石から1つ）。',
   },
   {
     id: 'family', kind: 'stage', stage: 2, name: '対家の家族', engine: ['family'], mech: 'action',
@@ -92,7 +92,7 @@ export const STAGES: StageDef[] = [
   {
     id: 'library', kind: 'stage', stage: 3, name: '魔導書庫', engine: ['arcane'], mech: 'action',
     effects: [opt([{ draw: { from: 'spell', look: 2, take: 1 } }, { gain: { mana: 1 } }])],
-    text: '秘術の山から2枚見て1枚を手札に。魔石+1。',
+    text: '秘術の山から2枚見て1枚を手札に。マナ鉱石+1。',
   },
   {
     id: 'drill', kind: 'stage', stage: 3, name: '若手の訓練', engine: ['fort', 'hunt'], mech: 'action',
@@ -131,7 +131,7 @@ export const STAGES: StageDef[] = [
       opt([{ gain: { herb: 1, mana: 1, mat: 1 } }]),
       opt([{ gain: { wood: 1, food: 1, mat: 1 } }]),
     ],
-    text: '資源3種を1つずつ得る（木材・鉄・薬草／薬草・魔石・素材／木材・食料・素材から1つ）。',
+    text: '資源3種を1つずつ得る（木材・鉄・薬草／薬草・マナ鉱石・素材／木材・食料・素材から1つ）。',
   },
   {
     id: 'recommend', kind: 'stage', stage: 4, name: 'ギルドの推薦', engine: ['bridge'], mech: 'action',
@@ -141,10 +141,10 @@ export const STAGES: StageDef[] = [
   {
     id: 'altar', kind: 'stage', stage: 4, name: '古代の祭壇', engine: ['ruins', 'arcane'], mech: 'action',
     effects: [
-      opt([{ shard: 2 }]),
+      opt([{ relic: 1 }]),
       { when: 'use' as const, do: [{ pay: { mana: 2 } }, { fame: 2 }], limit: 'year' as const },
     ],
-    text: '次のどれか：遺物の欠片+2／魔石2を捧げて名声2（1年1回）。',
+    text: '次のどれか：遺物の欠片+2／マナ鉱石2を捧げて名声2（1年1回）。',
   },
   {
     id: 'pilgrim', kind: 'stage', stage: 4, name: '巡礼路', engine: ['quest', 'boss'], mech: 'action',
@@ -159,7 +159,7 @@ export const STAGES: StageDef[] = [
   {
     id: 'prepare', kind: 'stage', stage: 5, name: '決戦の準備', engine: ['boss'], mech: 'action',
     effects: [opt([{ train: 'any' }, { gain: { herb: 2, mana: 1 } }])],
-    text: '仲間1人に熟練+1（攻めか守り）。薬草2と魔石1を得る。',
+    text: '仲間1人に熟練+1（攻めか守り）。薬草2とマナ鉱石1を得る。',
   },
   {
     id: 'triumph', kind: 'stage', stage: 5, name: '凱旋', engine: ['hunt'], mech: 'endfame',
@@ -193,7 +193,7 @@ export const STAGES: StageDef[] = [
   {
     id: 'treasury', kind: 'stage', stage: 5, name: '宝物庫', engine: ['ruins', 'trade'], mech: 'action',
     effects: [
-      opt([{ shard: 2 }]),
+      opt([{ relic: 1 }]),
       opt([{ gain: { gold: 4 } }]),
     ],
     text: '次のどれか：遺物の欠片+2／金貨4を得る。',

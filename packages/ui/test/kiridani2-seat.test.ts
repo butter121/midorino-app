@@ -31,7 +31,7 @@ describe('kiridani2 盤面の答えの振り分け（routeAnswer2）', () => {
       const r = routeAnswer2(w, sid);
       const n = w.opts.filter((o) => o.s === sid).length;
       if (sid.startsWith('nest') || sid === 'lair') expect(r.k).toBe('fight');
-      else if (n === 1) expect(r.k).toBe('send');
+      else if (n === 1 && (w.g.space(sid)?.def.options.length ?? 1) === 1 && w.opts.find((o) => o.s === sid)!.x === undefined) expect(r.k).toBe('send');
       else expect(r.k).toBe('sub');
     }
     // 選べない場所・秘術は答えにならない

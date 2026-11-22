@@ -144,7 +144,7 @@ describe('kiridani2 cards', () => {
     expect(errs).toEqual([]);
   });
 
-  it('秘術：手札・身につけた秘術から使えるのは play と fight。唱える魔石は1〜3、何度でもは1手番に1〜3回', () => {
+  it('秘術：手札・身につけた秘術から使えるのは play と fight。唱えるマナ鉱石は1〜3、何度でもは1手番に1〜3回', () => {
     for (const c of SPELLS) for (const e of c.effects) expect(['play', 'fight'], c.id).toContain(e.when);
     for (const c of SPELLS) {
       expect(c.cost?.mana ?? 0, c.id).toBeGreaterThanOrEqual(1);
