@@ -333,7 +333,7 @@ export function BaseView2({ p, v, cur, onEquip }: { p: PV2; v: View2; cur: Playi
       <div className="kd-base-h">
         <span data-inspect={p.leader ? `card2:${p.leader}` : undefined} style={{ display: 'contents' }}><LeaderArt id={p.leader} size={44} /></span>
         <div className="kd-base-who"><small>リーダー</small><strong>{p.leader ? cardName(p.leader) : '未定'}<span className="kd-who">（{nameOf(v, p.seat)}）</span></strong></div>
-        <span className="kd-fame" data-kd={`fame:${p.seat}`}><KIcon name="fame" size={16} /><b><Num value={p.fame} /></b>{p.discontent > 0 && <small className="kd-bad">不満{p.discontent}</small>}</span>
+        <span className="kd-fame" data-kd={`fame:${p.seat}`} data-inspect={`seat:${p.seat}`} role="button" tabIndex={0} aria-label="名声と全体の情報をくわしく"><KIcon name="fame" size={16} /><b><Num value={p.fame} /></b>{p.discontent > 0 && <small className="kd-bad">不満{p.discontent}</small>}</span>
       </div>
       <div className="kd-base-grid">
         <section className="kd-bsec kd-bsec-comps kd2-comps" aria-label="仲間と装備">
@@ -348,7 +348,7 @@ export function BaseView2({ p, v, cur, onEquip }: { p: PV2; v: View2; cur: Playi
                     const id = c[sl];
                     const body = <><small>{sl === 'weapon' ? '武器' : '防具'}</small>{id ? <b>{cardName(id)}</b> : <i>{onEquip ? '＋持たせる' : 'なし'}</i>}</>;
                     return onEquip
-                      ? <button key={sl} type="button" className={`kd2-slot is-${sl} is-edit${id ? ' is-on' : ''}`} data-kd={`slot:${i}:${sl}`} onClick={() => onEquip(i, sl)} aria-label={`${c.leader ? 'リーダー' : `仲間${i + 1}`}の${sl === 'weapon' ? '武器' : '防具'}を持ち替える`}>{body}</button>
+                      ? <button key={sl} type="button" className={`kd2-slot is-${sl} is-edit${id ? ' is-on has-info' : ''}`} data-kd={`slot:${i}:${sl}`} onClick={() => onEquip(i, sl)} aria-label={`${c.leader ? 'リーダー' : `仲間${i + 1}`}の${sl === 'weapon' ? '武器' : '防具'}を持ち替える`}>{body}{id && <InfoDot target={`card2:${id}`} label={`${cardName(id)}をくわしく`} />}</button>
                       : <span key={sl} className={`kd2-slot is-${sl}${id ? ' is-on' : ''}`} data-inspect={id ? `card2:${id}` : undefined} role={id ? 'button' : undefined} tabIndex={id ? 0 : undefined}>{body}</span>;
                   })}
                 </span>
@@ -359,17 +359,27 @@ export function BaseView2({ p, v, cur, onEquip }: { p: PV2; v: View2; cur: Playi
         <section className="kd-bsec kd-bsec-plots" aria-label="拠点">
           <h3>拠点<small>寝床{p.beds}・施設{p.tools.length}・防壁{p.walls}{p.petList.length > 0 && `・使い魔${p.petList.length}`}</small></h3>
           <div className="kd-plots">
-            {Array.from({ length: p.beds }, (_, i) => <div key={`b${i}`} className={`kd-plot is-bed${lastBuild === 'bed' && i === p.beds - 1 ? ' is-new' : ''}`} title="寝床"><svg viewBox="0 0 40 30" width="28" aria-hidden><rect x="2" y="12" width="36" height="12" rx="3" fill="#8A5A34" /><rect x="4" y="8" width="10" height="8" rx="3" fill="#EADBC0" /><rect x="14" y="10" width="22" height="6" rx="2" fill="#6A7FB0" /></svg></div>)}
+            {Array.from({ length: p.beds }, (_, i) => <div key={`b${i}`} className={`kd-plot is-bed${lastBuild === 'bed' && i === p.beds - 1 ? ' is-new' : ''}`} title="寝床" data-inspect="build2:bed" role="button" tabIndex={0}><svg viewBox="0 0 40 30" width="28" aria-hidden><rect x="2" y="12" width="36" height="12" rx="3" fill="#8A5A34" /><rect x="4" y="8" width="10" height="8" rx="3" fill="#EADBC0" /><rect x="14" y="10" width="22" height="6" rx="2" fill="#6A7FB0" /></svg></div>)}
             {p.tools.map((id) => <div key={id} className={`kd-plot is-fac${lastBuild === 'facility' ? ' is-new' : ''}`} data-inspect={`card2:${id}`} title={cardName(id)}><CardChip2 id={id} /></div>)}
             {p.petList.map((pt, i) => <div key={`p${i}${pt.type}`} className={`kd-plot is-pet${cur?.ev.t === 'tame' && cur.ev.seat === p.seat && i === p.petList.length - 1 ? ' is-new' : ''}`} data-inspect={`card2:pet_${pt.type}`} title={`${cardName(`pet_${pt.type}`)}（戦力${pt.power}）`}><MonArt m={{ type: pt.type }} size={26} /><b className="kd2-pet-pw">{pt.power}</b></div>)}
-            {Array.from({ length: p.walls }, (_, i) => <div key={`w${i}`} className={`kd-plot is-wall${lastBuild === 'wall' && i === p.walls - 1 ? ' is-new' : ''}`} title="防壁"><EffectArt id="wall-block" size={26} /></div>)}
+            {Array.from({ length: p.walls }, (_, i) => <div key={`w${i}`} className={`kd-plot is-wall${lastBuild === 'wall' && i === p.walls - 1 ? ' is-new' : ''}`} title="防壁" data-inspect="build2:wall" role="button" tabIndex={0}><EffectArt id="wall-block" size={26} /></div>)}
           </div>
         </section>
         <WinterFateSec p={p} v={v} />
-        {!mine && (
-          <section className="kd-bsec kd-bsec-res" aria-label="持ち物">
-            <h3>持ち物</h3>
-            <div className="kd-resgrid">{RES.map((r) => <ResCount key={r} r={r} n={p.res[r]} size={18} />)}</div>
+        <section className="kd-bsec kd-bsec-res" aria-label="持ち物">
+          <h3>持ち物<small>タップで値段など</small></h3>
+          <div className="kd-resgrid">{RES.map((r) => <span key={r} data-inspect={`res2:${r}`} role="button" tabIndex={0} style={{ display: 'contents' }}><ResCount r={r} n={p.res[r]} size={18} /></span>)}</div>
+          <div className="kd-chiprow">{DATA.STONE.jp.map((jp, i) => <span key={i} className="kd-insp-chip" data-inspect={`stone2:${i}`} role="button" tabIndex={0}>{jp}魔石 {p.stones[i] ?? 0}</span>)}{p.shards > 0 && <span className="kd-insp-chip">遺物の欠片 {p.shards}</span>}</div>
+        </section>
+        {(p.tomes.length > 0 || p.broken.length > 0 || p.quests.length > 0 || (mine && p.secret)) && (
+          <section className="kd-bsec kd-bsec-more" aria-label="秘術・遺物・依頼">
+            <h3>身につけた秘術・遺物・依頼</h3>
+            <div className="kd-chiprow">
+              {p.tomes.map((id) => <CardChip2 key={`t${id}`} id={id} />)}
+              {p.broken.map((id, i) => <span key={`b${i}`} title="壊れた遺物（工房・発掘場で修復）"><CardChip2 id={id} /></span>)}
+              {p.quests.map((id) => <CardChip2 key={`q${id}`} id={id} />)}
+              {mine && p.secret && <CardChip2 id={p.secret} />}
+            </div>
           </section>
         )}
         <section className="kd-bsec kd-bsec-played" aria-label="出した職能">
@@ -383,7 +393,7 @@ export function BaseView2({ p, v, cur, onEquip }: { p: PV2; v: View2; cur: Playi
         <section className="kd-bsec kd-bsec-tro" aria-label="討伐と古代の品">
           <h3>倒した魔物 {p.trophies.length}{p.ancient.length > 0 && <small>古代の品{p.ancient.length}</small>}</h3>
           <div className="kd-chiprow">
-            {p.trophies.map((m, i) => <span key={i} className="kd-trophy"><MonArt m={{ type: m }} size={24} /></span>)}
+            {p.trophies.map((m, i) => <span key={i} className="kd-trophy" title={DATA.MON[m]?.name ?? m}><MonArt m={{ type: m }} size={24} /></span>)}
             {p.ancient.map((a, i) => <CardChip2 key={`a${i}`} id={a} />)}
             {!p.trophies.length && !p.ancient.length && <small className="kd-none">まだない</small>}
           </div>

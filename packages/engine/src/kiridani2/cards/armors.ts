@@ -5,7 +5,7 @@ import type { CardDef } from '../types';
 import { A, fight, win, hit, on, end, passive, powPer, famePer } from './mk';
 import { withText } from './text';
 
-export const ARMORS: CardDef[] = withText([
+const ALL_ARMORS: CardDef[] = withText([
   // ---- 軽い
   A('a_paper_armor', '紙鎧', ['fort'], { wood: 1 }, 1, [], { weight: 'light' }),
   A('a_wood_shield', '木の円盾', ['fort'], { wood: 2 }, 1, [fight([{ counter: -1 }], { k_max: 1 })], { weight: 'light' }),
@@ -91,3 +91,7 @@ export const ARMORS: CardDef[] = withText([
   A('a_demon_mail', '魔鎧', ['arcane', 'hunt'], { iron: 2, mana: 2 }, 2, [fight([{ power: 3 }]), on('round_end', [{ lose: { mana: 1 } }])], { weight: 'curse' }),
   A('a_naked_courage', '素肌の勇気', ['hunt', 'boss'], { food: 1 }, 0, [fight([{ power: 3 }, { guard: -2 }], { k_max: 1 })], { weight: 'curse' }),
 ]);
+
+/** 使うのはこの30枚（ルール・難易度の見直しで絞った） */
+const KEEP_ARMORS = new Set(['a_hunter_cloak', 'a_iron_gauntlet', 'a_knight_armor', 'a_holy_mail', 'a_dragon_scale', 'a_sun_shield', 'a_iron_helm', 'a_chainmail', 'a_tower_shield', 'a_plate', 'a_titan_armor', 'a_smith_apron', 'a_forged_mail', 'a_tool_harness', 'a_mage_robe', 'a_rune_cloak', 'a_moon_cloak', 'a_wolf_pelt', 'a_beast_hide', 'a_merchant_coat', 'a_gold_armor', 'a_explorer_coat', 'a_relic_guard', 'a_tabard', 'a_family_cloak', 'a_padded', 'a_rampart_helm', 'a_wall_plate', 'a_guardian_plate', 'a_leather_vest']);
+export const ARMORS: CardDef[] = ALL_ARMORS.filter((c) => KEEP_ARMORS.has(c.id));

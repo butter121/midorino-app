@@ -8,13 +8,14 @@ import { cardName } from './view';
 
 type Ex = Exclude<Choice, string>;
 type RQ = { r: Res; q: number };
-interface Sel { sell?: RQ; buy?: RQ; item?: string }
+interface Sel { sell?: RQ; buy?: RQ; item?: string; stone?: { dir: 'sell' | 'buy'; tier: number }; sr?: Res }
 
 const sameRQ = (a: RQ | undefined, b: RQ | undefined) => !!a && !!b && a.r === b.r && a.q === b.q;
 /** 台の中身と同じ選択肢の番号（なければ -1） */
 function matchIndex(xs: Ex[], s: Sel): number {
   return xs.findIndex((x) => {
     if (s.item) return x.m === 'item' && x.id === s.item;
+    if (s.stone) return x.m === 'stone' && x.dir === s.stone.dir && x.tier === s.stone.tier && x.r === s.sr;
     if (s.sell && s.buy) return x.m === 'both' && sameRQ(x.sell, s.sell) && sameRQ(x.buy, s.buy);
     if (s.sell) return x.m === 'sell' && sameRQ(x, s.sell);
     if (s.buy) return x.m === 'buy' && sameRQ(x, s.buy);
@@ -41,6 +42,12 @@ export function MarketTray2({ g, p, title, sub, choices, onPick, onCancel }: {
   const sellRes = RES.filter((r) => xs.some((x) => (x.m === 'sell' && x.r === r) || (x.m === 'both' && x.sell.r === r)));
   const buyRes = RES.filter((r) => xs.some((x) => (x.m === 'buy' && x.r === r) || (x.m === 'both' && x.buy.r === r)));
   const items = [...new Set(xs.flatMap((x) => (x.m === 'item' ? [x.id] : [])))];
+  const stoneXs = xs.filter((x): x is Extract<Ex, { m: 'stone' }> => x.m === 'stone');
+  const stoneTiers = (dir: 'sell' | 'buy') => [...new Set(stoneXs.filter((x) => x.dir === dir).map((x) => x.tier))].sort();
+  const stoneRes = sel.stone ? stoneXs.filter((x) => x.dir === sel.stone!.dir && x.tier === sel.stone!.tier).map((x) => x.r) : [];
+  const stoneVal = sel.stone ? DATA.STONE.value[sel.stone.tier] : 0;
+  const stoneJP = (t: number) => `${DATA.STONE.jp[t]}魔石`;
+  const tapStone = (dir: 'sell' | 'buy', tier: number) => setSel(sel.stone?.dir === dir && sel.stone.tier === tier ? {} : { stone: { dir, tier } });
 
   const canSell = (r: Res, q: number) => xs.some((x) => (x.m === 'sell' && x.r === r && x.q === q) || (x.m === 'both' && x.sell.r === r && x.sell.q === q));
   const canBuy = (r: Res, q: number) => xs.some((x) => (x.m === 'buy' && x.r === r && x.q === q) || (x.m === 'both' && x.buy.r === r && x.buy.q === q));
@@ -67,15 +74,17 @@ export function MarketTray2({ g, p, title, sub, choices, onPick, onCancel }: {
   const buyGold = sel.buy ? DATA.BUY[sel.buy.r] * sel.buy.q : 0;
   const net = sellGold - buyGold;
   const idx = matchIndex(xs, sel);
-  const empty = !sel.sell && !sel.buy && !sel.item;
+  const empty = !sel.sell && !sel.buy && !sel.item && !sel.stone;
   const goldAfter = p.res.gold + net;
   const verdict = empty
     ? <small>持ち物か、交換所の品をタップして台に載せる</small>
     : idx >= 0
       ? <b className="kd-good">交換できる（金貨 {p.res.gold}→{goldAfter}）</b>
-      : sel.sell && sel.buy
-        ? <b className="kd-bad">売って買うときは、売る資源を持っている分（{qty}個まで）全部売る</b>
-        : <b className="kd-bad">この組み合わせはできない</b>;
+      : sel.stone && !sel.sr
+        ? <small>{sel.stone.dir === 'sell' ? '受け取る' : '出す'}資源を下から選ぶ（価値{stoneVal}）</small>
+        : sel.sell && sel.buy
+          ? <b className="kd-bad">交換は1種類ずつ、同じ数どうし（{qty}個まで）</b>
+          : <b className="kd-bad">この組み合わせはできない</b>;
 
   return (
     <div className="kd-ovwrap kd-sheetwrap kd-traywrap">
@@ -83,7 +92,7 @@ export function MarketTray2({ g, p, title, sub, choices, onPick, onCancel }: {
         <header className="kd-tray-h">
           <span className="kd-tray-foe" aria-hidden><KIcon name="gold" size={48} /></span>
           <div className="kd-tray-ht">
-            <small>{sub ?? `1種類を${qty}個まで、売るか買う`}</small>
+            <small>{sub ?? `1種類を${qty}個まで、同じ価値のもの1種類と交換`}</small>
             <strong>{title}</strong>
             <span className="kd-tray-stats"><span>金貨<b>{p.res.gold}</b></span>{both && <span>売って買うこともできる</span>}</span>
           </div>
@@ -96,6 +105,8 @@ export function MarketTray2({ g, p, title, sub, choices, onPick, onCancel }: {
               <div className="kd-xitems">
                 {sel.sell && <Stack r={sel.sell.r} n={sel.sell.q} on={() => less('sell')} />}
                 {sel.item && <button type="button" className="kd2-xstack is-card" onClick={() => setSel({})} aria-label={`${cardName(sel.item)}を戻す`}>{cardName(sel.item)}</button>}
+                {sel.stone?.dir === 'sell' && <button type="button" className="kd2-xstack is-card" onClick={() => setSel({})}>{stoneJP(sel.stone.tier)}</button>}
+                {sel.stone?.dir === 'buy' && sel.sr && <Stack r={sel.sr} n={stoneVal} />}
                 {net < 0 && <Stack r="gold" n={-net} />}
                 {empty && <span className="kd-tray-empty">空</span>}
               </div>
@@ -105,6 +116,8 @@ export function MarketTray2({ g, p, title, sub, choices, onPick, onCancel }: {
               <small>受け取る</small>
               <div className="kd-xitems">
                 {sel.buy && <Stack r={sel.buy.r} n={sel.buy.q} on={() => less('buy')} />}
+                {sel.stone?.dir === 'buy' && <button type="button" className="kd2-xstack is-card" onClick={() => setSel({})}>{stoneJP(sel.stone.tier)}</button>}
+                {sel.stone?.dir === 'sell' && sel.sr && <Stack r={sel.sr} n={stoneVal} />}
                 {net > 0 && <Stack r="gold" n={net} />}
                 {empty && <span className="kd-tray-empty">空</span>}
               </div>
@@ -147,6 +160,33 @@ export function MarketTray2({ g, p, title, sub, choices, onPick, onCancel }: {
                 );
               })}
             </div>
+          </div>
+        )}
+        {stoneXs.length > 0 && (
+          <div className="kd-tray-sec">
+            <h4>魔石を交換する<small>1つずつ。初級2・中級4・上級6の価値</small></h4>
+            <div className="kd-chips">
+              {stoneTiers('sell').map((t) => (
+                <button key={`s${t}`} type="button" className={`kd-tchip${sel.stone?.dir === 'sell' && sel.stone.tier === t ? ' is-on' : ''}`} onClick={() => tapStone('sell', t)} data-kd={`stonesell:${t}`}>
+                  <span className="kd-tchip-l">{stoneJP(t)}を出す（{p.stones[t]}）</span>
+                </button>
+              ))}
+              {stoneTiers('buy').map((t) => (
+                <button key={`b${t}`} type="button" className={`kd-tchip${sel.stone?.dir === 'buy' && sel.stone.tier === t ? ' is-on' : ''}`} onClick={() => tapStone('buy', t)} data-kd={`stonebuy:${t}`}>
+                  <span className="kd-tchip-l">{stoneJP(t)}を受け取る</span>
+                </button>
+              ))}
+            </div>
+            {sel.stone && (
+              <div className="kd-chips is-res">
+                {stoneRes.map((r) => (
+                  <button key={r} type="button" className={`kd-tchip is-res is-mini${sel.sr === r ? ' is-on' : ''}`} onClick={() => setSel({ stone: sel.stone, sr: r })} aria-label={`${DATA.RES_JP[r]}${stoneVal}`} data-kd={`stoneres:${r}`}>
+                    <span className="kd-tchip-ic"><KIcon name={r} size={24} /></span>
+                    <span className="kd-tchip-l">×{stoneVal}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {items.length > 0 && (

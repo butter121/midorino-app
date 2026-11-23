@@ -39,31 +39,24 @@ describe('kiridani2 装備を自分で持たせる', () => {
     expect(() => g.equip(p, 9, 'weapon', 'g_sword')).toThrow();
   });
 
-  it('両手武器を持つと防具は倉庫へ・持っている間は防具を持てない。リーダー専用はリーダーだけ', () => {
+  it('両手武器を持つと防具は倉庫へ・持っている間は防具を持てない', () => {
     const { g, p } = bare();
-    p.items = ['w_trophy_axe', 'g_leather', 'w_king_sword'];
+    p.items = ['w_ak5', 'g_leather'];
     g.equip(p, 1, 'armor', 'g_leather');
-    g.equip(p, 1, 'weapon', 'w_trophy_axe');
+    g.equip(p, 1, 'weapon', 'w_ak5');
     expect(p.comps[1].armor).toBeNull();
     expect(() => g.equip(p, 1, 'armor', 'g_leather')).toThrow();
     expect(g.equipTargets(p, 'g_leather')).not.toContain(1);
-    expect(() => g.equip(p, 2, 'weapon', 'w_king_sword')).toThrow(/リーダー/);
-    expect(g.equipTargets(p, 'w_king_sword')).toEqual([0]);
-    g.equip(p, 0, 'weapon', 'w_king_sword');
-    expect(p.comps[0].weapon).toBe('w_king_sword');
   });
 
-  it('両手武器でも防具を持てるリーダー（巨人オルガ）、武器を持てないリーダー（獣王ハル）', () => {
+  it('巨人狩り山田：駒はみな両手武器しか持てない', () => {
     const { g, p } = bare();
-    p.leader = 'l_orga';
-    p.items = ['w_trophy_axe', 'g_leather'];
-    g.equip(p, 1, 'weapon', 'w_trophy_axe');
-    g.equip(p, 1, 'armor', 'g_leather');
-    expect(p.comps[1].armor).toBe('g_leather');
-    p.leader = 'l_haru';
-    p.items.push('g_sword');
-    expect(() => g.equip(p, 0, 'weapon', 'g_sword')).toThrow(/リーダーは武器/);
-    expect(g.equipTargets(p, 'g_sword')).not.toContain(0);
+    p.leader = 'l_doran';
+    p.items = ['w_ak5', 'g_sword'];
+    expect(() => g.equip(p, 1, 'weapon', 'g_sword')).toThrow(/両手武器しか/);
+    expect(g.equipTargets(p, 'g_sword')).toEqual([]);
+    g.equip(p, 1, 'weapon', 'w_ak5');
+    expect(p.comps[1].weapon).toBe('w_ak5');
   });
 
   it('手に入れたときに誰に持たせるか聞く（空いている枠・熟練の高い順、最後に倉庫）。AI の席は自動のまま', () => {
@@ -100,13 +93,18 @@ describe('kiridani2 装備を自分で持たせる', () => {
     const hist: Action2[] = [];
     s.start();
     // 装備の問いが来たら倉庫に置く。最初の置き場所の選択まで
-    while (!(s.waiting!.k === 'choose' && s.g.storage(s.player!).length) && !s.done) {
+    while (!(s.waiting!.k === 'choose' && s.g.storage(s.player!).some((id) => s.g.equipTargets(s.player!, id).length)) && !s.done) {
       const w = s.waiting!;
+      // 手伝いの AI は先読みで人の席の狙いと他の AI の乱数を進めるので、答えたあと元に戻す
+      const me = s.g.players[0], keepT = [...me.target];
+      const keepR = s.g.players.map((q) => (q.ai as unknown as { rng?: { a: number } } | null)?.rng?.a);
       const a: Action2 = w.k === 'pick' && w.what.startsWith('equip:') ? { t: 'pick', i: w.options.length - 1 } : answerToAction(w, helper.respond(w));
+      me.target = keepT;
+      s.g.players.forEach((q, i) => { const r = (q.ai as unknown as { rng?: { a: number } } | null)?.rng; if (r && keepR[i] !== undefined) r.a = keepR[i]!; });
       applyAction2(s, a); hist.push(a);
     }
     const p = s.player!;
-    const id = s.g.storage(p)[0];
+    const id = s.g.storage(p).find((x) => s.g.equipTargets(p, x).length)!;
     const ci = s.g.equipTargets(p, id)[0];
     const slot = slotOf(s.g.card(id))!;
     const a: Action2 = { t: 'equip', c: ci, slot, id };

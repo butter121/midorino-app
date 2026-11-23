@@ -23,7 +23,7 @@ export const GEAR: GearDef[] = withText<GearDef>([
     text: '',
   },
   {
-    id: 'g_staff', kind: 'gear', name: '魔石の杖', engine: ['arcane'], mech: 'combat',
+    id: 'g_staff', kind: 'gear', name: 'マナ鉱石の杖', engine: ['arcane'], mech: 'combat',
     place: 'forge', count: 2, cost: { mana: 2 }, slot: 'weapon', power: 1,
     effects: [{ when: 'fight', if: { min: { casts_round: 1 } }, do: [{ power: 2 }] }],
     text: '',

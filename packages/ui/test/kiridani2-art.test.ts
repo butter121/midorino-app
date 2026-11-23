@@ -1,4 +1,5 @@
 // 霧谷 v2：カードの絵（画像が無いときの SVG・種類の縁取り）がすべてのカードで描けるか。強い動き（engine タグ）は絵に出さない
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
@@ -10,12 +11,17 @@ const ALL = [...CARD_SET.leaders, ...CARD_SET.occupations, ...CARD_SET.weapons, 
 
 describe('霧谷 v2：カードの絵', () => {
   it('全カードに種類があり、種類の色が決まっている', () => {
-    expect(ALL.length).toBe(584);
+    expect(ALL.length).toBe(396);
     for (const c of ALL) {
       const k = kindOf(c.id);
       expect(k, c.id).toBeTruthy();
       expect(KIND_COLOR[k!], c.id).toMatch(/^#/);
     }
+  });
+  it('職能・武器・防具・道具・秘術とリーダーは、全部に絵がある（public/cards/index.json）', () => {
+    const ids = new Set<string>(JSON.parse(readFileSync(new URL('../../app/public/cards/index.json', import.meta.url), 'utf8')).ids);
+    const need = [...CARD_SET.leaders, ...CARD_SET.occupations, ...CARD_SET.weapons, ...CARD_SET.armors, ...CARD_SET.tools, ...CARD_SET.spells];
+    expect(need.filter((c) => !ids.has(c.id)).map((c) => c.id)).toEqual([]);
   });
   it('種類の色は原色を避けたくすんだ色（彩度が低い）', () => {
     for (const [k, hex] of Object.entries(KIND_COLOR)) {

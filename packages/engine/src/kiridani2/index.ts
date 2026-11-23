@@ -6,11 +6,11 @@ export {
   DslError, validateCard, validateEffect, validateOp, validateMod, validateCond, validateWhen, checkCond, cardEffects, OP_KEYS, MOD_KEYS, COND_KEYS,
 } from './dsl';
 export {
-  Game, Player, drive, autoAnswer, humanDefault, loadCards, score, scoreBreakdown, ancientScore, tableScore, sameOpt, optLabel, canPay, slotOf, startSeat,
+  Game, Player, drive, autoAnswer, humanDefault, loadCards, score, scoreBreakdown, ancientScore, stoneFame, tableScore, sameOpt, optLabel, canPay, slotOf, startSeat,
   SCORE_LABELS, type Option, type FightChip, type Choice, type Req, type Gen, type Brain, type Plan, type Comp, type GameOptions, type Ratio, type ItemKind, type CardWhy,
 } from './engine';
 export { AI, LEVELS, LOOPS, loopDone, evaluate, cardValue, DEFAULT_W, type Level, type W } from './ai';
-export { Kiridani2Session, marketQuote, cleanUse, cleanWho, type SessionOptions, type TradeJudge } from './session';
+export { Kiridani2Session, marketQuote, cleanUse, cleanWho, tradeStoneOf, stoneKey, type SessionOptions, type TradeJudge } from './session';
 export { CARD_SET } from './cards';
 export {
   Kiridani2Referee, ShadowSession as Shadow2Session, applyAction as applyAction2, encodeGame as encodeGame2, decodeGame as decodeGame2,

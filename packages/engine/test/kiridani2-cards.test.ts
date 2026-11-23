@@ -1,12 +1,13 @@
 // 霧谷の冒険者団 v2 — カードデータの点検（id の重複、強い動きの入り口の数、DSL の op / mod / 条件 / タイミング）
 import { describe, it, expect } from 'vitest';
-import {
-  LEADERS, OCCUPATIONS, WEAPONS, ARMORS, TOOLS, SPELLS, PETS, GEAR, STAGES, QUESTS, ANCIENT,
-} from '../src/kiridani2/cards';
+import { LEADERS, PETS, GEAR, STAGES, QUESTS, ANCIENT, CARD_SET } from '../src/kiridani2/cards';
+import { LIST_LEADER } from '../src/kiridani2/cards/list300';
 import { OP_KEYS, MOD_KEYS, COND_KEYS, STAT_KEYS, WHEN_FIXED } from '../src/kiridani2/dsl';
 import type { CardDef, Effect, Cond } from '../src/kiridani2/types';
 
 // DSL の op / mod / 条件 / 数は dsl.ts の表から（エンジンが知っているものだけ）
+// 職能・品物はゲームで使う組（K さんのリストの300枚）
+const { occupations: OCCUPATIONS, weapons: WEAPONS, armors: ARMORS, tools: TOOLS, spells: SPELLS } = CARD_SET;
 const OPS = OP_KEYS;
 /** op のキーに添えてよいもの（build の値引き・train の fresh） */
 const OP_EXTRA = new Set(['discount', 'fresh']);
@@ -19,7 +20,7 @@ const RACES = new Set(['beast', 'spirit', 'undead', 'humanoid', 'dragon']);
 // 始めからのマス（SPEC §4）＋人数で増えるマス（v1 min_p）＋段階カード＋まとめ指定
 const BASE_SPACES = [
   'forest', 'mine', 'meadow', 'spring', 'hunt', 'board', 'guild', 'forge', 'workshop', 'market', 'plaza', 'hall',
-  'grove', 'market2', 'deepmine', 'peddler', 'herb2', 'outpost', 'nest', 'any_accum', 'lair', 'curio', 'dig',
+  'grove', 'market2', 'deepmine', 'peddler', 'herb2', 'outpost', 'nest', 'any_accum', 'adventure', 'lair', 'curio', 'dig',
 ];
 const SPACES = new Set([...BASE_SPACES, ...STAGES.map((s) => s.id)]);
 const MOVES = ['hunt', 'gather', 'trade', 'fort', 'smith', 'family', 'arcane', 'beast', 'quest', 'ally', 'ruins', 'boss'] as const;
@@ -82,21 +83,25 @@ function checkEffect(e: Effect, where: string, errs: string[]) {
 
 describe('kiridani2 cards', () => {
   it('枚数', () => {
-    expect(LEADERS.length).toBe(50);
-    expect(OCCUPATIONS.length).toBe(80);
-    expect(WEAPONS.length).toBe(80);
-    expect(ARMORS.length).toBe(80);
-    expect(TOOLS.length).toBe(80);
-    expect(SPELLS.length).toBe(80);
-    expect(SPELLS.filter((c) => c.tome).length).toBe(30);
-    expect(PETS.length).toBe(48);
+    expect(LEADERS.length).toBe(12);
+    expect(OCCUPATIONS.length).toBe(60);
+    expect(WEAPONS.length).toBe(60);
+    expect(ARMORS.length).toBe(60);
+    expect(TOOLS.length).toBe(60);
+    expect(SPELLS.length).toBe(60);
+    // リーダー1人に職能・武器・防具・道具・秘術を5枚ずつ
+    const per: Record<string, Record<string, number>> = {};
+    for (const c of [...OCCUPATIONS, ...WEAPONS, ...ARMORS, ...TOOLS, ...SPELLS]) { const l = LIST_LEADER[c.id]; (per[l] ??= {})[c.kind] = (per[l][c.kind] ?? 0) + 1; }
+    expect(Object.keys(per).length).toBe(12);
+    for (const [l, k] of Object.entries(per)) expect(k, l).toEqual({ occ: 5, weapon: 5, armor: 5, tool: 5, spell: 5 });
     expect(GEAR.length).toBe(8);
+    expect(STAGES.filter((s) => s.stage === 0).map((s) => s.id)).toEqual(['training', 'ruins']);
     expect(STAGES.filter((s) => s.stage === 1).length).toBe(3);
-    expect(STAGES.filter((s) => s.stage === 2).length).toBe(7);
-    for (const st of [3, 4, 5]) expect(STAGES.filter((s) => s.stage === st).length).toBe(6);
+    expect(STAGES.filter((s) => s.stage === 2).length).toBe(5);
+    expect(STAGES.filter((s) => s.stage === 3).length).toBe(5);
+    expect(STAGES.filter((s) => s.stage === 4).length).toBe(4);
+    expect(STAGES.filter((s) => s.stage === 5).length).toBe(3);
     expect(QUESTS.filter((q) => q.secret).length).toBeGreaterThanOrEqual(12);
-    expect(ANCIENT.reduce((n, a) => n + (a.copies ?? 3), 0)).toBe(20);
-    expect(new Set(ANCIENT.map((a) => a.group)).size).toBe(5);
   });
 
   it('id の重複なし', () => {
@@ -117,18 +122,10 @@ describe('kiridani2 cards', () => {
     for (const c of ARMORS) expect(c.slot).toBe('armor');
   });
 
-  it('engine タグは1〜2個、強い動きごとに15枚以上・3種類以上（リーダー・職能・武具・道具・秘術）', () => {
-    const count: Record<string, number> = {};
+  it('engine タグは1〜2個', () => {
     for (const c of PLAYABLE) {
       expect(c.engine.length, c.id).toBeGreaterThanOrEqual(1);
       expect(c.engine.length, c.id).toBeLessThanOrEqual(2);
-      for (const t of c.engine) count[t] = (count[t] ?? 0) + 1;
-    }
-    for (const m of MOVES) expect(count[m] ?? 0, m).toBeGreaterThanOrEqual(15);
-    // 2種類以上のカードにまたがる
-    for (const m of MOVES) {
-      const kinds = new Set(PLAYABLE.filter((c) => c.engine.includes(m)).map((c) => (c.kind === 'armor' ? 'weapon' : c.kind)));
-      expect(kinds.size, m).toBeGreaterThanOrEqual(3);
     }
   });
 
@@ -144,26 +141,13 @@ describe('kiridani2 cards', () => {
     expect(errs).toEqual([]);
   });
 
-  it('秘術：手札・身につけた秘術から使えるのは play と fight。唱える魔石は1〜3、何度でもは1手番に1〜3回', () => {
+  it('秘術：手札・身につけた秘術から使えるのは play と fight。唱えるマナ鉱石は0〜5、何度でもは1手番に1〜2回', () => {
     for (const c of SPELLS) for (const e of c.effects) expect(['play', 'fight'], c.id).toContain(e.when);
     for (const c of SPELLS) {
-      expect(c.cost?.mana ?? 0, c.id).toBeGreaterThanOrEqual(1);
-      expect(c.cost?.mana ?? 0, c.id).toBeLessThanOrEqual(3);
-      if (c.tome) { expect(c.tome.uses, c.id).toBeGreaterThanOrEqual(1); expect(c.tome.uses, c.id).toBeLessThanOrEqual(3); }
+      expect(c.cost?.mana ?? 0, c.id).toBeLessThanOrEqual(5);
+      if (!c.tome) expect(c.cost?.mana ?? 0, c.id).toBeGreaterThanOrEqual(1);
+      if (c.tome) { expect(c.tome.uses, c.id).toBeGreaterThanOrEqual(1); expect(c.tome.uses, c.id).toBeLessThanOrEqual(2); }
     }
-    const uses = new Set(SPELLS.filter((c) => c.tome).map((c) => c.tome!.uses));
-    expect([...uses].sort()).toEqual([1, 2, 3]);
-  });
-
-  it('再設計の決まり：種族への特攻なし・職能は回数の制限なし・どの種類にも欠点のあるカード', () => {
-    for (const c of [...PLAYABLE, ...PETS]) for (const e of c.effects) {
-      expect(e.when.startsWith('win_race:'), c.id).toBe(false);
-      expect(e.if?.race, c.id).toBeUndefined();
-    }
-    for (const c of OCCUPATIONS) for (const e of c.effects) expect(e.limit ?? null, c.id).toBeNull();
-    for (const list of [LEADERS, OCCUPATIONS, WEAPONS, ARMORS, TOOLS, SPELLS]) expect(list.filter((c) => c.weight === 'curse').length, list[0].kind).toBeGreaterThanOrEqual(2);
-    // ほかの人のマスを使うたびに得る効果は（あっても）ラウンド1回まで
-    for (const c of PLAYABLE) for (const e of c.effects) if (e.when.startsWith('other:')) expect(e.limit, c.id).toBe('round');
   });
 
   it('名前の重複なし（リーダー・職能・武具・道具・秘術）', () => {
@@ -171,7 +155,8 @@ describe('kiridani2 cards', () => {
     expect(names.filter((n, i) => names.indexOf(n) !== i)).toEqual([]);
   });
   it('説明文は決まった言い方（英字なし・かっこが重ならない・【いつ】で始まる効果）', () => {
-    for (const c of [...PLAYABLE, ...PETS, ...GEAR]) {
+    // 職能・品物の説明文はリストの文そのまま（決まった言い方はリーダーと共通の装備だけ）
+    for (const c of [...LEADERS, ...PETS, ...GEAR]) {
       expect(c.text, c.id).not.toMatch(/[A-Za-z]/);
       expect(c.text, c.id).not.toMatch(/）（/);
       expect(c.text, c.id).not.toMatch(/につき/);

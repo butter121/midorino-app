@@ -2,7 +2,7 @@
 // 答えはオンラインの答え（Action2）の形で返す。ひとり遊びは applyAction2 でそのまま手元の試合に渡す。
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  choiceLabel, DATA, optionLabel, opsText, previewFight, whenText, RES, slotOf, type Action2, type Choice, type Cost, type FightChip, type FightMode, type Game, type Option,
+  choiceLabel, DATA, stoneKey, optionLabel, opsText, previewFight, whenText, RES, slotOf, type Action2, type Choice, type Cost, type FightChip, type FightMode, type Game, type Option,
   type Player, type SeatSession2,
 } from '@midorino/engine/src/kiridani2';
 import { KIcon } from '../kiridani/art-registry';
@@ -33,15 +33,21 @@ export function compStats(g: Game, p: Player, i: number): { power: number; guard
 const one = (r: string, n: number) => ({ [r]: n }) as Cost;
 const addOps = (ops: { gain?: Cost; pay?: Cost }[], k: 'gain' | 'pay') => ops.reduce<Cost>((a, op) => (op[k] ? addC(a, op[k]!) : a), {});
 const resNames = (c: Cost) => RES.filter((r) => c[r]).map((r) => `${DATA.RES_JP[r]}${c[r]! > 1 ? `×${c[r]}` : ''}`).join('＋');
+/** 作るもの・取るもの（カード）と使い魔にする魔物に i マーク（詳しく見る）をつける */
+export function withInfo<T extends { items: ChoiceItem[] }>(spec: T): T {
+  return { ...spec, items: spec.items.map((it) => (it.info || !it.card ? it : { ...it, info: `card2:${it.card}` })) };
+}
+const nestInfo = (g: Game, nid: string) => { const m = g.nest(nid)?.mon; return m ? `mon2:${m.uid}` : undefined; };
 export function choiceItem2(g: Game, p: Player | null, x: Choice, id: string): ChoiceItem {
   if (typeof x === 'object') {
     if (x.m === 'sell') return { id, title: `${DATA.RES_JP[x.r]}を売る`, cost: one(x.r, x.q), gain: { gold: (p ? g.sellPrice(p, x.r) : DATA.sellPrice(x.r)) * x.q } };
     if (x.m === 'buy') return { id, title: `${DATA.RES_JP[x.r]}を買う`, cost: { gold: DATA.BUY[x.r] * x.q }, gain: one(x.r, x.q) };
     if (x.m === 'item') return { id, title: `${cardName(x.id)}を売る`, card: CARD2[x.id] ? x.id : undefined, gain: { gold: g.itemSell(x.id) } };
+    if (x.m === 'stone') { const st = `${DATA.STONE.jp[x.tier]}魔石`; return x.dir === 'sell' ? { id, title: `${st}1つを換える`, gain: one(x.r, x.q) } : { id, title: `${st}1つと換える`, cost: one(x.r, x.q) }; }
     if (x.m === 'both') return { id, title: `${DATA.RES_JP[x.sell.r]}を売って${DATA.RES_JP[x.buy.r]}を買う`, cost: one(x.sell.r, x.sell.q), gain: one(x.buy.r, x.buy.q) };
   }
   const l = choiceLabel(g, p, x);
-  return { id, title: l.title, detail: l.detail, card: l.card && CARD2[l.card] ? l.card : undefined, cost: l.cost };
+  return { id, title: l.title, detail: l.detail, card: l.card && CARD2[l.card] ? l.card : undefined, cost: l.cost, info: typeof x === 'string' && g.nest(x) ? nestInfo(g, x) : undefined };
 }
 /** 置き場所の選択肢1つ（資源を払う・得るだけなら、見出しは得るもの、アイコンで 払う→得る） */
 function spaceItem2(g: Game, p: Player | null, o: Option, id: string): ChoiceItem {
@@ -53,7 +59,7 @@ function spaceItem2(g: Game, p: Player | null, o: Option, id: string): ChoiceIte
     const gain = addOps(ops, 'gain'), cost = addOps(ops, 'pay');
     if (sumCost(gain)) return { id, title: resNames(gain), cost, gain };
   }
-  return { id, title: l.title, detail: l.detail, card: l.card && CARD2[l.card] ? l.card : undefined, cost: l.cost };
+  return { id, title: l.title, detail: l.detail, card: l.card && CARD2[l.card] ? l.card : undefined, cost: l.cost, info: o.mode === 'capture' ? nestInfo(g, o.s) : undefined };
 }
 /** 選択肢に同じ説明がくり返されるときは、見出しの下（sub）に1回だけ出す */
 function hoist(items: ChoiceItem[], sub?: string): { items: ChoiceItem[]; sub?: string } {
@@ -84,6 +90,7 @@ export function uiFor2(s: SeatSession2): { ask: Ask2 | null; sheet: (ChoiceSpec 
         toAction: (id) => ({ t: 'kind', v: id as 'weapon' | 'tool' | 'spell' }),
       },
     };
+    case 'multi': return { ask: null, sheet: null };
     case 'choose': return { ask: { kind: 'place', options: [...new Set(w.opts.filter((o) => !isSpellOpt(o)).map((o) => o.s))] }, sheet: null };
     case 'heal': return {
       ask: null, sheet: {
@@ -178,6 +185,7 @@ export function fallbackSheet2(s: SeatSession2): (ChoiceSpec & { toAction: (id: 
     case 'choose': return { title, items: w.opts.map((o, i) => { const l = optionLabel(g, p, o); return { id: String(i), title: isSpellOpt(o) ? l.title : `${placeName(o.s)}：${l.title}`, detail: l.detail, cost: l.cost }; }), toAction: (id) => ({ t: 'opt', i: Number(id) }) };
     case 'pick': return { title, items: w.options.map((x, i) => choiceItem2(g, p, x, String(i))), toAction: (id) => ({ t: 'pick', i: Number(id) }) };
     case 'heal': case 'effect': return { title, items: [{ id: 'yes', title: 'はい', primary: true }, { id: 'no', title: 'いいえ' }], toAction: (id) => ({ t: 'yes', v: id === 'yes' }) };
+    case 'multi': return null;
   }
 }
 
@@ -189,7 +197,7 @@ function Sheet({ label, children }: { label: string; children: ReactNode }) {
 // 送る仲間の数・戦い方を選び、使うもの（士気・ポーション・払うカードの効果・手札の秘術）をタップでトレイに足す。
 // 足すたびに戦力・勝つ見込み・運命・反撃と負傷・払うものがその場で変わる。計算はエンジン（previewFight → makePlan の use）。
 const STYLES: [FightMode, string, string][] = [
-  ['normal', '普通に', '戦力そのまま'], ['guard', '守って戦う', '戦力−2・反撃−2'], ['chip', '削るだけ', '負けても傷+1'], ['capture', '捕まえる', '勝てば使い魔（強さ＋捕まえにくさ・食料）'],
+  ['normal', '普通に', '戦力そのまま'], ['guard', '守って戦う', '戦力−2・反撃−2'], ['chip', '削るだけ', '負けても傷+1'],
 ];
 /** 秘術を唱える・身につける（置く場所を選ぶ前に何度でも） */
 const isSpellOpt = (o: { s: string }) => o.s === '@spell' || o.s === '@learn';
@@ -444,6 +452,8 @@ export function routeAnswer2(w: NonNullable<SeatSession2['waiting']>, c: string)
   if (w.k === 'choose') {
     const os = w.opts.filter((o) => o.s === c && !isSpellOpt(o));
     if (!os.length) return { k: 'none' };
+    // 餌付け師ハル：巣の魔物は好物で使い魔にするだけ（戦闘のトレイは開かない）
+    if (isFight(c) && os.every((o) => o.mode === 'capture')) return { k: 'sub', sid: c, opts: os };
     if (isFight(c)) return { k: 'fight', sid: c };
     // 選べるものが1つでも、選ぶ要素のあるマス（建てる・作る・売り買い・できることが複数）は中身を見せてから決める。
     // 何も選ばないマス（金貨+2 など）だけ、そのまま置く
@@ -504,14 +514,14 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
       const stat = slot === 'weapon' ? `戦力+${cd.power ?? 0}${cd.two_hand ? '・両手' : ''}` : `守り+${cd.guard ?? 0}`;
       return { id, title: cd.name, detail: `${stat}（${from(id)}から）`, card: CARD2[id] ? id : undefined };
     });
-    if (cur) items.push({ id: '-', title: 'はずす', detail: `${cardName(cur)}を倉庫へ` });
-    sheetNode = <ChoiceSheet spec={{ title: `${compName(p, ci)}の${SLOT_JP[slot]}`, sub: cur ? `いま：${cardName(cur)}` : items.length ? '持たせる装備を選ぶ（無料）' : '持たせられる装備がない', items, cancel: '閉じる' }}
+    if (cur) items.unshift({ id: '-', title: `はずす：${cardName(cur)}`, detail: `いま持たせている。iで詳しく見る。はずすと倉庫へ`, card: CARD2[cur] ? cur : undefined, info: `card2:${cur}` });
+    sheetNode = <ChoiceSheet spec={withInfo({ title: `${compName(p, ci)}の${SLOT_JP[slot]}`, sub: cur ? `いま：${cardName(cur)}` : items.length ? '持たせる装備を選ぶ（無料）' : '持たせられる装備がない', items, cancel: '閉じる' })}
       onPick={(id) => go({ t: 'equip', c: ci, slot, id: id === '-' ? null : id })} onCancel={reset} />;
   }
-  else if (s && w?.k === 'choose' && tray?.kind === 'trade') sheetNode = <TradeTray s={tradeAdapter(s)} onTrade={(b, give, get) => { reset(); opts.onTrade(b, give, get); }} onCancel={reset} />;
+  else if (s && w?.k === 'choose' && tray?.kind === 'trade') sheetNode = <TradeTray s={tradeAdapter(s)} onTrade={(b, give, get) => { reset(); opts.onTrade(b, give, get); }} onCancel={reset} stones={s.player && s.g.is(s.player, 'swindler') ? { have: [...s.player.stones], jp: [...DATA.STONE.jp], value: [...DATA.STONE.value], key: (t) => stoneKey(t) as string } : undefined} />;
   else if (s && w?.k === 'choose' && tray?.kind === 'spell') {
     const sp = w.opts.filter((o) => isSpellOpt(o));
-    sheetNode = <ChoiceSheet spec={{ title: '秘術を使う', sub: '置く前に1枚。使うと手札から捨てる', items: sp.map((o, i) => { const l = optionLabel(s.g, s.player, o); return { id: String(i), title: l.title.replace(/を使う$/, ''), detail: l.detail, card: l.card, cost: l.cost }; }), cancel: '使わない' }} onPick={(id) => go({ t: 'opt', i: w.opts.indexOf(sp[Number(id)]) })} onCancel={reset} />;
+    sheetNode = <ChoiceSheet spec={withInfo({ title: '秘術を使う', sub: '置く前に1枚。使い切りは使うと山に戻る', items: sp.map((o, i) => { const l = optionLabel(s.g, s.player, o); return { id: String(i), title: l.title.replace(/を使う$/, ''), detail: l.detail, card: l.card, cost: l.cost }; }), cancel: '使わない' })} onPick={(id) => go({ t: 'opt', i: w.opts.indexOf(sp[Number(id)]) })} onCancel={reset} />;
   } else if (s && p && w?.k === 'choose' && sub && sub.opts.every((o) => o.x !== undefined && typeof o.x === 'object')) {
     // 売り買いのマス：両替の形のトレイ
     const stage = s.g.space(sub.sid)?.stage;
@@ -520,14 +530,14 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
   } else if (s && p && w?.k === 'pick' && w.what === 'exchange' && opts.sheetReady && w.options.every((x) => typeof x === 'object')) {
     sheetNode = <MarketTray2 g={s.g} p={p} title="交換所で売り買い" choices={w.options} onPick={(i) => go({ t: 'pick', i })} />;
   } else if (s && w?.k === 'choose' && sub) {
-    sheetNode = <ChoiceSheet spec={optionSheet2(s, sub.sid, sub.opts)} onPick={(id) => go({ t: 'opt', i: w.opts.indexOf(sub.opts[Number(id)]) })} onCancel={reset} />;
+    sheetNode = <ChoiceSheet spec={withInfo(optionSheet2(s, sub.sid, sub.opts))} onPick={(id) => go({ t: 'opt', i: w.opts.indexOf(sub.opts[Number(id)]) })} onCancel={reset} />;
   } else if (ui.sheet && opts.sheetReady) {
     const sh = ui.sheet;
-    sheetNode = <ChoiceSheet spec={sh} onPick={(id) => go(sh.toAction(id))} />;
+    sheetNode = <ChoiceSheet spec={withInfo(sh)} onPick={(id) => go(sh.toAction(id))} />;
   } else if (s && opts.sheetReady && !actionable2(s, ui)) {
     // 画面が出し方を知らない問い（新しい種類の問い・選べるものが盤面に出ない）：何もできないまま止まらないよう、全部を並べて選ばせる
     const fb = fallbackSheet2(s);
-    if (fb) sheetNode = <ChoiceSheet spec={fb} onPick={(id) => go(fb.toAction(id))} />;
+    if (fb) sheetNode = <ChoiceSheet spec={withInfo(fb)} onPick={(id) => go(fb.toAction(id))} />;
   }
 
   const spells = w?.k === 'choose' ? w.opts.filter((o) => isSpellOpt(o)).length : 0;

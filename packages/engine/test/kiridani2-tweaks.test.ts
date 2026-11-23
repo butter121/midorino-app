@@ -45,31 +45,20 @@ describe('kiridani2 訓練', () => {
     expect(q.comps[1].atk).toBe(2);
   });
 
-  it('若手の訓練：まだその熟練がない仲間だけ、1段階目だけ', () => {
-    const ops = stageOps('drill')[0];
-    expect(ops.every((o) => o.fresh)).toBe(true);
-    const { g, p } = bare([1, 0, 0], [0, 1, 2]);
-    const gen = g.runOps(p, ops, { x: 'atk' });
-    const r = gen.next();
-    expect((r.value as { options: string[] }).options).toEqual(['tr:1', 'tr:2']);
-    // 次は守り（選択肢が1つでも聞く）：まず守り+1、次に誰か（守りが0なのはリーダーだけ）
-    expect((gen.next('tr:2').value as { what: string; options: string[] }).options).toEqual(['def']);
-    expect((gen.next('def').value as { options: string[] }).options).toEqual(['tr:0']);
-    expect(gen.next('tr:0').done).toBe(true);
-    expect(p.comps.map((c) => [c.atk, c.def])).toEqual([[1, 1], [0, 1], [1, 2]]);
-  });
-
-  it('若手の訓練：全員がもう攻めの熟練を持っていれば置けない', () => {
-    const { g, p } = bare([1, 1, 2]);
-    expect(g.expand(p, stageOps('drill')[0])).toEqual([]);
+  it('訓練場と遺跡の探索は始めから盤面にある（段階0）', () => {
+    const { g } = bare();
+    expect(g.spaces.some((sp) => sp.id === 'training')).toBe(true);
+    expect(g.spaces.some((sp) => sp.id === 'ruins')).toBe(true);
+    expect(Object.values(g.stageAt)).not.toContain('training');
+    expect(Object.values(g.stageAt)).not.toContain('ruins');
   });
 });
 
 describe('kiridani2 遺跡の探索', () => {
-  it('武器・防具・道具・秘術の山を選んで3枚見て1枚／遺物の欠片+2', () => {
+  it('武器・防具・道具・秘術の山を選んで3枚見て1枚／遺物1枚', () => {
     const ops = stageOps('ruins');
     expect(ops[0][0].draw_any?.from).toEqual(['weapon', 'armor', 'tool', 'spell']);
-    expect(ops[1][0].shard).toBe(2);
+    expect(ops[1][0].relic).toBe(1);
   });
 
   it('選んだ山からだけ見る', () => {
@@ -86,15 +75,15 @@ describe('kiridani2 遺跡の探索', () => {
     expect(p.hand).toContain(req.cards[0]);
   });
 
-  it('欠片が3つたまると遺物を1枚引く', () => {
+  it('遺物を引くと壊れた状態で手元に来る（欠片はない）', () => {
     const { g, p } = bare();
-    const gen = g.runOps(p, [{ shard: 3 }], {});
+    const gen = g.runOps(p, [{ relic: 1 }], {});
     const r = gen.next();
     const req = r.value as { k: string; cards: string[] };
     expect(req.k).toBe('card');
     gen.next(req.cards[0]);
-    expect(p.ancient).toEqual([req.cards[0]]);
-    expect(p.shards).toBe(0);
+    expect(p.broken).toEqual([req.cards[0]]);
+    expect(p.ancient).toEqual([]);
   });
 });
 
@@ -137,5 +126,35 @@ describe('kiridani2 選択肢が1つでも人には見せる', () => {
     const req = gen.next().value as { k: string; cards: string[] };
     expect(req.k).toBe('card');
     expect(req.cards).toHaveLength(1);
+  });
+});
+
+describe('取引と交換所の決まり（等価・1種類・魔石は1つ）', () => {
+  it('交換所の価値は魔石のほかすべて金貨1、魔石は2・4・6', async () => {
+    const D = await import('../src/kiridani2/data');
+    for (const v of Object.values(D.VALUE)) expect(v).toBe(1);
+    expect(D.STONE.value).toEqual([2, 4, 6]);
+  });
+});
+
+describe('詐欺師の取引と交換所の魔石', () => {
+  it('詐欺師は1種類ずつ・同じ価値・金貨3枚分まで。ほかの人は制限なし', () => {
+    const { g, p } = bare();
+    const q = g.players[1];
+    p.res.wood = 9; p.res.iron = 9; q.res.food = 9; q.res.herb = 9;
+    expect(g.tradeOk(p, q, { wood: 5 }, { food: 1 })).toBeNull();
+    p.leader = 'l_momo';
+    expect(g.tradeOk(p, q, { wood: 3 }, { food: 3 })).toBeNull();
+    expect(g.tradeOk(p, q, { wood: 4 }, { food: 4 })).not.toBeNull();
+    expect(g.tradeOk(p, q, { wood: 2 }, { food: 1 })).not.toBeNull();
+    expect(g.tradeOk(p, q, { wood: 1, iron: 1 }, { food: 2 })).not.toBeNull();
+    expect(g.occCost(p).food).toBe(DATA.OCC_FOOD[0] + 1);
+  });
+  it('交換所で魔石を1つ出すと、同じ価値の資源1種類を受け取れる', () => {
+    const { g, p } = bare();
+    p.stones = [0, 0, 1];
+    const xs = g.expand(p, [{ exchange: true }]);
+    expect(xs).toContainEqual({ m: 'stone', dir: 'sell', tier: 2, r: 'iron', q: 6 });
+    expect(xs.some((x) => typeof x === 'object' && x?.m === 'stone' && x.dir === 'sell' && x.tier === 0)).toBe(false);
   });
 });

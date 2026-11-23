@@ -5,7 +5,7 @@ import type { CardDef } from '../types';
 import { O, fight, win, hit, on, end, passive, powPer, famePer } from './mk';
 import { withText } from './text';
 
-export const OCCUPATIONS: CardDef[] = withText([
+const ALL_OCCUPATIONS: CardDef[] = withText([
   // ---- 武器と組む
   O('o_swordmaster', '剣術師範', ['hunt', 'smith'], [fight([powPer('sent_wpow', 3, 1, 2)]), end([famePer('weapons', 2, 3)])]),
   O('o_weaponsmith', '武器鍛冶', ['smith'], [passive({ cost_discount: { kind: 'weapon', res: { iron: 1 } } }), end([famePer('weapons', 2, 2)])]),
@@ -36,7 +36,7 @@ export const OCCUPATIONS: CardDef[] = withText([
   O('o_alchemist', '錬金術師', ['arcane', 'gather'], [on('round_start', [{ convert: { from: { herb: 2 }, to: { mana: 1 } } }])]),
   O('o_seer', '占い師', ['arcane', 'bridge'], [on('round_start', [{ pay: { mana: 1 } }, { draw: { from: 'item', look: 2, take: 1 } }])]),
   // ---- 使い魔（どの魔物でも）
-  O('o_beast_tamer', '獣使い', ['beast'], [passive({ capture_ease: 2, pet_power: 1 })]),
+  O('o_beast_tamer', '獣使い', ['beast'], [passive({ pet_power: 1 }), on('tame', [{ gain: { mat: 1 } }])]),
   O('o_breeder', '育て屋', ['beast', 'family'], [passive({ pet_cap: 1 }), on('round_start', [{ gain_per: { stat: 'pets', per: 2, gain: { food: 1 }, max: 2 } }])]),
   O('o_falconer', '鷹匠', ['beast', 'hunt'], [passive({ pet_bring: 1 })]),
   O('o_beast_lord', '獣の王', ['beast'], [on('tame', [{ fame: 1 }]), end([famePer('pets', 1, 3)])]),
@@ -56,7 +56,7 @@ export const OCCUPATIONS: CardDef[] = withText([
   O('o_relic_hunter', '遺物狩り', ['ruins', 'hunt'], [win([{ shard: 1 }])]),
   O('o_curator', '学芸員', ['ruins'], [end([famePer('ancient', 2, 4)])]),
   O('o_explorer', '探検家', ['ruins', 'arcane'], [on('use:dig', [{ gain: { mana: 1 } }]), passive({ ancient_look: 1 })]),
-  O('o_relic_trader', '古物商', ['ruins', 'trade'], [on('use:curio', [{ shard: 1 }])]),
+  O('o_relic_trader', '古物商', ['ruins', 'trade'], [on('use:dig', [{ shard: 1 }])]),
   // ---- 戦い
   O('o_hunter', '狩人', ['hunt'], [win([{ loot: 1 }])]),
   O('o_bounty', '賞金稼ぎ', ['hunt', 'trade'], [win([{ gain: { gold: 1 } }])]),
@@ -75,7 +75,7 @@ export const OCCUPATIONS: CardDef[] = withText([
   O('o_miner', '鉱夫', ['gather', 'smith'], [on('use:mine', [{ gain: { iron: 1 } }])]),
   O('o_herbalist', '薬師', ['gather', 'boss'], [on('use:meadow', [{ gain: { herb: 1 } }]), passive({ heal_discount: 1 })]),
   O('o_fisher', '漁師', ['family', 'gather'], [on('use:hunt', [{ gain: { food: 1 } }])]),
-  O('o_mana_digger', '魔石掘り', ['arcane', 'gather'], [on('use:spring', [{ gain: { mana: 1 } }])]),
+  O('o_mana_digger', 'マナ鉱石掘り', ['arcane', 'gather'], [on('use:spring', [{ gain: { mana: 1 } }])]),
   O('o_fortifier', '築城家', ['fort'], [end([famePer('walls', 1, 5)]), on('build', [{ gain: { food: 1 } }])]),
   O('o_guard_captain', '衛兵隊長', ['fort'], [passive({ base_guard: 1 }), on('winter', [famePer('walls', 2, 3)])]),
   // ---- 依頼・共闘・つなぎ
@@ -99,3 +99,7 @@ export const OCCUPATIONS: CardDef[] = withText([
   O('o_glutton', '大食らい', ['hunt', 'family'], [passive({ upkeep: 2, power: 2 })], { weight: 'curse' }),
   O('o_hermit', '隠者', ['arcane', 'gather'], [passive({ comp_cap: -2 }), on('round_start', [{ gain: { mana: 1, herb: 1 } }])], { weight: 'curse' }),
 ]);
+
+/** 使うのはこの30枚（ルール・難易度の見直しで絞った） */
+const KEEP_OCCUPATIONS = new Set(['o_swordmaster', 'o_hunter', 'o_champion', 'o_dragon_hunter', 'o_herald', 'o_shieldbearer', 'o_armorer', 'o_weaponsmith', 'o_artisan', 'o_collector', 'o_inventor', 'o_engineer', 'o_toolmaster', 'o_mage', 'o_sage', 'o_battle_mage', 'o_beast_tamer', 'o_beast_lord', 'o_banker', 'o_smuggler', 'o_steward', 'o_archaeologist', 'o_curator', 'o_relic_hunter', 'o_adventurer', 'o_guild_clerk', 'o_matron', 'o_drill_sergeant', 'o_fortifier', 'o_guard_captain']);
+export const OCCUPATIONS: CardDef[] = ALL_OCCUPATIONS.filter((c) => KEEP_OCCUPATIONS.has(c.id));

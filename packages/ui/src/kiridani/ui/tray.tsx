@@ -256,24 +256,28 @@ export function MarketTray({ s, sid, onDeal, onCancel }: { s: SeatSession; sid: 
 }
 
 /** 渡す／受け取るの2つのトレイ（中身をタップで1つ戻す） */
-function ExchangeBox({ give, get, onTakeGive, onTakeGet, giveLabel, getLabel, verdict }: {
+function ExchangeBox({ give, get, onTakeGive, onTakeGet, giveLabel, getLabel, verdict, giveExtra }: {
   give: Cost; get: Cost; onTakeGive?: (r: Res) => void; onTakeGet?: (r: Res) => void; giveLabel: string; getLabel: string; verdict?: React.ReactNode;
+  /** 渡す側に足して見せるもの（押し売りモモの魔石） */ giveExtra?: React.ReactNode;
 }) {
-  const side = (c: Cost, on: ((r: Res) => void) | undefined, label: string, cls: string) => (
+  // 申し込みの中身に魔石（stone0〜2 の鍵。押し売りモモ）があれば、それも見せる
+  const stoneIn = (c: Cost) => { const k = Object.keys(c).find((x) => /^stone[0-2]$/.test(x) && (c as Record<string, number>)[x]); return k ? <span className="kd-xitem">{['初級', '中級', '上級'][Number(k.slice(5))]}魔石</span> : undefined; };
+  const side = (c: Cost, on: ((r: Res) => void) | undefined, label: string, cls: string, extra: React.ReactNode = stoneIn(c)) => (
     <div className={`kd-xside ${cls}`}>
-      <small>{label}<b>{sumCost(c)}</b></small>
+      <small>{label}<b>{sumCost(c) + (extra ? 1 : 0)}</b></small>
       <div className="kd-xitems">
+        {extra}
         {RES.filter((r) => c[r]).flatMap((r) => Array.from({ length: c[r]! }, (_, i) => (
           <button key={r + i} type="button" className="kd-xitem" onClick={on ? () => on(r) : undefined} disabled={!on} aria-label={`${RES_JP[r]}を1つ戻す`}><KIcon name={r} size={24} /></button>
         )))}
-        {!sumCost(c) && <span className="kd-tray-empty">空</span>}
+        {!sumCost(c) && !extra && <span className="kd-tray-empty">空</span>}
       </div>
     </div>
   );
   return (
     <section className="kd-tray-box kd-xbox" aria-label="交換のトレイ">
       <div className="kd-xrow">
-        {side(give, onTakeGive, giveLabel, 'is-give')}
+        {side(give, onTakeGive, giveLabel, 'is-give', giveExtra)}
         <span className="kd-xarrow" aria-hidden>⇄</span>
         {side(get, onTakeGet, getLabel, 'is-get')}
       </div>
@@ -283,18 +287,28 @@ function ExchangeBox({ give, get, onTakeGive, onTakeGet, giveLabel, getLabel, ve
 }
 
 // ---------------------------------------------------------------- AI との取引
-export function TradeTray({ s, onTrade, onCancel }: { s: SeatSession; onTrade: (b: number, give: Cost, get: Cost) => void; onCancel: () => void }) {
+/** 押し売りモモ（v2）：魔石を1つ取引に出せる。have＝段階ごとの数、value＝価値、key＝渡すものに入れる鍵 */
+export interface TradeStones { have: number[]; jp: string[]; value: number[]; key: (tier: number) => string }
+export function TradeTray({ s, onTrade, onCancel, stones }: { s: SeatSession; onTrade: (b: number, give: Cost, get: Cost) => void; onCancel: () => void; stones?: TradeStones }) {
   const g = s.g; const p = s.player!;
   const partners = s.tradePartners();
   const [b, setB] = useState<number>(partners[0] ?? -1);
   const [give, setGive] = useState<Cost>({});
   const [get, setGet] = useState<Cost>({});
+  const [stone, setStone] = useState<number | null>(null);
   const o = g.players[b];
   const left = s.tradeLeft();
-  const j = b >= 0 && (sumCost(give) || sumCost(get)) ? s.judgeTrade(b, give, get) : null;
+  const giveAll = (stone !== null && stones ? { [stones.key(stone)]: 1 } : give) as Cost;
+  const j = b >= 0 && (sumCost(give) || sumCost(get) || stone !== null) ? s.judgeTrade(b, giveAll, get) : null;
+  const getMax = stone !== null && stones ? stones.value[stone] : TRADE_MAX;
   const pickPartner = (x: number) => { setB(x); setGet({}); };
-  const tapMine = (r: Res) => { if (sumCost(give) < TRADE_MAX && p.res[r] > (give[r] ?? 0) && !get[r]) setGive(addTo(give, r, 1)); };
-  const tapTheirs = (r: Res) => { if (o && sumCost(get) < TRADE_MAX && o.res[r] > (get[r] ?? 0) && !give[r]) setGet(addTo(get, r, 1)); };
+  const tapMine = (r: Res) => {
+    const base = stone !== null ? {} : give;
+    if (stone !== null) { setStone(null); setGet({}); }
+    if (sumCost(base) < TRADE_MAX && p.res[r] > (base[r] ?? 0) && !(stone === null && get[r])) setGive(addTo(base, r, 1));
+  };
+  const tapStone = (t: number) => { if (stone === t) { setStone(null); setGet({}); return; } setStone(t); setGive({}); setGet({}); };
+  const tapTheirs = (r: Res) => { if (o && sumCost(get) < getMax && o.res[r] > (get[r] ?? 0) && !give[r]) setGet(addTo(get, r, 1)); };
   const mood = j?.ok ? (j.human ? '申し込める（受けるかは相手しだい）' : j.accept ? (j.gain > 1 ? '大よろこびで受ける' : '受ける') : j.gain > -0.3 ? 'もうひと声…' : '断る') : null;
   return (
     <Sheet label="取引">
@@ -323,6 +337,7 @@ export function TradeTray({ s, onTrade, onCancel }: { s: SeatSession; onTrade: (
       </div>
       <ExchangeBox give={give} get={get} onTakeGive={(r) => setGive(addTo(give, r, -1))} onTakeGet={(r) => setGet(addTo(get, r, -1))}
         giveLabel="渡す" getLabel="受け取る"
+        giveExtra={stone !== null && stones ? <button type="button" className="kd-xitem" onClick={() => tapStone(stone)} aria-label={`${stones.jp[stone]}の魔石を戻す`}>{stones.jp[stone]}魔石</button> : undefined}
         verdict={j ? (j.pending ? <small role="status">{j.error}</small> : j.ok ? <span className={`kd-mood ${j.accept ? 'is-yes' : 'is-no'}`}>{o ? `${g.names[b]}：` : ''}<b>{mood}</b><i style={{ width: `${Math.max(4, Math.min(100, 50 + j.gain * 25))}%` }} /></span> : <b className="kd-bad">{j.error}</b>) : <small>あなたの持ち物と、相手の持ち物をタップ</small>} />
       <div className="kd-tray-sec">
         <h4>あなたの持ち物<small>タップで「渡す」へ</small></h4>
@@ -334,12 +349,24 @@ export function TradeTray({ s, onTrade, onCancel }: { s: SeatSession; onTrade: (
           ))}
         </div>
       </div>
+      {stones && stones.have.some((n) => n > 0) && (
+        <div className="kd-tray-sec">
+          <h4>あなたの魔石<small>1つまで。同じ価値の資源1種類と（初級{stones.value[0]}・中級{stones.value[1]}・上級{stones.value[2]}）</small></h4>
+          <div className="kd-chips">
+            {stones.have.map((n, t) => n > 0 && (
+              <button key={t} type="button" className={`kd-tchip${stone === t ? ' is-on' : ''}`} aria-pressed={stone === t} onClick={() => tapStone(t)} aria-label={`${stones.jp[t]}の魔石（${n}）を渡す`}>
+                <span className="kd-tchip-l">{stones.jp[t]}魔石<small>{n}つ・価値{stones.value[t]}</small></span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       {o && (
         <div className="kd-tray-sec">
           <h4>{g.names[b]}の持ち物<small>タップで「受け取る」へ</small></h4>
           <div className="kd-chips is-res">
             {RES.map((r) => (
-              <button key={r} type="button" className={`kd-tchip is-res is-mini${get[r] ? ' is-on' : ''}`} aria-disabled={!(o.res[r] > (get[r] ?? 0)) || !!give[r] || sumCost(get) >= TRADE_MAX} onClick={() => tapTheirs(r)} aria-label={`${RES_JP[r]}（${o.res[r]}）をもらう`}>
+              <button key={r} type="button" className={`kd-tchip is-res is-mini${get[r] ? ' is-on' : ''}`} aria-disabled={!(o.res[r] > (get[r] ?? 0)) || !!give[r] || sumCost(get) >= getMax} onClick={() => tapTheirs(r)} aria-label={`${RES_JP[r]}（${o.res[r]}）をもらう`}>
                 <span className="kd-tchip-ic"><KIcon name={r} size={24} /></span><span className="kd-tchip-l">{o.res[r] - (get[r] ?? 0)}</span>
               </button>
             ))}
@@ -348,7 +375,7 @@ export function TradeTray({ s, onTrade, onCancel }: { s: SeatSession; onTrade: (
       )}
       <div className="kd-tray-act">
         <button type="button" className="kd-btn" onClick={onCancel}>閉じる</button>
-        <button type="button" className="kd-btn is-primary" disabled={!j?.ok || !j.accept || left <= 0} onClick={() => onTrade(b, give, get)}>
+        <button type="button" className="kd-btn is-primary" disabled={!j?.ok || !j.accept || left <= 0} onClick={() => onTrade(b, giveAll, get)}>
           {j?.ok && j.human ? '申し込む' : j?.ok && !j.accept ? '受けてもらえない' : '取引する'}
         </button>
       </div>

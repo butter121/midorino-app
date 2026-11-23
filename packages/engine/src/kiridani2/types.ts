@@ -40,7 +40,7 @@ export type When =
   | 'fight' | 'win' | 'lose' | `win_race:${Race}`
   | 'round_start' | 'round_end' | 'winter' | 'game_end' | 'setup'
   | 'build' | 'hire' | 'craft' | 'sell' | 'buy' | 'trade' | 'donate' | 'spell' | 'tame'
-  | 'occ' | 'quest' | 'hit' | 'injure'
+  | 'occ' | 'quest' | 'hit' | 'injure' | 'repair'
   | `other:${string}`
   | 'play'
   | 'passive';
@@ -62,7 +62,9 @@ export type StatKey =
   /** 戦闘中だけ：送った仲間の攻めの熟練の合計・武器の戦力の合計・人数、守りを超える反撃（守りが足りない分） */
   | 'sent_atk' | 'sent_wpow' | 'sent_k' | 'exposed'
   /** このラウンドに唱えた回数 */
-  | 'casts_round';
+  | 'casts_round'
+  /** 壊れたままの遺物の数・直前の冬に防いだ襲撃・持っている資源の合計（金貨を除く） */
+  | 'broken' | 'blocked' | 'res_total';
 
 /** 効果の条件（すべて満たしたら効く）。知らないキーはエンジンが例外にする */
 export interface Cond {
@@ -125,6 +127,10 @@ export interface Op {
   occ?: number;
   /** 交換所で売るか買う（1種類、最大 market_qty 個） */
   exchange?: boolean;
+  /** 壊れた遺物を1つ修復する（費用は遺物ごと） */
+  repair?: boolean;
+  /** 遺物の山から n 枚引く（壊れた状態で手元に） */
+  relic?: number;
   /** 先手になる */
   first?: boolean;
   /** 寄進：pay を払って fame を得る（donate_rate で値引き、donate の効果が効く） */
@@ -150,6 +156,14 @@ export interface Op {
   /** 掘り出し市：並んだ品物から count 枚まで、1枚 price 金貨で手札に */
   buy_card?: { count: number; price: number };
   /** 山を選んでから引く（look 枚見て take 枚。from は選べる山） */
+  /** 好きな資源を n 個（1つずつ選ぶ。同じ種類でもよい） */
+  gain_pick?: { n: number; from: Res[] };
+  /** このラウンドに取引をあと n 回できる */
+  trade_bonus?: number;
+  /** この冬の襲撃の守り +n */
+  ward?: number;
+  /** すべてのたまるマスに資源を1つずつ足す */
+  accum_add?: number;
   draw_any?: { from: ('occ' | 'weapon' | 'armor' | 'tool' | 'spell')[]; look: number; take: number };
 }
 
@@ -159,7 +173,7 @@ export interface Mod {
   market_both?: boolean;
   trade_count?: number;
   accum_bonus?: Partial<Record<string, number>>;
-  cost_discount?: { kind: 'weapon' | 'armor' | 'tool' | 'spell' | 'occ' | 'gear' | 'bed' | 'wall' | 'any'; res: Cost };
+  cost_discount?: { kind: 'weapon' | 'armor' | 'tool' | 'spell' | 'occ' | 'gear' | 'bed' | 'wall' | 'two_hand' | 'any'; res: Cost };
   upkeep?: number;
   donate_rate?: Cost;
   base_guard?: number;
@@ -183,7 +197,7 @@ export interface Mod {
   pet_bring?: number;
   /** 捕まえにくさを下げる */
   capture_ease?: number;
-  /** 魔石の代わりに金貨を払える（魔石1につき金貨この数） */
+  /** マナ鉱石の代わりに金貨を払える（マナ鉱石1につき金貨この数） */
   gold_mana?: number;
   /** 終わりの金貨の名声の上限を足す（5年の値。年数の倍率がかかる） */
   gold_cap?: number;
@@ -195,7 +209,7 @@ export interface Mod {
   shard_need?: number;
   /** 遺物を引くとき余分に見る枚数 */
   ancient_look?: number;
-  /** 使い切りの秘術を唱えたあと、魔石1で手札に戻せる（ラウンドにこの枚数まで） */
+  /** 使い切りの秘術を唱えたあと、マナ鉱石1で手札に戻せる（ラウンドにこの枚数まで） */
   spell_return?: number;
   /** 仲間の上限を変える（負で減る） */
   comp_cap?: number;
@@ -211,6 +225,33 @@ export interface Mod {
   tool_yield?: number;
   /** 武器を持てるのはリーダー以外 */
   leader_no_weapon?: boolean;
+  // ---- 300枚のリストで足したもの
+  /** 熟練の上限 +n */
+  skill_cap?: number;
+  /** 作るときの魔石の段階を1つ下げる（weapon・armor・two_hand） */
+  stone_down?: 'weapon' | 'armor' | 'two_hand';
+  /** 1回に送れる仲間 +n */
+  send_cap?: number;
+  /** 使い魔にする費用（好物・食料）−n（最低1） */
+  fav_cut?: number;
+  /** 遺物の修復の費用 −n（減らす資源は選ぶ） */
+  repair_cut?: number;
+  /** 冬の襲撃の守り +n（戦闘の守りには入らない） */
+  home_guard?: number;
+  /** 冒険のまとまりのマスに、ほかの人がいても置ける */
+  adv_free?: boolean;
+  /** 全員の冬の襲撃を倍にする（切り捨て） */
+  raid_mult?: number;
+  /** 溜め込みポポ：年の終わりの名声で資源を +n として数える */
+  hoard_bonus?: number;
+  /** 溜め込みポポ：年の終わりの名声の割る数をこれにする */
+  hoard_div?: number;
+  /** 主・古竜に参加しなくても減点なし */
+  no_absent?: boolean;
+  /** 押し売りモモ：1回の取引の上限 +n */
+  trade_max?: number;
+  /** 冬の食料を金貨 n 枚で1つの代わりに払える */
+  winter_gold?: number;
 }
 
 export interface Effect {
@@ -243,6 +284,8 @@ export interface CardDef {
   slot?: 'weapon' | 'armor' | null;
   two_hand?: boolean;
   leader_only?: boolean;
+  /** リーダーの種類：戦闘（fight）か探索（explore）。準備では1人に1枚ずつ見せる */
+  role?: 'fight' | 'explore';
   power?: number;
   guard?: number;
   /** 何度でも使える秘術：手札から learn を払って身につけ、そのあとは cost（唱える費用）を払えば1手番に uses 回まで使える */
@@ -269,7 +312,8 @@ export interface GearDef extends CardDef {
 /** 段階カード（新しい行動マスになる） */
 export interface StageDef extends CardDef {
   kind: 'stage';
-  stage: 1 | 2 | 3 | 4 | 5;
+  /** 0＝始めから盤面にある場所。1〜5＝その段階でめくる */
+  stage: 0 | 1 | 2 | 3 | 4 | 5;
   /** 定員（省略は1。0は定員なし） */
   cap?: number;
   /** たまるマスなら毎ラウンド足すもの */
@@ -282,10 +326,14 @@ export interface AncientDef {
   id: string;
   kind: 'ancient';
   name: string;
-  /** 種類（5種） */
+  /** 種類（4種） */
   group: string;
-  /** 枚数（省略は4） */
+  /** 枚数（省略は1） */
   copies?: number;
+  /** 修復したときの名声（試合の終わり） */
+  fame: number;
+  /** 修復の費用 */
+  repair: Cost;
   text: string;
 }
 
@@ -339,6 +387,9 @@ export interface Monster {
   counter: number;
   loot: Cost;
   trophy: number;
+  /** 落とす魔石の数と段階（0 初級・1 中級・2 上級。戦闘が終わるまで見えない） */
+  stones: number;
+  stoneTier: number;
   raid: number;
   boss: boolean;
   /** 出た年（冬の襲撃の対象） */
@@ -349,6 +400,8 @@ export interface Monster {
 export interface SpaceDef {
   id: string;
   name: string;
+  /** このマスでできること（画面の説明） */
+  text?: string;
   accum?: Cost;
   /** たまるマス：毎ラウンド足す遺物の欠片 */
   shards?: number;
@@ -401,7 +454,7 @@ export type GameEvent =
   | { t: 'hire'; seat: Seat; companion: number }
   | { t: 'train'; seat: Seat; companion: number; stat: 'atk' | 'def' }
   | { t: 'market'; seat: Seat; kind: 'buy' | 'sell'; res: Res | string; qty: number; gold: number }
-  | { t: 'trade'; a: Seat; b: Seat; give: Cost; get: Cost }
+  | { t: 'trade'; a: Seat; b: Seat; give: Cost; get: Cost; /** 押し売りモモ：渡した魔石の段階（0〜2）。give のかわり */ stone?: number }
   | { t: 'donate'; seat: Seat; cost: Cost; fame: number }
   | { t: 'draw'; seat: Seat; card: string; from: string }
   | { t: 'combat_start'; nest: string; monster: Monster; seats: Seat[]; mode: FightMode }
@@ -412,7 +465,9 @@ export type GameEvent =
   | { t: 'injury'; seat: Seat; companion: number }
   | { t: 'heal'; seat: Seat; companion: number; cost: Cost }
   | { t: 'loot'; seat: Seat; gain: Cost }
-  | { t: 'trophy'; seat: Seat; monster: string; fame: number }
+  | { t: 'trophy'; seat: Seat; monster: string; fame: number; trophies?: number; stones?: number; stoneTier?: number }
+  | { t: 'stone_use'; seat: Seat; tier: number }
+  | { t: 'repair'; seat: Seat; card: string; cost: Cost }
   | { t: 'tame'; seat: Seat; monster: string; power?: number }
   | { t: 'release'; seat: Seat; monster: string }
   | { t: 'learn'; seat: Seat; card: string }

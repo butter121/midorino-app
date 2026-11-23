@@ -41,7 +41,8 @@ function playerBlock(v: View2, p: PV2): ReactNode {
     <Row k="施設・防壁">{p.tools.map((c) => <CardChip2 key={c} id={c} />)}寝床{p.beds}・防壁{p.walls}</Row>
     <Row k="討伐">{p.trophies.length}体・使い魔{p.pets}</Row>
     {p.tomes.length > 0 && <Row k="身につけた秘術">{p.tomes.map((c) => <CardChip2 key={c} id={c} />)}</Row>}
-    <Row k="遺物">{p.ancient.length}枚・欠片{p.shards}/{DATA.SHARD_NEED}</Row>
+    <Row k="遺物">直した{p.ancient.length}枚・壊れた{p.broken.length}枚</Row>
+    <Row k="魔石">{p.stones.map((n, i) => `${DATA.STONE.jp[i]}${n}`).join('・')}</Row>
     <Row k="冬の食料">{foodLine(p)}</Row>
     <Row k="運命の残り"><FateRow2 left={p.fateLeft} inspect={`fate2:${p.seat}`} /><small className="kd2-insp-sub">{p.fateLeft.length ? `${p.fateLeft.length}枚` : '次は混ぜ直し'}</small></Row>
   </>;
@@ -61,7 +62,7 @@ function body(target: string, v: View2): { kind: string; title: string; node: Re
           {c?.prereq && <Row k="条件">{Object.entries(c.prereq).map(([kk, n]) => `${kk === 'occs' ? '職能' : kk === 'comps' ? '仲間' : kk === 'walls' ? '防壁' : kk === 'facilities' ? '施設' : kk === 'kills' ? '討伐' : kk}${typeof n === 'number' ? `${n}以上` : `：${cardName(String(n))}`}`).join('・')}</Row>}
           {c && (c.kind === 'weapon' || c.kind === 'armor' || c.kind === 'gear') && <Row k="装備">{c.slot === 'armor' ? '防具の枠' : '武器の枠'}{c.power ? `・戦力+${c.power}` : ''}{c.guard ? `・守り+${c.guard}` : ''}{c.two_hand ? '・両手（防具なし）' : ''}</Row>}
           {c?.kind === 'gear' && <Row k="作る場所">{(c as { place?: string }).place === 'training' ? '訓練場' : '鍛冶場'}</Row>}
-          {a && <Row k="組">同じ種類2つ＝名声{DATA.ANCIENT_SAME[2]}・3つ＝{DATA.ANCIENT_SAME[3]}・4種そろい＝{DATA.ANCIENT_ALL}</Row>}
+          {a && <Row k="修復"><CostRow cost={a.repair} size={18} />・名声{a.fame}</Row>}
         </>,
       };
     }
@@ -82,17 +83,41 @@ function body(target: string, v: View2): { kind: string; title: string; node: Re
       const st = CARD2[id];
       const s = v.spaces[id];
       return {
-        kind: s?.stage ? `段階${s.stage}の場所` : '行動マス', title: placeName(id), node: <>
+        kind: st?.kind === 'stage' && (st as { stage?: number }).stage ? `段階${(st as { stage?: number }).stage}でめくった場所` : '行動マス', title: placeName(id), node: <>
           <div className="kd-insp-art">{st && !def ? <CardArt2 id={id} size={200} /> : <SpaceArt id={id} size={200} />}</div>
-          {st && <p className="kd-insp-p kd-insp-big">{st.text}</p>}
+          {(def?.text ?? st?.text) && <Row k="できること">{def?.text ?? st?.text}</Row>}
           {st && FLAVOR[id] && <p className="kd2-flavor">{FLAVOR[id]}</p>}
           {def?.accum && <Row k="毎ラウンドたまる"><CostRow cost={def.accum} size={18} signed /></Row>}
           {s && Object.keys(s.stock).length > 0 && <Row k="いまたまっている"><CostRow cost={s.stock} size={18} /></Row>}
-          {def && <Row k="できること">{def.options.map((ops, i) => <span key={i} className="kd-insp-chip">{ops.length ? ops.map((o) => Object.keys(o)[0]).map((x) => OPS_JP[x] ?? x).join('＋') : 'たまった資源を取る'}</span>)}</Row>}
           <Row k="置ける人数">{(def?.cap ?? (st as { cap?: number } | undefined)?.cap ?? 1) === 0 ? '何人でも' : `1ラウンドに${def?.cap ?? (st as { cap?: number } | undefined)?.cap ?? 1}人`}</Row>
           {s && s.occupants.length > 0 && <Row k="置いた人">{s.occupants.map((o, i) => <span key={i} className="kd-insp-who"><Token seat={o} size={16} />{nameOf(v, o)}</span>)}</Row>}
         </>,
       };
+    }
+    case 'build2': {
+      const me = v.players[v.me];
+      if (id === 'bed') return { kind: '建物', title: '寝床', node: <><Row k="建てる費用"><CostRow cost={DATA.BED_COST} size={18} /></Row><p className="kd-insp-p">仲間を雇える数が1増える（酒場で募集などは寝床が要る）。工房・土地の開拓で建てる。</p>{me && <Row k="あなた">寝床{me.beds}・仲間{me.comps.length}人</Row>}</> };
+      if (id === 'wall') return { kind: '建物', title: '防壁', node: <><Row k="建てる費用"><CostRow cost={DATA.WALL_COST} size={18} /></Row><p className="kd-insp-p">冬の襲撃を1つにつき1防ぐ。2つで戦闘の守り+1。工房・城壁の普請で建てる。</p>{me && <Row k="あなた">防壁{me.walls}</Row>}</> };
+      return null;
+    }
+    case 'res2': {
+      const r = id as (typeof RES)[number];
+      if (!RES.includes(r)) return null;
+      const me = v.players[v.me];
+      return { kind: '資源', title: RES_JP[r], node: <>
+        {me && <Row k="手持ち"><ResCount r={r} n={me.res[r]} size={18} /></Row>}
+        {r !== 'gold' && <Row k="交換所で売る">1つ 金貨{DATA.sellPrice(r)}</Row>}
+        {r !== 'gold' && <Row k="交換所で買う">1つ 金貨{DATA.BUY[r]}</Row>}
+      </> };
+    }
+    case 'stone2': {
+      const i = Number(id);
+      const me = v.players[v.me];
+      return { kind: '魔石', title: `${DATA.STONE.jp[i]}魔石`, node: <>
+        {me && <Row k="手持ち">{me.stones[i] ?? 0}</Row>}
+        <Row k="試合の終わり">1つ名声{DATA.STONE.fame[i]}</Row>
+        <p className="kd-insp-p">魔物を倒すと得る（魔物の強さで段階が決まる）。{['軽い', '中くらいの', '重い'][i]}武器・防具を作るときに1つ使う。</p>
+      </> };
     }
     case 'seat': {
       const p = v.players[Number(id)];
@@ -123,7 +148,6 @@ function body(target: string, v: View2): { kind: string; title: string; node: Re
     default: return null;
   }
 }
-const OPS_JP: Record<string, string> = { gain: '資源を得る', occ: '職能を出す', craft: '装備を作る', build: '建てる', exchange: '売り買い', first: '先手', train: '熟練', hire: '仲間+1', draw: 'カードを見る', donate: '寄進', fame: '名声' };
 
 export function Inspect2({ target, v, onClose, onBack, depth }: { target: string; v: View2; onClose: () => void; onBack?: () => void; depth: number }) {
   useEffect(() => {

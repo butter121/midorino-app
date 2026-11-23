@@ -8,7 +8,7 @@
 import { CARD_SET } from './cards';
 import { Game, loadCards, Player, type Choice, type ItemKind, type Option, type Ratio, type Req } from './engine';
 import { Rng } from './rng';
-import { Kiridani2Session, type TradeJudge } from './session';
+import { Kiridani2Session, tradeStoneOf, type TradeJudge } from './session';
 import type { Level } from './ai';
 import type { CardDef, Cost, GameEvent, Res } from './types';
 import { RES } from './types';
@@ -218,7 +218,7 @@ export interface RefereeOptions {
 const LEVEL_V2: Record<string, Level> = { mid: 'normal', expert: 'strong', novice: 'novice', normal: 'normal', strong: 'strong', random: 'random' };
 export const toLevel2 = (l: string | undefined): Level => LEVEL_V2[l ?? 'normal'] ?? 'normal';
 
-const isCost = (c: unknown): c is Cost => !!c && typeof c === 'object' && Object.entries(c as object).every(([r, n]) => RES.includes(r as Res) && Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 20);
+const isCost = (c: unknown): c is Cost => !!c && typeof c === 'object' && Object.entries(c as object).every(([r, n]) => (RES.includes(r as Res) || /^stone[0-2]$/.test(r)) && Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 20);
 const clean = (c: Cost) => Object.fromEntries(Object.entries(c).filter(([, n]) => n)) as Cost;
 
 export class Kiridani2Referee {
@@ -243,7 +243,7 @@ export class Kiridani2Referee {
     this.now = o.now ?? (() => Date.now());
     this.n = o.n;
     this.humans = [...o.humans];
-    this.s = new Kiridani2Session({ n: o.n, seed: o.seed, years: o.years ?? 5, humans: o.humans, levels: (o.levels ?? []).map(toLevel2), names: o.names });
+    this.s = new Kiridani2Session({ n: o.n, seed: o.seed, years: o.years ?? 5, humans: o.humans, levels: (o.levels ?? []).map(toLevel2), names: o.names, parallel: true });
     // 出来事はすべて見える形で受け取り、席ごとに隠す
     this.s.g.me = -1;
     this.logs = Array.from({ length: o.n }, () => []);
@@ -280,8 +280,8 @@ export class Kiridani2Referee {
   waitingSeats(): number[] { return this.humans.filter((x) => this.prompt(x) !== null); }
 
   prompt(seat: number): Prompt | null {
-    const s = this.s, w = s.waiting;
-    if (!w || w.p.pid !== seat || !this.humans.includes(seat) || s.isAuto(seat)) return null;
+    const s = this.s, w = s.waitingOf(seat);
+    if (!w || !this.humans.includes(seat) || s.isAuto(seat)) return null;
     const out: Prompt = { id: `n${this.decision}`, seat, k: w.k, snap: encodeGame(s.g, seat), partners: [], left: 0 };
     switch (w.k) {
       case 'card': Object.assign(out, { why: w.why, cards: [...w.cards], ...(w.kind ? { kind: w.kind } : {}) }); break;
@@ -331,7 +331,9 @@ export class Kiridani2Referee {
     if (!pr) return { ok: false, error: 'いまはあなたの番ではありません' };
     if (pr.id !== id) return { ok: false, error: '画面が古くなっています' };
     try {
-      this.take(applyAction(this.s, a));
+      const evs = applyAction(this.s, a, seat);
+      // 同時の問いで、まだ答えていない人がいる間は場面を進めない（ほかの人の画面が古くならないように）
+      if (evs.length || this.s.waiting?.k !== 'multi') this.take(evs);
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
@@ -355,9 +357,9 @@ export class Kiridani2Referee {
       if (of && (of.from === seat || of.to === seat)) this.closeOffer(of.from === seat ? 'withdraw' : 'decline');
     }
     try {
-      const asked = v && this.s.waiting?.p.pid === seat;
+      const asked = v && !!this.s.waitingOf(seat);
       const evs = this.s.setAuto(seat, v, 'novice');
-      if (asked) this.take(evs);
+      if (asked && (evs.length || this.s.waiting?.k !== 'multi')) this.take(evs);
     } catch (e) {
       return { ok: false, error: e instanceof Error ? e.message : String(e) };
     }
@@ -432,35 +434,37 @@ export class Kiridani2Referee {
 }
 
 /** 答えを Kiridani2Session に渡す（審判と、直接回すテストの両方で使う） */
-export function applyAction(s: Kiridani2Session, a: Action): GameEvent[] {
-  const w = s.waiting;
-  if (!w) throw new Error('試合は終わっています');
+export function applyAction(s: Kiridani2Session, a: Action, seat?: number): GameEvent[] {
+  // seat を渡すと、その席への問い（同時の問いならその席の分）に答える
+  const w = seat === undefined ? s.waiting : s.waitingOf(seat);
+  if (!w) throw new Error(s.done ? '試合は終わっています' : 'いまはあなたの番ではありません');
+  const ans = (x: unknown) => (seat === undefined ? s.answer(x) : s.answerSeat(seat, x));
   switch (a.t) {
     case 'card':
       if (w.k !== 'card') throw new Error('いまはカードを選ぶ場面ではありません');
       if (!w.cards.includes(String(a.id))) throw new Error('選べないカードです');
-      return s.answer(String(a.id));
+      return ans(String(a.id));
     case 'ratio':
       if (w.k !== 'ratio') throw new Error('いまは割合を選ぶ場面ではありません');
-      return s.answer(a.v);
+      return ans(a.v);
     case 'kind':
       if (w.k !== 'kind') throw new Error('いまは種類を選ぶ場面ではありません');
-      return s.answer(a.v);
+      return ans(a.v);
     case 'opt': {
       if (w.k !== 'choose') throw new Error('いまは置き場所を選ぶ場面ではありません');
       const o = Number.isInteger(a.i) ? w.opts[a.i] : undefined;
       if (!o) throw new Error('選べない行動です');
-      return s.answer({ ...o, ...(a.use !== undefined ? { use: a.use } : {}), ...(a.who !== undefined ? { who: a.who } : {}) });
+      return ans({ ...o, ...(a.use !== undefined ? { use: a.use } : {}), ...(a.who !== undefined ? { who: a.who } : {}) });
     }
     case 'pick': {
       if (w.k !== 'pick') throw new Error('いまは選ぶ場面ではありません');
       const x = Number.isInteger(a.i) ? w.options[a.i] : undefined;
       if (x === undefined) throw new Error('選べません');
-      return s.answer(x);
+      return ans(x);
     }
     case 'yes':
       if (w.k !== 'heal' && w.k !== 'effect') throw new Error('いまは「はい／いいえ」の場面ではありません');
-      return s.answer(a.v === true);
+      return ans(a.v === true);
     case 'equip':
       if (!Number.isInteger(a.c) || (a.slot !== 'weapon' && a.slot !== 'armor') || (a.id !== null && typeof a.id !== 'string')) throw new Error('形式が正しくありません');
       return s.equip(a.c, a.slot, a.id);
@@ -502,6 +506,7 @@ export class ShadowSession implements SeatSession2 {
       case 'heal': this.waiting = { k: 'heal', g, p, comp: pr.comp ?? 0, cost: pr.cost ?? {} }; break;
       case 'effect': this.waiting = { k: 'effect', g, p, card: pr.card ?? '', when: pr.when ?? '', ops: (pr.ops ?? []) as never, ei: pr.ei }; break;
       case 'pick': this.waiting = { k: 'pick', g, p, what: pr.what ?? '', options: pr.options ?? [] }; break;
+      default: throw new Error('知らない問いです');
     }
   }
 
@@ -515,6 +520,8 @@ export class ShadowSession implements SeatSession2 {
     if (this.waiting.k !== 'choose') return fail('あなたの番に持ちかけられる');
     if (this.tradeLeft() <= 0) return fail('このラウンドの取引は終わり');
     if (!o || o === p || !this.prompt.partners.includes(b)) return fail('相手がいない');
+    const tier = tradeStoneOf(give);
+    if (tier !== null) { const e = this.g.stoneTradeOk(p, o, tier, get); return e && e !== 'このラウンドの取引は終わり' ? fail(e) : { ok: true, accept: true }; }
     for (const r of Object.keys(give)) if (r in get) return fail('同じ資源を渡して受け取ることはできない');
     const err = this.g.tradeOk(p, o, give, get);
     if (err && err !== 'このラウンドの取引は終わり') return fail(err);
@@ -545,5 +552,6 @@ export function simpleAnswer(sh: SeatSession2): Action {
     }
     case 'pick': return { t: 'pick', i: 0 };
     case 'heal': case 'effect': return { t: 'yes', v: true };
+    case 'multi': throw new Error('同時の問いは席ごとに答える');
   }
 }

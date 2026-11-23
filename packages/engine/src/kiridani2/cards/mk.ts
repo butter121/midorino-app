@@ -25,7 +25,7 @@ export const W = (id: string, name: string, engine: EngineTag[], cost: Cost, pw:
 export const A = (id: string, name: string, engine: EngineTag[], cost: Cost, gd: number, effects: Effect[] = [], x: X = {}) => mk('armor', id, name, engine, cost, effects, { guard: gd, ...x });
 /** 道具 */
 export const T = (id: string, name: string, engine: EngineTag[], cost: Cost, effects: Effect[], x: X = {}) => mk('tool', id, name, engine, cost, effects, { mech: 'boost', ...x });
-/** 使い切りの秘術（唱える魔石 mana） */
+/** 使い切りの秘術（唱えるマナ鉱石 mana） */
 export const S = (id: string, name: string, engine: EngineTag[], cost: Cost, effects: Effect[], x: X = {}) => mk('spell', id, name, engine, cost, effects, { mech: 'boost', ...x });
 /** 何度でもの秘術（身につける learn、1手番に uses 回、唱える cost） */
 export const TM = (id: string, name: string, engine: EngineTag[], learn: Cost, uses: number, cost: Cost, effects: Effect[], x: X = {}): CardDef =>

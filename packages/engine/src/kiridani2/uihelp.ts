@@ -24,6 +24,7 @@ export function answerToAction(w: Req, raw: unknown): Action {
       return { t: 'pick', i };
     }
     case 'heal': case 'effect': return { t: 'yes', v: !!raw };
+    case 'multi': throw new Error('同時の問いは席ごとに答える');
   }
 }
 

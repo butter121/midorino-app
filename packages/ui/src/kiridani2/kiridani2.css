@@ -305,3 +305,5 @@ button.kd2-slot { color: inherit; font: inherit; text-align: left; background: t
   .kd2 .kd-insp-card .kd-card.is-l .kd-card-art svg { width: clamp(110px, 42dvh, 190px); height: clamp(110px, 42dvh, 190px); }
   .kd2 .kd-insp-art > svg { width: clamp(90px, 40dvh, 190px); height: clamp(90px, 40dvh, 190px); }
 }
+.kd2-slot.has-info { position: relative; padding-right: 26px; }
+.kd2-slot.has-info .kd-idot { top: 50%; transform: translateY(-50%); }

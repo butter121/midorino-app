@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AI, ancientScore, CARD_SET, DATA, drive, DslError, Game, Kiridani2Session, loadCards, Rng, score, startSeat, tableScore, validateCard,
+  AI, ancientScore, CARD_SET, DATA, stoneFame, drive, DslError, Game, Kiridani2Session, loadCards, Rng, score, startSeat, tableScore, validateCard,
   type CardDef, type CardSet, type StageDef,
 } from '../src/kiridani2/index';
 
@@ -64,32 +64,65 @@ describe('kiridani2 名声', () => {
     expect(DATA.tableFor(15).kills).toEqual([2, 8, 14, 20]);
     expect(DATA.tableFor(15).races).toEqual([1, 3, 4, 5]);
   });
-  it('遺物：同じ種類2つ＝3、3つ＝6、4つ＝9、5種そろい＝6（重複なし）', () => {
+  it('遺物：4種×6枚、名声3〜6。直した遺物の名声だけ数える（壊れた遺物は0点）', () => {
     const g = new Game(2, [null, null], { cards: CARD_SET });
     const p = g.players[0];
     const ids = [...g.anc.values()];
-    const grp = (k: string) => ids.filter((a) => a.group === k).map((a) => a.id);
-    const groups = [...new Set(ids.map((a) => a.group))];
-    p.ancient = grp(groups[0]).slice(0, 2);
-    expect(ancientScore(g, p)).toBe(3);
-    p.ancient = grp(groups[0]).slice(0, 3);
-    expect(ancientScore(g, p)).toBe(6);
-    p.ancient = grp(groups[0]).slice(0, 4);
-    expect(ancientScore(g, p)).toBe(9);
-    p.ancient = groups.map((k) => grp(k)[0]);
-    expect(ancientScore(g, p)).toBe(6);
-    p.ancient = [...groups.map((k) => grp(k)[0]), grp(groups[0])[1]];
-    expect(ancientScore(g, p)).toBe(6);
+    expect(ids).toHaveLength(24);
+    expect(new Set(ids.map((a) => a.group))).toEqual(new Set(['cup', 'vessel', 'idol', 'crown']));
+    expect(ids.every((a) => a.fame >= 3 && a.fame <= 6)).toBe(true);
+    p.broken = [ids[0].id];
+    expect(ancientScore(g, p)).toBe(0);
+    p.ancient = [ids[0].id, ids[5].id];
+    expect(ancientScore(g, p)).toBe(ids[0].fame + ids[5].fame);
+  });
+
+  it('修復：費用を払うと壊れた遺物が直る', () => {
+    const g = new Game(2, [null, null], { cards: CARD_SET });
+    const p = g.players[0];
+    const a = [...g.anc.values()][0];
+    p.broken = [a.id];
+    for (const [r, n] of Object.entries(a.repair)) p.res[r as 'wood'] = n as number;
+    expect(g.expand(p, [{ repair: true }])).toEqual([a.id]);
+    const gen = g.runOps(p, [{ repair: true }], { x: a.id });
+    expect(gen.next().done).toBe(true);
+    expect(p.broken).toEqual([]);
+    expect(p.ancient).toEqual([a.id]);
+  });
+
+});
+
+describe('kiridani2 魔石の段階', () => {
+  it('軽い武器は初級の魔石が1つ要り、作ると減る。魔石は最後に 1・2・4 の名声', () => {
+    const g = new Game(2, [null, null], { cards: CARD_SET });
+    const p = g.players[0];
+    p.hand.push('w_po1'); p.res.wood = 5; p.res.iron = 5;
+    expect(g.expand(p, [{ craft: 'weapon' }])).not.toContain('w_po1');
+    p.stones = [1, 1, 1];
+    expect(g.expand(p, [{ craft: 'weapon' }])).toContain('w_po1');
+    const gen = g.runOps(p, [{ craft: 'weapon' }], { x: 'w_po1' });
+    let r = gen.next(); while (!r.done) r = gen.next(undefined as never);
+    expect(p.stones).toEqual([0, 1, 1]);
+    expect(stoneFame(p)).toBe(6);
+  });
+  it('巣の魔物の段階は強さ ÷（最大の強さ ÷ 3）', () => {
+    const g = new Game(2, [null, null], { cards: CARD_SET, years: 10 });
+    const band = g.maxNestStr() / 3;
+    for (let i = 0; i < 200; i++) {
+      const m = g.rollMonster(DATA.MONSTERS[i % DATA.MONSTERS.length], (i % 10) / 9, 1);
+      expect(m.stoneTier).toBe(Math.min(2, Math.floor(m.str / band)));
+      expect(m.stones >= 1 && m.stones <= 2).toBe(true);
+    }
   });
 });
 
 describe('kiridani2 試合', () => {
-  it('段階カードの予定：段階1は R2〜R4、段階2〜5は残りに16枚', () => {
+  it('段階カードの予定：段階1は R2〜R4、段階2〜5は残りに15枚', () => {
     for (const years of [5, 10, 15]) {
       const g = new Game(3, [null, null, null], { seed: years, years, cards: CARD_SET });
       const rounds = Object.keys(g.stageAt).map(Number).sort((a, b) => a - b);
       expect(rounds.slice(0, 3)).toEqual([2, 3, 4]);
-      expect(rounds.length).toBe(3 + 16);
+      expect(rounds.length).toBe(3 + 15);
       expect(Math.max(...rounds)).toBeLessThanOrEqual(g.R);
       const stageOf = (r: number) => (g.card(g.stageAt[r]) as StageDef).stage;
       for (let i = 1; i < rounds.length; i++) expect(stageOf(rounds[i])).toBeGreaterThanOrEqual(stageOf(rounds[i - 1]));
@@ -123,12 +156,14 @@ describe('kiridani2 試合', () => {
     const s = new Kiridani2Session({ n: 4, years: 5, seed, human: -1, levels: ['normal', 'normal', 'normal', 'normal'] });
     const ev = s.start();
     expect(ev[1]).toEqual({ t: 'first_player', seat: 2 });
-    // リーダーは手番の最後の人（先手の1つ前の席）から
-    expect(ev.filter((e) => e.t === 'leader_offer').map((e) => (e as { seat: number }).seat)).toEqual([1, 0, 3, 2]);
+    // リーダーも先手から配る（選ぶのは全員同時）
+    expect(ev.filter((e) => e.t === 'leader_offer').map((e) => (e as { seat: number }).seat)).toEqual([2, 3, 0, 1]);
     // 職能の1巡目は先手から
     expect(ev.filter((e) => e.t === 'draft_offer').slice(0, 4).map((e) => (e as { seat: number }).seat)).toEqual([2, 3, 0, 1]);
     // 食料の追加は手番の順（先手が 0）
-    const food = ev.filter((e) => e.t === 'grant' && (e as { reason: string }).reason === '開始時').map((e) => [(e as { seat: number }).seat, (e as { gain: { food: number } }).gain.food]);
+    // 伝説の商人は始めに資源を LEADER.merchant.start 個ずつ多く持つので、その分を引いて比べる
+    const merch = (seat: number) => (s.g.players[seat].leader === 'l_miro' ? DATA.LEADER.merchant.start : 0);
+    const food = ev.filter((e) => e.t === 'grant' && (e as { reason: string }).reason === '開始時').map((e) => [(e as { seat: number }).seat, (e as { gain: { food: number } }).gain.food - merch((e as { seat: number }).seat)]);
     expect(Object.fromEntries(food)).toEqual({ 2: DATA.START.food + 0, 3: DATA.START.food + 1, 0: DATA.START.food + 1, 1: DATA.START.food + 2 });
     // 1ラウンド目の先手・最初の手番
     const rs = ev.find((e) => e.t === 'round_start') as { first: number };

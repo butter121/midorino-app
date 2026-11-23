@@ -4,12 +4,12 @@ import type { CardDef } from '../types';
 import { T, fight, win, hit, on, end, passive, powPer, famePer } from './mk';
 import { withText } from './text';
 
-export const TOOLS: CardDef[] = withText([
+const ALL_TOOLS: CardDef[] = withText([
   // ---- 軽い（資源の入口）
   T('t_lumber', '製材所', ['gather'], { wood: 2, iron: 1 }, [on('use:forest', [{ gain: { wood: 1 } }])], { weight: 'light' }),
   T('t_mine_cart', '鉱山の荷車', ['gather', 'smith'], { wood: 2, iron: 1 }, [on('use:mine', [{ gain: { iron: 1 } }])], { weight: 'light' }),
   T('t_herb_garden', '薬草園', ['gather'], { wood: 2 }, [on('use:meadow', [{ gain: { herb: 1 } }])], { weight: 'light' }),
-  T('t_mana_well', '魔石の井戸', ['arcane', 'gather'], { wood: 1, iron: 1, mana: 1 }, [on('use:spring', [{ gain: { mana: 1 } }])], { weight: 'light' }),
+  T('t_mana_well', 'マナ鉱石の井戸', ['arcane', 'gather'], { wood: 1, iron: 1, mana: 1 }, [on('use:spring', [{ gain: { mana: 1 } }])], { weight: 'light' }),
   T('t_smokehouse', '燻製小屋', ['family', 'gather'], { wood: 2 }, [on('use:hunt', [{ gain: { food: 1 } }])], { weight: 'light' }),
   T('t_weapon_rack', '武器掛け', ['smith', 'hunt'], { wood: 2 }, [fight([{ power: 1 }], { min: { weapons: 2 } })], { weight: 'light' }),
   T('t_armor_stand', '鎧掛け', ['smith', 'fort'], { wood: 2 }, [fight([{ no_injury: 1 }], { min: { armors: 2 } })], { weight: 'light' }),
@@ -19,7 +19,7 @@ export const TOOLS: CardDef[] = withText([
   T('t_lucky_charm', '招き猫', ['trade'], { wood: 1, gold: 1 }, [on('winter', [{ gain: { gold: 2 } }])], { weight: 'light' }),
   T('t_altar_stone', '祭壇石', ['arcane'], { wood: 1, mana: 2 }, [on('spell', [{ gain: { herb: 1 } }], undefined, 'round')], { weight: 'light' }),
   T('t_tool_shed', '道具小屋', ['fort', 'gather'], { wood: 2 }, [end([famePer('tools', 3, 3)])], { weight: 'light' }),
-  T('t_curio_cabinet', '骨董棚', ['ruins', 'trade'], { wood: 2, mana: 1 }, [on('use:curio', [{ shard: 1 }])], { weight: 'light' }),
+  T('t_curio_cabinet', '骨董棚', ['ruins', 'trade'], { wood: 2, mana: 1 }, [on('use:dig', [{ shard: 1 }])], { weight: 'light' }),
   T('t_pawnshop', '質屋', ['trade'], { wood: 2, gold: 1 }, [on('buy', [{ gain: { mat: 1 } }], undefined, 'round')], { weight: 'light' }),
   T('t_spike_pit', '落とし穴', ['fort', 'hunt'], { wood: 2, iron: 1 }, [fight([{ str: -1 }], undefined, 'round')], { weight: 'light' }),
   T('t_hunting_lodge', '狩猟小屋', ['hunt', 'family'], { wood: 3 }, [win([{ gain: { food: 1 } }], undefined, 'round')], { weight: 'light' }),
@@ -33,9 +33,9 @@ export const TOOLS: CardDef[] = withText([
   T('t_alchemy_lab', '錬金工房', ['arcane', 'gather'], { wood: 2, iron: 1, mana: 1 }, [on('round_start', [{ pay: { herb: 2 } }, { gain: { mana: 1 } }])], { weight: 'mid' }),
   T('t_library', '書斎', ['arcane'], { wood: 3, mana: 1 }, [on('spell', [{ gain: { mana: 1 } }], undefined, 'round')], { weight: 'mid' }),
   T('t_rune_circle', '魔法陣', ['arcane', 'hunt'], { wood: 2, mana: 2 }, [fight([powPer('casts_round', 1, 1, 2)])], { weight: 'mid' }),
-  T('t_mana_lamp', '魔石のランプ', ['arcane'], { iron: 1 }, [on('round_start', [{ gain: { mana: 1 } }], { min: { tomes: 1 } })], { weight: 'mid' }),
+  T('t_mana_lamp', 'マナ鉱石のランプ', ['arcane'], { iron: 1 }, [on('round_start', [{ gain: { mana: 1 } }], { min: { tomes: 1 } })], { weight: 'mid' }),
   T('t_spellbook_shelf', '魔導書の棚', ['arcane'], { wood: 2, mana: 1 }, [end([famePer('tomes', 1, 4)]), on('spell', [{ gain: { herb: 1 } }], undefined, 'round')], { weight: 'mid' }),
-  T('t_mana_condenser', '魔石の凝縮器', ['arcane'], { iron: 2, mana: 1 }, [on('round_start', [{ gain_per: { stat: 'tomes', per: 2, gain: { mana: 1 }, max: 2 } }])], { weight: 'mid' }),
+  T('t_mana_condenser', 'マナ鉱石の凝縮器', ['arcane'], { iron: 2, mana: 1 }, [on('round_start', [{ gain_per: { stat: 'tomes', per: 2, gain: { mana: 1 }, max: 2 } }])], { weight: 'mid' }),
   T('t_kennel', '獣舎', ['beast'], { wood: 3 }, [passive({ pet_cap: 1 })], { weight: 'mid' }),
   T('t_feeding_trough', '餌場', ['beast'], { wood: 2, food: 1 }, [passive({ capture_ease: 1 }), on('tame', [{ gain: { mat: 1 } }])], { weight: 'mid' }),
   T('t_saddle', '鞍づくり', ['beast', 'hunt'], { wood: 2, mat: 2 }, [passive({ pet_bring: 1 })], { weight: 'mid' }),
@@ -90,3 +90,7 @@ export const TOOLS: CardDef[] = withText([
   T('t_mercenary_camp', '傭兵の野営', ['hunt', 'trade'], { wood: 3, gold: 2 }, [passive({ power: 2 }), on('round_start', [{ lose: { gold: 1 } }])], { weight: 'curse' }),
   T('t_war_machine', '攻城兵器', ['boss'], { wood: 6, iron: 4, mat: 2 }, [fight([{ power: 4 }], { boss: true }), passive({ upkeep: 1 })], { weight: 'curse' }),
 ]);
+
+/** 使うのはこの30枚（ルール・難易度の見直しで絞った） */
+const KEEP_TOOLS = new Set(['t_whetstone', 't_arena', 't_trophy_hall', 't_war_machine', 't_armor_stand', 't_shield_wall', 't_armory', 't_forge_bellows', 't_great_forge', 't_workbench', 't_tool_shed', 't_lumber', 't_library', 't_rune_circle', 't_arcane_tower', 't_kennel', 't_stable', 't_beast_den', 't_market_stall', 't_counting_house', 't_bank', 't_dig_camp', 't_relic_case', 't_notice_board', 't_bed_hall', 't_granary', 't_wall_kit', 't_watchtower', 't_fortress', 't_smokehouse']);
+export const TOOLS: CardDef[] = ALL_TOOLS.filter((c) => KEEP_TOOLS.has(c.id));

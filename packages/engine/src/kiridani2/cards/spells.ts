@@ -1,13 +1,13 @@
 // 霧谷の冒険者団 v2 — 秘術（80 枚：使い切り50・何度でも30）。手番を使わず、1手番に何枚でも唱えられる。
-// 唱える魔石は1〜3（重いほど強い）。使い切りは唱えたあと山の下へ戻る。
-// 何度でもの秘術（tome）は、身につける費用を払って手札から出し、そのあとは唱える魔石だけで1手番に1〜3回まで使える。
+// 唱えるマナ鉱石は1〜3（重いほど強い）。使い切りは唱えたあと山の下へ戻る。
+// 何度でもの秘術（tome）は、身につける費用を払って手札から出し、そのあとは唱えるマナ鉱石だけで1手番に1〜3回まで使える。
 import type { CardDef } from '../types';
 import { S, TM, fight, play, powPer, famePer } from './mk';
 import { withText } from './text';
 
-export const SPELLS: CardDef[] = withText([
+const ALL_SPELLS: CardDef[] = withText([
   // ================= 使い切り（50）
-  // ---- 魔石1
+  // ---- マナ鉱石1
   S('s_spark', '火花', ['arcane', 'hunt'], { mana: 1 }, [fight([{ power: 2 }])], { weight: 'light' }),
   S('s_stone_skin', '石の肌', ['arcane', 'fort'], { mana: 1 }, [fight([{ guard: 2 }])], { weight: 'light' }),
   S('s_slow', '鈍足の呪い', ['arcane', 'boss'], { mana: 1 }, [fight([{ counter: -2 }])], { weight: 'light' }),
@@ -27,7 +27,7 @@ export const SPELLS: CardDef[] = withText([
   S('s_tool_magic', '道具の目覚め', ['fort', 'gather'], { mana: 1 }, [play([{ gain_per: { stat: 'tools', per: 1, gain: { mat: 1 }, max: 3 } }])], { weight: 'light' }),
   S('s_mana_tide', '魔力の潮', ['arcane'], { mana: 1 }, [play([{ gain: { mana: 2 } }])], { weight: 'light' }),
   S('s_relic_whisper', '遺物のささやき', ['ruins'], { mana: 1, herb: 1 }, [play([{ shard: 1 }])], { weight: 'light' }),
-  // ---- 魔石2
+  // ---- マナ鉱石2
   S('s_haste', '疾風', ['arcane', 'family'], { mana: 2 }, [play([{ extra_worker: 1 }])], { weight: 'mid' }),
   S('s_fireball', '火球', ['arcane', 'hunt'], { mana: 2 }, [fight([{ power: 4 }])], { weight: 'mid' }),
   S('s_weaken', '弱体の呪い', ['arcane', 'boss'], { mana: 2 }, [fight([{ str: -2 }])], { weight: 'mid' }),
@@ -47,7 +47,7 @@ export const SPELLS: CardDef[] = withText([
   S('s_coin_storm', '金貨の嵐', ['trade', 'hunt'], { mana: 2 }, [fight([powPer('gold', 3, 1, 4)])], { weight: 'mid' }),
   S('s_feast', '宴', ['family'], { mana: 2 }, [play([{ gain: { food: 5 } }])], { weight: 'mid' }),
   S('s_last_rites', '最後の祈り', ['boss', 'gather'], { mana: 2 }, [play([{ heal: 2 }, { gain: { herb: 2 } }])], { weight: 'mid' }),
-  // ---- 魔石3
+  // ---- マナ鉱石3
   S('s_meteor', '隕石落とし', ['arcane', 'boss'], { mana: 3 }, [fight([{ power: 6 }])], { weight: 'heavy' }),
   S('s_curse_doom', '破滅の呪詛', ['arcane', 'boss'], { mana: 3 }, [fight([{ str: -4 }])], { weight: 'heavy' }),
   S('s_summon_ally', '呼び声', ['family'], { mana: 3, food: 2 }, [play([{ hire_free: 1 }])], { weight: 'heavy' }),
@@ -95,3 +95,7 @@ export const SPELLS: CardDef[] = withText([
   TM('tm_blood', '血の詠唱', ['arcane', 'boss'], { mana: 1 }, 3, { mana: 1 }, [play([{ injure: 1 }, { gain: { mana: 2 } }])], { weight: 'curse' }),
   TM('tm_fury', '怒りの火', ['hunt', 'boss'], { mana: 2 }, 2, { mana: 1 }, [fight([{ power: 3 }, { guard: -2 }])], { weight: 'curse' }),
 ]);
+
+/** 使うのはこの30枚（ルール・難易度の見直しで絞った） */
+const KEEP_SPELLS = new Set(['s_spark', 's_fireball', 'tm_firebolt', 's_blade_dance', 's_boss_bane', 's_dragon_ward', 'tm_ward_boss', 's_stone_skin', 's_ward', 'tm_aegis', 's_forge_spark', 'tm_forge', 's_build_spell', 's_tool_magic', 's_mana_tide', 'tm_lightning', 's_fame_echo', 'tm_echo', 's_beast_call', 'tm_beast_bond', 's_gold_touch', 'tm_goldsmith', 's_relic_whisper', 'tm_relic_call', 's_scry', 's_summon_ally', 's_feast', 'tm_bulwark', 's_heal', 's_weaken']);
+export const SPELLS: CardDef[] = ALL_SPELLS.filter((c) => KEEP_SPELLS.has(c.id));

@@ -3,6 +3,7 @@
 import { MonsterArt, BossArt, KIcon } from '../art-registry';
 import type { Cost } from '../data';
 import { CardFace, CostRow } from './parts';
+import { InfoDot } from './inspect';
 
 export interface ChoiceMeter { power: number; need: number; pwin: number; partner?: number }
 export interface ChoiceItem {
@@ -20,6 +21,8 @@ export interface ChoiceItem {
   /** 使う札（矢・ポーション・秘術など） */
   uses?: string[];
   primary?: boolean;
+  /** 右上の i マークで開く詳しい説明（data-inspect の形。カード・魔物など） */
+  info?: string;
 }
 export interface ChoiceSpec { title: string; sub?: string; monster?: string; items: ChoiceItem[]; cancel?: string }
 
@@ -33,7 +36,7 @@ export function ChoiceSheet({ spec, onPick, onCancel }: { spec: ChoiceSpec; onPi
         </header>
         <div className="kd-choices">
           {spec.items.map((it) => (
-            <button key={it.id} type="button" className={`kd-choice${it.primary ? ' is-primary' : ''}${it.card ? ' has-card' : ''}`} onClick={() => onPick(it.id)}>
+            <button key={it.id} type="button" className={`kd-choice${it.primary ? ' is-primary' : ''}${it.card ? ' has-card' : ''}${it.info ? ' has-info' : ''}`} onClick={() => onPick(it.id)}>
               {it.card && <span className="kd-choice-card"><CardFace id={it.card} size="s" /></span>}
               <span className="kd-choice-b">
                 <strong>{it.title}</strong>
@@ -43,6 +46,7 @@ export function ChoiceSheet({ spec, onPick, onCancel }: { spec: ChoiceSpec; onPi
                 ) : null}
               </span>
               {it.meter && <Meter m={it.meter} />}
+              {it.info && <InfoDot target={it.info} label={`${it.title}をくわしく`} />}
             </button>
           ))}
         </div>

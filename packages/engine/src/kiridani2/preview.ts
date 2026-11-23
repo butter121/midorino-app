@@ -103,12 +103,18 @@ export function choiceLabel(g: Game, p: Player | null, x: Choice): { title: stri
     if (x === 'wall') return { title: '防壁を建てる', detail: '冬の襲撃を1ずつ防ぐ・戦闘の守り（2つで+1）', cost: p ? g.wallCost(p) : D.WALL_COST };
     if (x === 'atk') return { title: '攻めの熟練+1', detail: `選んだ仲間1人の戦力+1（${D.MAX_SKILL.atk}まで）` };
     if (x === 'def') return { title: '守りの熟練+1', detail: `選んだ仲間1人の守り+1（${D.MAX_SKILL.def}まで）` };
+    if (x === 'skip') return { title: '何もしない' };
+    if (x.startsWith('res:')) return { title: `${RES_JP[x.slice(4) as Res]}を1つ得る`, detail: '好きな資源を1つずつ選ぶ' };
+    if (x === 'mage:mana') return { title: `マナ鉱石を${D.LEADER.mage.mana}つ得る`, detail: '連唱魔女ミナ' };
+    if (x === 'mage:draw') return { title: `秘術を${D.LEADER.mage.draw}枚引く`, detail: '連唱魔女ミナ' };
+    { const a = g.anc.get(x.split('~')[0]); if (a) { const rv = p ? g.repairOf(p, x) : null; return { title: `${a.name}を修復する`, detail: `試合の終わりに名声${a.fame}`, cost: rv?.cost ?? a.repair }; } }
     if (x.startsWith('tr:')) { const i = Number(x.slice(3)); return { title: p?.comps[i]?.leader ? 'リーダー' : `仲間${i + 1}` }; }
     if (g.byId.has(x)) {
       const c = g.card(x);
       const cost = p ? (c.kind === 'occ' ? g.occCost(p, x) : g.cardCost(p, x)) : c.cost ?? {};
       const stock = c.kind === 'gear' ? `（残り${g.gearStock[x] ?? 0}）` : '';
-      return { title: `${c.name}${stock}`, detail: c.text, card: x, cost };
+      const stat = [c.power ? `戦力+${c.power}` : '', c.guard ? `守り+${c.guard}` : '', c.two_hand ? '両手' : ''].filter(Boolean).join('・');
+      return { title: `${c.name}${stock}`, detail: [stat, c.text].filter(Boolean).join('。') || undefined, card: x, cost };
     }
     const nd = g.nest(x);
     if (nd?.mon) return { title: `${nd.mon.name}を使い魔にする`, detail: `${D.NEST_JP[x] ?? x}・強さ${nd.mon.str}` };
@@ -116,6 +122,7 @@ export function choiceLabel(g: Game, p: Player | null, x: Choice): { title: stri
   }
   if (x.m === 'sell') return { title: `${RES_JP[x.r]}を${x.q}つ売る`, detail: `金貨+${(p ? g.sellPrice(p, x.r) : D.sellPrice(x.r)) * x.q}` };
   if (x.m === 'buy') return { title: `${RES_JP[x.r]}を${x.q}つ買う`, detail: `金貨-${D.BUY[x.r] * x.q}` };
+  if (x.m === 'stone') { const st = `${D.STONE.jp[x.tier]}魔石`; return x.dir === 'sell' ? { title: `${st}1つを${RES_JP[x.r]}${x.q}に換える` } : { title: `${RES_JP[x.r]}${x.q}を${st}1つに換える` }; }
   if (x.m === 'item') return { title: `${g.byId.get(x.id)?.name ?? x.id}を売る`, detail: `金貨+${g.itemSell(x.id)}`, card: x.id };
   if (x.m !== 'both') return { title: '?' };
   return { title: `${RES_JP[x.sell.r]}${x.sell.q}を売り、${RES_JP[x.buy.r]}${x.buy.q}を買う`, detail: `売値${costJP({ gold: g.sellPrice(p!, x.sell.r) * x.sell.q })}` };
@@ -137,6 +144,10 @@ export function optionLabel(g: Game, p: Player | null, o: Option): { title: stri
     return { title: sub ? `${c.name}：${sub.title}` : `${c.name}の効果を使う`, detail: sub?.detail ?? c.text, card: sub?.card ?? o.card, cost: sub?.cost };
   }
   if (o.x !== undefined) return choiceLabel(g, p, o.x);
+  if (o.mode === 'capture') {
+    const nd = g.nest(o.s);
+    if (nd?.mon) return { title: `${nd.mon.name}に好物をあげて使い魔にする`, detail: `${D.NEST_JP[o.s] ?? o.s}・強さ${nd.mon.str}`, cost: g.captureCost(nd.mon, p ?? undefined) };
+  }
   const sp = g.space(o.s);
   if (!sp) return { title: o.s };
   const ops = sp.def.options[o.i] ?? [];
@@ -184,13 +195,18 @@ function opText(op: Record<string, unknown>): string {
     case 'heal': return `負傷を${v}人回復`;
     case 'extra_worker': return 'もう1人置ける';
     case 'place_again': return 'もう一度使う';
-    case 'tame': return '獣を使い魔に';
+    case 'tame': return '巣の魔物を戦わずに使い魔にする';
+    case 'buy_card': { const b = v as { count: number; price: number }; return `品物を金貨${b.price}で${b.count}枚まで買う`; }
+    case 'gain_pick': { const gp = v as { n: number }; return `好きな資源を${gp.n}つ`; }
+    case 'draw_any': { const d = v as { from: string[]; look: number; take: number }; return `${d.from.map((f) => DRAW_JP[f] ?? f).join('・')}から山を1つ選び${d.look}枚見て${d.take}枚`; }
     case 'donate': { const d = v as { pay: Cost; fame: number }; return `${costJP(d.pay)}で名声${d.fame}`; }
-    case 'craft': return v === 'armor' ? '防具を作る' : v === 'weapon' ? '武器を作る' : '装備を作る';
-    case 'build': return '建てる';
-    case 'train': return '熟練+1';
+    case 'craft': return v === 'armor' ? '防具を作る' : v === 'weapon' ? '武器を作る' : '武器か防具を作る';
+    case 'build': return v === 'bed' ? '寝床を建てる' : v === 'wall' ? '防壁を建てる' : v === 'facility' ? '施設（道具）を建てる' : '寝床・防壁・施設のどれかを建てる';
+    case 'train': return v === 'atk' ? '攻めの熟練+1' : v === 'def' ? '守りの熟練+1' : '熟練+1（攻めか守り）';
     case 'occ': return '職能を出す';
-    case 'exchange': return '売り買い';
+    case 'exchange': return '売るか買うを1回';
+    case 'repair': return '遺物を修復';
+    case 'relic': return `遺物を${v}枚引く`;
     case 'gain_per': { const g = v as { gain: Cost }; return `${costJP(g.gain)}（数に応じて）`; }
     case 'fame_per': return '名声（数に応じて）';
     case 'others_gain': return `他の人全員が${costJP(v)}を得る`;
@@ -203,7 +219,10 @@ function opText(op: Record<string, unknown>): string {
     case 'no_injury': return `負傷を${v}人防ぐ`;
     case 'steal_gain': return `${costJP(v)}を得る`;
     case 'ignore_full': return '定員の埋まった巣にも置ける';
+    case 'trade_bonus': return `このラウンド取引をあと${v}回`;
+    case 'ward': return `この冬の襲撃の守り+${v}`;
+    case 'accum_add': return 'たまるマスすべてに資源+1';
     default: return '';
   }
 }
-const DRAW_JP: Record<string, string> = { occ: '職能', item: '品物', weapon: '武具', tool: '道具', spell: '秘術', ancient: '古代の品' };
+const DRAW_JP: Record<string, string> = { occ: '職能', item: '品物', weapon: '武器', armor: '防具', equip: '武器・防具', tool: '道具', spell: '秘術', ancient: '遺物' };
