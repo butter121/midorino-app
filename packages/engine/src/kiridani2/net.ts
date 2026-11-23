@@ -8,7 +8,7 @@
 import { CARD_SET } from './cards';
 import { Game, loadCards, Player, type Choice, type ItemKind, type Option, type Ratio, type Req } from './engine';
 import { Rng } from './rng';
-import { Kiridani2Session, type TradeJudge } from './session';
+import { Kiridani2Session, tradeStoneOf, type TradeJudge } from './session';
 import type { Level } from './ai';
 import type { CardDef, Cost, GameEvent, Res } from './types';
 import { RES } from './types';
@@ -218,7 +218,7 @@ export interface RefereeOptions {
 const LEVEL_V2: Record<string, Level> = { mid: 'normal', expert: 'strong', novice: 'novice', normal: 'normal', strong: 'strong', random: 'random' };
 export const toLevel2 = (l: string | undefined): Level => LEVEL_V2[l ?? 'normal'] ?? 'normal';
 
-const isCost = (c: unknown): c is Cost => !!c && typeof c === 'object' && Object.entries(c as object).every(([r, n]) => RES.includes(r as Res) && Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 20);
+const isCost = (c: unknown): c is Cost => !!c && typeof c === 'object' && Object.entries(c as object).every(([r, n]) => (RES.includes(r as Res) || /^stone[0-2]$/.test(r)) && Number.isInteger(n) && (n as number) >= 0 && (n as number) <= 20);
 const clean = (c: Cost) => Object.fromEntries(Object.entries(c).filter(([, n]) => n)) as Cost;
 
 export class Kiridani2Referee {
@@ -520,6 +520,8 @@ export class ShadowSession implements SeatSession2 {
     if (this.waiting.k !== 'choose') return fail('あなたの番に持ちかけられる');
     if (this.tradeLeft() <= 0) return fail('このラウンドの取引は終わり');
     if (!o || o === p || !this.prompt.partners.includes(b)) return fail('相手がいない');
+    const tier = tradeStoneOf(give);
+    if (tier !== null) { const e = this.g.stoneTradeOk(p, o, tier, get); return e && e !== 'このラウンドの取引は終わり' ? fail(e) : { ok: true, accept: true }; }
     for (const r of Object.keys(give)) if (r in get) return fail('同じ資源を渡して受け取ることはできない');
     const err = this.g.tradeOk(p, o, give, get);
     if (err && err !== 'このラウンドの取引は終わり') return fail(err);

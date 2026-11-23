@@ -2,7 +2,7 @@
 // 答えはオンラインの答え（Action2）の形で返す。ひとり遊びは applyAction2 でそのまま手元の試合に渡す。
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  choiceLabel, DATA, optionLabel, opsText, previewFight, whenText, RES, slotOf, type Action2, type Choice, type Cost, type FightChip, type FightMode, type Game, type Option,
+  choiceLabel, DATA, stoneKey, optionLabel, opsText, previewFight, whenText, RES, slotOf, type Action2, type Choice, type Cost, type FightChip, type FightMode, type Game, type Option,
   type Player, type SeatSession2,
 } from '@midorino/engine/src/kiridani2';
 import { KIcon } from '../kiridani/art-registry';
@@ -518,7 +518,7 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
     sheetNode = <ChoiceSheet spec={withInfo({ title: `${compName(p, ci)}の${SLOT_JP[slot]}`, sub: cur ? `いま：${cardName(cur)}` : items.length ? '持たせる装備を選ぶ（無料）' : '持たせられる装備がない', items, cancel: '閉じる' })}
       onPick={(id) => go({ t: 'equip', c: ci, slot, id: id === '-' ? null : id })} onCancel={reset} />;
   }
-  else if (s && w?.k === 'choose' && tray?.kind === 'trade') sheetNode = <TradeTray s={tradeAdapter(s)} onTrade={(b, give, get) => { reset(); opts.onTrade(b, give, get); }} onCancel={reset} />;
+  else if (s && w?.k === 'choose' && tray?.kind === 'trade') sheetNode = <TradeTray s={tradeAdapter(s)} onTrade={(b, give, get) => { reset(); opts.onTrade(b, give, get); }} onCancel={reset} stones={s.player && s.g.is(s.player, 'swindler') ? { have: [...s.player.stones], jp: [...DATA.STONE.jp], value: [...DATA.STONE.value], key: (t) => stoneKey(t) as string } : undefined} />;
   else if (s && w?.k === 'choose' && tray?.kind === 'spell') {
     const sp = w.opts.filter((o) => isSpellOpt(o));
     sheetNode = <ChoiceSheet spec={withInfo({ title: '秘術を使う', sub: '置く前に1枚。使い切りは使うと山に戻る', items: sp.map((o, i) => { const l = optionLabel(s.g, s.player, o); return { id: String(i), title: l.title.replace(/を使う$/, ''), detail: l.detail, card: l.card, cost: l.cost }; }), cancel: '使わない' })} onPick={(id) => go({ t: 'opt', i: w.opts.indexOf(sp[Number(id)]) })} onCancel={reset} />;

@@ -26,6 +26,12 @@ export interface SessionOptions {
   parallel?: boolean;
 }
 
+/** 押し売りモモの魔石の取引：渡すもの give に stone0〜stone2 の鍵（値 1）を入れて表す。魔石の段階を返す（なければ null） */
+export function tradeStoneOf(give: Cost): number | null {
+  for (const [k, n] of Object.entries(give)) { const m = /^stone([0-2])$/.exec(k); if (m && n) return Number(m[1]); }
+  return null;
+}
+export const stoneKey = (tier: number) => `stone${tier}` as unknown as Res;
 export interface TradeJudge { ok: boolean; accept: boolean; error?: string; human?: boolean }
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
@@ -235,6 +241,12 @@ export class Kiridani2Session {
     if (this.tradeLeft() <= 0) return fail('このラウンドの取引は終わり');
     const o = this.g.players[b];
     if (!o) return fail('相手がいない');
+    const tier = tradeStoneOf(give);
+    if (tier !== null) {
+      if (Object.keys(give).filter((k) => (give as Record<string, number>)[k]).length !== 1 || (give as Record<string, number>)[`stone${tier}`] !== 1) return fail('魔石は1つだけ');
+      const e = this.g.stoneTradeOk(p, o, tier, get);
+      return e ? fail(e) : { ok: true, accept: true };
+    }
     for (const r of Object.keys(give)) if (!RES.includes(r as Res) || (get as Record<string, number>)[r]) return fail('同じ資源を渡して受け取ることはできない');
     const err = this.g.tradeOk(p, o, give, get);
     if (err) return fail(err);
@@ -266,7 +278,9 @@ export class Kiridani2Session {
   }
   private applyTrade(b: number, give: Cost, get: Cost): GameEvent[] {
     const w = this.waiting as Extract<Req, { k: 'choose' }>;
-    this.g.trade(w.p, this.g.players[b], give, get);
+    const tier = tradeStoneOf(give);
+    if (tier !== null) this.g.tradeStone(w.p, this.g.players[b], tier, get);
+    else this.g.trade(w.p, this.g.players[b], give, get);
     this.inputs.push({ k: 'trade', b, give, get });
     this.refreshOpts();
     return this.g.E!.splice(0);
