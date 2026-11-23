@@ -6,7 +6,7 @@ import { AI, CARD_SET, DATA, Game, type Player } from '../src/kiridani2/index';
 function bare(atk: number[] = [0, 0, 0], def: number[] = [0, 0, 0]) {
   const g = new Game(2, [null, new AI('normal', { seed: 1 })], { seed: 1, cards: CARD_SET });
   const p = g.players[0];
-  p.comps = atk.map((a, i) => ({ atk: a, def: def[i], weapon: null, armor: null, leader: i === 0, injured: false, rest: false, used: false }));
+  p.comps = atk.map((a, i) => ({ atk: a, def: def[i], weapon: null, armor: null, weapon2: null, armor2: null, leader: i === 0, injured: false, rest: false, used: false }));
   return { g, p };
 }
 const stageOps = (id: string) => CARD_SET.stages.find((s) => s.id === id)!.effects.map((e) => e.do ?? []);
@@ -40,7 +40,7 @@ describe('kiridani2 訓練', () => {
     expect(gen.next('tr:2').done).toBe(true);
     expect(p.comps[2].atk).toBe(2);
     const q = g.players[1];
-    q.comps = [{ atk: 3, def: 0, weapon: null, armor: null, leader: true, injured: false, rest: false, used: false }, { atk: 1, def: 0, weapon: null, armor: null, leader: false, injured: false, rest: false, used: false }];
+    q.comps = [{ atk: 3, def: 0, weapon: null, armor: null, weapon2: null, armor2: null, leader: true, injured: false, rest: false, used: false }, { atk: 1, def: 0, weapon: null, armor: null, weapon2: null, armor2: null, leader: false, injured: false, rest: false, used: false }];
     expect(g.runOps(q, [{ train: 'atk' }], { x: 'atk' }).next().done).toBe(true);
     expect(q.comps[1].atk).toBe(2);
   });

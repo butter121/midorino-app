@@ -1,7 +1,7 @@
 // 霧谷 v2 — ゲーム画面全体。v1 の KiridaniTable と同じ骨組み・同じクラス（上の状況バー／プレイヤー列／タブ／下の自分の持ち物、
 // 戦闘・冬・季節の帯は上に重ねる）。v2 で増えたもの：準備段階の画面、段階カードのマス、仲間ごとの装備、進み具合（％）、名声の内訳。
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { DATA, RES, type Cost, type Res, type ScoreRow } from '@midorino/engine/src/kiridani2';
+import { DATA, RES, type Cost, type Res, type ScoreRow, type Slot } from '@midorino/engine/src/kiridani2';
 import { EffectArt, KIcon } from '../kiridani/art-registry';
 import { SPEED_JP, SPEEDS } from '../kiridani/anim/timing';
 import { FxLayer, type FxApi } from '../kiridani/ui/fx';
@@ -35,7 +35,7 @@ export interface Table2Props {
   /** 自分の番に出す「動かす仲間」の選び */
   picker?: ReactNode;
   /** 拠点の装備の枠をタップしたとき（自分の番だけ。持たせる・はずす） */
-  onEquip?: (companion: number, slot: 'weapon' | 'armor') => void;
+  onEquip?: OnEquip;
   /** 最終画面の下に出すもの（「同じメンバーでもう一度」など） */
   finalExtra?: ReactNode;
 }
@@ -131,6 +131,8 @@ const WHY_TITLE: Record<string, [string, string]> = {
   refill_occ: ['補充：職能', '5枚見て1枚'],
   refill_item: ['補充：品物', '5枚見て1枚'],
   draw: ['カードを選ぶ', ''],
+  peek: ['山に戻させるカードを選ぶ', '相手の手札。選んだ1枚は山へ戻る'],
+  sort: ['遺物の山の上に置くものを選ぶ', '先に選んだものほど上。引くまで混ぜない'],
 };
 export const whyTitle = (why: string) => WHY_TITLE[why] ?? ['カードを選ぶ', ''];
 const SETUP_STEPS: [string, string][] = [['leader', 'リーダー'], ['occ', '職能×3'], ['ratio', '割合'], ['item', `品物×${DATA.ITEM_COUNT}`], ['start', '始めの2枚'], ['quest', '秘密依頼']];
@@ -323,9 +325,13 @@ function Pips({ n, max, cls }: { n: number; max: number; cls: string }) {
   return <span className={`kd-skill ${cls}`}>{Array.from({ length: max }, (_, i) => <i key={i} className={i < n ? 'is-on' : ''} />)}</span>;
 }
 
-export function BaseView2({ p, v, cur, onEquip }: { p: PV2; v: View2; cur: Playing2 | null; onEquip?: (companion: number, slot: 'weapon' | 'armor') => void }) {
+/** 装備の枠をタップしたとき。can2：2つ目の枠（二刀・剣帯・重装）に持たせられるものがあるか */
+export type OnEquip = ((companion: number, slot: Slot) => void) & { can2?: (companion: number, slot: 'weapon2' | 'armor2') => boolean };
+const SLOT_LABEL: Record<Slot, string> = { weapon: '武器', armor: '防具', weapon2: '武器2', armor2: '防具2' };
+
+export function BaseView2({ p, v, cur, onEquip }: { p: PV2; v: View2; cur: Playing2 | null; onEquip?: OnEquip }) {
   const mine = p.seat === v.me;
-  const equipped = new Set(p.comps.flatMap((c) => [c.weapon, c.armor]).filter(Boolean) as string[]);
+  const equipped = new Set(p.comps.flatMap((c) => [c.weapon, c.armor, c.weapon2, c.armor2]).filter(Boolean) as string[]);
   const storage = p.items.filter((x, i) => !equipped.has(x) || p.items.indexOf(x) !== i);
   const lastBuild = cur?.ev.t === 'build' && cur.ev.seat === p.seat ? cur.ev.kind : undefined;
   return (
@@ -344,12 +350,13 @@ export function BaseView2({ p, v, cur, onEquip }: { p: PV2; v: View2; cur: Playi
                 <span className="kd2-comp-who"><Token seat={p.seat} size={24} injured={c.injured} dim={!!c.at || c.rest} /><small>{c.leader ? 'リーダー' : `仲間${i + 1}`}</small><small className="kd-comp-st">{c.injured ? '負傷' : c.rest ? '休み' : c.at ? placeName(c.at).slice(0, 4) : '待機'}</small></span>
                 <span className="kd2-comp-sk"><span title="攻めの熟練"><KIcon name="power" size={14} /><Pips n={c.atk} max={DATA.MAX_SKILL.atk} cls="is-atk" /></span><span title="守りの熟練"><KIcon name="defense" size={14} /><Pips n={c.def} max={DATA.MAX_SKILL.def} cls="is-def" /></span></span>
                 <span className="kd2-slots">
-                  {(['weapon', 'armor'] as const).map((sl) => {
-                    const id = c[sl];
-                    const body = <><small>{sl === 'weapon' ? '武器' : '防具'}</small>{id ? <b>{cardName(id)}</b> : <i>{onEquip ? '＋持たせる' : 'なし'}</i>}</>;
+                  {(['weapon', 'weapon2', 'armor', 'armor2'] as const).filter((sl) => sl === 'weapon' || sl === 'armor' || !!c[sl] || !!onEquip?.can2?.(i, sl)).map((sl) => {
+                    const id = c[sl] ?? null;
+                    const base = sl === 'weapon2' ? 'weapon' : sl === 'armor2' ? 'armor' : sl;
+                    const body = <><small>{SLOT_LABEL[sl]}</small>{id ? <b>{cardName(id)}</b> : <i>{onEquip ? '＋持たせる' : 'なし'}</i>}</>;
                     return onEquip
-                      ? <button key={sl} type="button" className={`kd2-slot is-${sl} is-edit${id ? ' is-on has-info' : ''}`} data-kd={`slot:${i}:${sl}`} onClick={() => onEquip(i, sl)} aria-label={`${c.leader ? 'リーダー' : `仲間${i + 1}`}の${sl === 'weapon' ? '武器' : '防具'}を持ち替える`}>{body}{id && <InfoDot target={`card2:${id}`} label={`${cardName(id)}をくわしく`} />}</button>
-                      : <span key={sl} className={`kd2-slot is-${sl}${id ? ' is-on' : ''}`} data-inspect={id ? `card2:${id}` : undefined} role={id ? 'button' : undefined} tabIndex={id ? 0 : undefined}>{body}</span>;
+                      ? <button key={sl} type="button" className={`kd2-slot is-${base} is-edit${id ? ' is-on has-info' : ''}`} data-kd={`slot:${i}:${sl}`} onClick={() => onEquip(i, sl)} aria-label={`${c.leader ? 'リーダー' : `仲間${i + 1}`}の${SLOT_LABEL[sl]}を持ち替える`}>{body}{id && <InfoDot target={`card2:${id}`} label={`${cardName(id)}をくわしく`} />}</button>
+                      : <span key={sl} className={`kd2-slot is-${base}${id ? ' is-on' : ''}`} data-inspect={id ? `card2:${id}` : undefined} role={id ? 'button' : undefined} tabIndex={id ? 0 : undefined}>{body}</span>;
                   })}
                 </span>
               </div>
@@ -460,7 +467,7 @@ export function Everyone2({ v, onOpen }: { v: View2; onOpen?: (s: Seat) => void 
           <LeaderArt id={p.leader} size={30} />
           <span className="kd-ev-n"><Token seat={p.seat} size={14} />{nameOf(v, p.seat)}<small>{p.leader ? cardName(p.leader) : ''}</small></span>
           <span className="kd-ev-f"><KIcon name="fame" size={14} /><b>{p.fame}</b></span>
-          <span className="kd-ev-d">仲間{p.comps.length}・討伐{p.trophies.length}・職能{p.occs.length}・装備{p.comps.filter((c) => c.weapon).length + p.comps.filter((c) => c.armor).length}・防壁{p.walls}・手札{p.hand.length}</span>
+          <span className="kd-ev-d">仲間{p.comps.length}・討伐{p.trophies.length}・職能{p.occs.length}・装備{p.comps.reduce((a, c) => a + [c.weapon, c.armor, c.weapon2, c.armor2].filter(Boolean).length, 0)}・防壁{p.walls}・手札{p.hand.length}</span>
           <span className="kd-ev-r">{RES.map((r) => <ResCount key={r} r={r} n={p.res[r]} size={14} />)}</span>
           <span className="kd2-ev-w"><small>冬</small><WinterFood2 p={p} v={v} compact /><FateRow2 left={p.fateLeft} label /></span>
         </button>

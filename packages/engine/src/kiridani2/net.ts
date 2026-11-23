@@ -10,7 +10,7 @@ import { Game, loadCards, Player, type Choice, type ItemKind, type Option, type 
 import { Rng } from './rng';
 import { Kiridani2Session, tradeStoneOf, type TradeJudge } from './session';
 import type { Level } from './ai';
-import type { CardDef, Cost, GameEvent, Res } from './types';
+import type { CardDef, Cost, GameEvent, Res, Slot } from './types';
 import { RES } from './types';
 
 // ------------------------------------------------------------ 答え・問い
@@ -20,7 +20,7 @@ export type Action =
   | { t: 'ratio'; v: Ratio }                                    // 武具・道具・秘術の割合（合計5）
   | { t: 'kind'; v: ItemKind }                                  // 次に引く品物の種類
   | { t: 'opt'; i: number; use?: string[]; who?: number[] }     // 置き場所の選択肢（Prompt.opts の番号）。use＝戦闘の後押し、who＝動かす仲間
-  | { t: 'equip'; c: number; slot: 'weapon' | 'armor'; id: string | null } // 装備を持たせる・はずす（自分の番に無料。置き場所の選択は続く）
+  | { t: 'equip'; c: number; slot: Slot; id: string | null } // 装備を持たせる・はずす（自分の番に無料。置き場所の選択は続く）
   | { t: 'pick'; i: number }                                    // 細かい選択（Prompt.options の番号）
   | { t: 'yes'; v: boolean }                                    // はい／いいえ（回復・効果を使うか）
   | { t: 'trade'; b: number; give: Cost; get: Cost }            // AI との取引（置き場所の選択は続く）
@@ -466,7 +466,7 @@ export function applyAction(s: Kiridani2Session, a: Action, seat?: number): Game
       if (w.k !== 'heal' && w.k !== 'effect') throw new Error('いまは「はい／いいえ」の場面ではありません');
       return ans(a.v === true);
     case 'equip':
-      if (!Number.isInteger(a.c) || (a.slot !== 'weapon' && a.slot !== 'armor') || (a.id !== null && typeof a.id !== 'string')) throw new Error('形式が正しくありません');
+      if (!Number.isInteger(a.c) || !['weapon', 'armor', 'weapon2', 'armor2'].includes(a.slot) || (a.id !== null && typeof a.id !== 'string')) throw new Error('形式が正しくありません');
       return s.equip(a.c, a.slot, a.id);
     case 'trade':
       if (!isCost(a.give) || !isCost(a.get) || !Number.isInteger(a.b)) throw new Error('形式が正しくありません');

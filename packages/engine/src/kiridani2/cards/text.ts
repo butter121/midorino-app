@@ -24,6 +24,7 @@ export const STAT_JP: Record<StatKey, string> = {
   kinds: '使っている品物の種類', sold: '売った回数', gold: '金貨', atk: '攻めの熟練', def: '守りの熟練', dmg: '守りを超えた反撃',
   sent_atk: '送った仲間の攻めの熟練', sent_wpow: '送った仲間の武器の戦力', sent_k: '送った仲間', exposed: '守りを超える反撃',
   casts_round: 'このラウンドに唱えた秘術', broken: '壊れたままの遺物', blocked: '防いだ襲撃', res_total: '持っている資源',
+  pet_types: '使い魔の種族', pet_same: '同じ種族の使い魔', fights_round: 'このラウンドの戦闘', sent_guard: '送った仲間の守り',
 };
 /** 数え方（「2つ」「1体」など） */
 const UNIT: Record<StatKey, string> = {
@@ -31,6 +32,7 @@ const UNIT: Record<StatKey, string> = {
   ancient: '枚', quests: 'つ', skills: '段', injured: '人', boss: '体', coop: '回', spells: '回', donations: '回', trades: '回', year: '年', round: '',
   weapons: 'つ', armors: 'つ', tools: 'つ', tomes: '冊', casts: '回', shards: '個', kinds: '種', sold: '', gold: '枚', atk: '段', def: '段', dmg: '点',
   sent_atk: '段', sent_wpow: '点', sent_k: '人', exposed: '点', casts_round: '回', broken: '枚', blocked: 'つ', res_total: '個',
+  pet_types: '種', pet_same: '体', fights_round: '回', sent_guard: '点',
 };
 /** 「売った回数3」のように、名前に数え方が入っているもの */
 const n_ = (k: StatKey, n: number) => `${STAT_JP[k] ?? k}${k === 'sold' ? n + '回' : k === 'round' ? n : n + (UNIT[k] ?? 'つ')}`;

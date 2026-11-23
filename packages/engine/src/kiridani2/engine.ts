@@ -10,7 +10,7 @@ import {
 } from './dsl';
 import type {
   AncientDef, CardDef, CardSet, Cost, Effect, EngineTag, FightMode, GameEvent, GearDef, Monster, MonsterType, Op, PowerPart, QuestDef,
-  Race, Res, ScoreItem, ScoreRow, Season, SpaceDef, StageDef, StatKey,
+  Race, Res, ScoreItem, ScoreRow, Season, Slot, SpaceDef, StageDef, StatKey,
 } from './types';
 import { RES } from './types';
 
@@ -50,12 +50,16 @@ export interface Option {
   use?: string[];
   /** 動かす仲間を自分で選ぶ（仲間の番号。マスは1人、戦闘は k 人）。ないとき・使えないときはこれまでどおり（マスは空いている最初の仲間、戦闘は戦力の高い順） */
   who?: number[];
+  /** 自分だけが使えるマス（own_space）として置く：そのカードの id */
+  own?: string;
 }
 
 /** 戦闘で足せる後押し1つ（士気・ポーション・払うカードの効果・手札の秘術） */
 export interface FightChip { key: string; name: string; label: string; cost: Cost; gain: number; card?: string; spell: boolean }
 
-export type CardWhy = 'leader' | 'occ' | 'item' | 'start_occ' | 'start_item' | 'quest' | 'draw' | 'refill_occ' | 'refill_item' | 'curio';
+export type CardWhy = 'leader' | 'occ' | 'item' | 'start_occ' | 'start_item' | 'quest' | 'draw' | 'refill_occ' | 'refill_item' | 'curio'
+  /** ほかの人の手札から山に戻させる1枚（盗み見）・遺物の山の上に置く1枚（鑑定） */
+  | 'peek' | 'sort';
 export type Req =
   | { k: 'card'; g: Game; p: Player; why: CardWhy; cards: string[]; kind?: string }
   | { k: 'ratio'; g: Game; p: Player; options: Ratio[] }
@@ -72,6 +76,8 @@ export interface Brain {
   respond(req: Req): any;
   tradePhase?(g: Game, p: Player): void;
   judgeOffer?(g: Game, p: Player, give: Cost, get: Cost): boolean;
+  /** その人と取引を1回する（抜け道） */
+  tradeWith?(g: Game, p: Player, q: Player): void;
 }
 
 export function humanDefault(req: Req): any {
@@ -94,7 +100,11 @@ export function drive<T>(gen: Gen<T>): T {
 }
 
 // ------------------------------------------------------------ プレイヤー
-export interface Comp { atk: number; def: number; weapon: string | null; armor: string | null; leader: boolean; injured: boolean; rest: boolean; used: boolean }
+export interface Comp {
+  atk: number; def: number; weapon: string | null; armor: string | null; leader: boolean; injured: boolean; rest: boolean; used: boolean;
+  /** 2本目の武器・2つ目の防具（二刀の心得・剣帯・重装の心得） */
+  weapon2: string | null; armor2: string | null;
+}
 /** 使い魔（捕まえた魔物）。power＝戦闘に連れて行ったときの戦力、card＝固有の効果のカード（pet_<type>） */
 export interface Pet { type: string; name: string; str: number; power: number; card: string }
 export type FameSrc = 'trophy' | 'quest' | 'donate' | 'card' | 'effect' | 'dragon' | 'absent' | 'leader' | 'stone';
@@ -135,7 +145,11 @@ export class Player {
   lastDmg = 0;
   kills = 0;
   races: Race[] = [];
-  st = { boss: 0, coop: 0, spells: 0, donations: 0, trades: 0, fights: 0, wins: 0, casts: 0, castsRound: 0, sold: 0, returns: 0, mageRound: 0, blocked: 0, mageWon: 0, blockedLast: 0 };
+  st = { boss: 0, coop: 0, spells: 0, donations: 0, trades: 0, fights: 0, wins: 0, casts: 0, castsRound: 0, sold: 0, returns: 0, mageRound: 0, blocked: 0, mageWon: 0, blockedLast: 0, fightsRound: 0, lastWin: 0 };
+  /** カードの効果でつけた印（`r:` で始まるものはラウンドの始めに消える） */
+  flags: Record<string, number> = {};
+  /** 「このラウンド（か、次に起きるまで）○○のとき」の効果（秘術の later） */
+  later: { when: string; do: Op[]; round: number | null; card: string }[] = [];
   quests: string[] = [];
   secret: string | null = null;
   discontent = 0;
@@ -187,6 +201,8 @@ export class Player {
     q.rbuf = { ...this.rbuf };
     q.lastSpace = this.lastSpace;
     q.tradesUsed = this.tradesUsed;
+    q.flags = { ...this.flags }; q.restTrain = [...this.restTrain];
+    q.later = this.later.map((l) => ({ ...l }));
     q.ratio = this.ratio;
     q.target = this.target;
     q.acts = [...this.acts];
@@ -197,6 +213,8 @@ export class Player {
   }
 
   free(): number[] { const o: number[] = []; this.comps.forEach((c, i) => { if (!c.used && !c.rest) o.push(i); }); return o; }
+  /** 休みでも訓練のマスに置ける仲間（根性の鉢巻：まだ使っていないもの） */
+  restTrain: number[] = [];
   avail() { return this.free().length + this.extra; }
   /** 戦闘に出せる人数（もう1人置ける分は、休んでいない仲間がもう一度出る） */
   fightable() { return Math.min(this.free().length + this.extra, this.comps.filter((c) => !c.rest && !c.injured).length); }
@@ -207,6 +225,8 @@ export interface FightRec {
   addons: number; comps: number; sides: number; pids: number[]; /** 席ごとの証（pids と同じ並び） */ tro: number[]; mode: string;
 }
 export interface FightBuf { power: number; guard: number; counter: number; loot: number; trophy: number; str: number; noInj: number }
+/** 交換所の売り買いができるマス */
+export const MARKET_IDS = ['market', 'market2'];
 export const emptyBuf = (): FightBuf => ({ power: 0, guard: 0, counter: 0, loot: 0, trophy: 0, str: 0, noInj: 0 });
 
 export function canPay(p: Player, c: Cost): boolean {
@@ -231,6 +251,8 @@ export interface Plan extends FightBuf {
   rage: number;
   /** 足せた後押し（chips）と、実際に使ったものの key */
   chips?: FightChip[]; keys?: string[];
+  /** 秘術の効果：武器の効果をもう一度（回数）・この戦闘だけの熟練・共闘の相手の守りを足す・手柄の独り占め・戦利品を金貨で */
+  again?: number; skillBoost?: number; allyGuard?: boolean; hog?: boolean; lootGold?: boolean;
 }
 
 export interface GameOptions {
@@ -313,6 +335,21 @@ export class Game {
   monLog: { round: number; dev: number }[] = [];
   /** 測定：戦闘ごとの記録（sim.ts の勝率・差・後押しの数）。skip＝主・古竜に誰も挑まなかった */
   fightLog: FightRec[] = [];
+  // ---- カードの効果で盤面に残るもの
+  /** ふさいだマス（そのラウンド、置いた人のほかは使えない） */
+  blocks: { s: string; pid: number; round: number }[] = [];
+  /** 交換所を使えない人（席 → ラウンド） */
+  marketBan: Record<number, number> = {};
+  /** 交換所で買えるのがその人だけの資源 */
+  buyBans: { r: Res; pid: number; round: number }[] = [];
+  /** 価値の表の+1（そのラウンドだけ） */
+  valueUps: { r: Res; round: number }[] = [];
+  /** 印をつけた巣の魔物（uid → 席）。ほかの人は戦えない */
+  reserved: Record<number, number> = {};
+  /** 金貸し */
+  loans: { from: number; to: number; due: number; back: number; fame: number; card: string }[] = [];
+  /** 遺物の山の上の、並べ替えた枚数（引くまで混ぜない） */
+  ancientSorted = 0;
 
   constructor(n: number, ais: (Brain | null)[], opts: GameOptions) {
     if (n < 2 || n > 6) throw new Error('players must be 2..6');
@@ -418,6 +455,8 @@ export class Game {
     g.forceFate = null; g.lastClash = null;
     g.E = null; g.me = this.me; g.names = this.names;
     g.fateLog = []; g.monLog = []; g.fightLog = [];
+    g.blocks = this.blocks.map((b) => ({ ...b })); g.marketBan = { ...this.marketBan }; g.buyBans = this.buyBans.map((b) => ({ ...b }));
+    g.valueUps = this.valueUps.map((b) => ({ ...b })); g.reserved = { ...this.reserved }; g.loans = this.loans.map((l) => ({ ...l })); g.ancientSorted = this.ancientSorted;
     return g;
   }
 
@@ -461,8 +500,7 @@ export class Game {
     p.pets.forEach((pt, i) => { if (pt.card && (!fightIdxs || (fightPets ?? this.bringPets(p)).includes(i))) out.push(pt.card); });
     p.comps.forEach((c, i) => {
       if (fightIdxs && !fightIdxs.includes(i)) return;
-      if (c.weapon) out.push(c.weapon);
-      if (c.armor) out.push(c.armor);
+      out.push(...gearOf(c));
     });
     return out;
   }
@@ -495,7 +533,7 @@ export class Game {
   capOf(s: SpaceSt) { return this.n >= 4 && s.def.cap4 !== undefined ? s.def.cap4 : s.def.cap ?? 1; }
   /** 使っている品物の種類（持たせた武器・防具、建てた道具、唱えた秘術） */
   kinds(p: Player) {
-    const w = p.comps.some((c) => c.weapon), a = p.comps.some((c) => c.armor);
+    const w = p.comps.some((c) => weaponsOf(c).length), a = p.comps.some((c) => armorsOf(c).length);
     return (w ? 1 : 0) + (a ? 1 : 0) + (p.tools.length ? 1 : 0) + (p.st.casts ? 1 : 0);
   }
   has(p: Player, id: string) { return this.activeCards(p).includes(id) || p.items.includes(id); }
@@ -512,12 +550,12 @@ export class Game {
     switch (k) {
       case 'comps': return p.comps.length;
       case 'occs': return p.occs.length;
-      case 'walls': return p.walls;
+      case 'walls': return this.wallsOf(p);
       case 'beds': return p.beds;
       case 'facilities': case 'tools': return p.tools.length;
-      case 'gear': return p.comps.reduce((a, c) => a + (c.weapon ? 1 : 0) + (c.armor ? 1 : 0), 0);
-      case 'weapons': return p.comps.filter((c) => c.weapon).length;
-      case 'armors': return p.comps.filter((c) => c.armor).length;
+      case 'gear': return p.comps.reduce((a, c) => a + gearOf(c).length, 0);
+      case 'weapons': return p.comps.reduce((a, c) => a + weaponsOf(c).length, 0);
+      case 'armors': return p.comps.reduce((a, c) => a + armorsOf(c).length, 0);
       case 'pets': return p.pets.length;
       case 'tomes': return p.tomes.length;
       case 'casts': return p.st.casts;
@@ -529,7 +567,10 @@ export class Game {
       case 'atk': return p.comps.reduce((a, c) => a + c.atk, 0);
       case 'def': return p.comps.reduce((a, c) => a + c.def, 0);
       case 'dmg': return p.lastDmg;
-      case 'sent_atk': case 'sent_wpow': case 'sent_k': case 'exposed': return 0;
+      case 'sent_atk': case 'sent_wpow': case 'sent_k': case 'exposed': case 'sent_guard': return 0;
+      case 'pet_types': return new Set(p.pets.map((x) => x.type)).size;
+      case 'pet_same': { const m = new Map<string, number>(); for (const x of p.pets) m.set(x.type, (m.get(x.type) ?? 0) + 1); return Math.max(0, ...m.values()); }
+      case 'fights_round': return p.st.fightsRound;
       case 'kills': return p.kills;
       case 'races': return p.races.length;
       case 'trophies': return p.trophies;
@@ -552,19 +593,50 @@ export class Game {
   }
 
   /** 条件の環境。thScale：終わりの効果で、数をこの倍率で割って比べる（しきい値を年数で伸ばすのと同じ） */
-  env(p: Player, fight?: FightEnv, thScale = 1): CondEnv {
+  env(p: Player, fight?: FightEnv, thScale = 1, space?: string): CondEnv {
     const stat = (k: StatKey): number => {
       if (fight) {
         if (k === 'sent_atk') return fight.atk ?? 0;
         if (k === 'sent_wpow') return fight.wpow ?? 0;
         if (k === 'sent_k') return fight.k;
         if (k === 'exposed') return fight.exposed ?? 0;
+        if (k === 'sent_guard') return fight.guard ?? 0;
       }
       const v = this.stat(p, k);
       return thScale !== 1 && !D.TABLE_NOSCALE.has(k) && k !== 'year' && k !== 'round' ? v / thScale : v;
     };
-    return { stat, season: this.season(), t: this.t, res: p.res, has: (id) => this.has(p, id), ...(fight ? { fight } : {}) };
+    return {
+      stat, season: this.season(), t: this.t, res: p.res, has: (id) => this.has(p, id), ...(fight ? { fight } : {}),
+      flag: (k) => this.flag(p, k), lastWin: !!p.st.lastWin, ...(space !== undefined ? { space } : {}),
+    };
   }
+  /** 印の数 */
+  flag(p: Player, k: string): number { return p.flags[k] ?? 0; }
+  /** 印を足す（max まで）。0 以下になったら消す */
+  addFlag(p: Player, k: string, n = 1, max?: number) {
+    const v = Math.min(max ?? Infinity, (p.flags[k] ?? 0) + n);
+    if (v > 0) p.flags[k] = v; else delete p.flags[k];
+  }
+  /** 防壁の数（城壁の盾などの「防壁として数える」を含む） */
+  wallsOf(p: Player): number {
+    // 条件を見ずに数える（条件の中で防壁の数を使うので、mods を通すと回り続ける）
+    let n = p.walls;
+    for (const id of this.activeCards(p)) for (const e of cardEffects(this.card(id))) if (e.when === 'passive' && e.mod?.wall_count) n += e.mod.wall_count;
+    return n;
+  }
+  /** 価値の表（市場操作でそのラウンドだけ+1） */
+  val(r: Res): number { return D.VALUE[r] + this.valueUps.filter((v) => v.r === r && v.round === this.round).length; }
+  /** 交換所の買値（金貨は買えない） */
+  buyPrice(r: Res): number { return r === 'gold' ? 0 : this.val(r); }
+  /** 武器の戦力（印・両手武器の修正込み。天才の倍率はかけない） */
+  weaponPower(p: Player, id: string, m: ModSum = this.mods(p)): number {
+    const c = this.card(id);
+    return (c.power ?? 0) + this.flag(p, `mark:${id}`) + (c.two_hand ? m.two_hand_power : 0);
+  }
+  /** 仲間の武器の戦力の合計（天才の倍率はかけない） */
+  compWeaponPower(p: Player, c: Comp, m: ModSum = this.mods(p)): number { return weaponsOf(c).reduce((a, id) => a + this.weaponPower(p, id, m), 0); }
+  /** 仲間の装備の守りの合計（武器の守りも） */
+  compGearGuard(c: Comp): number { return gearOf(c).reduce((a, id) => a + (this.card(id).guard ?? 0), 0); }
 
   private limitKey(card: string, e: number) { return `${card}#${e}`; }
   limitOk(p: Player, card: string, e: number, lim: Effect['limit']): boolean {
@@ -573,6 +645,7 @@ export class Game {
     if (v === undefined) return true;
     if (lim === 'game') return false;
     if (lim === 'year') return v !== this.year();
+    if (lim === 'round2') return this.round - v >= 2;
     return v !== this.round;
   }
   markLimit(p: Player, card: string, e: number, lim: Effect['limit']) {
@@ -616,6 +689,14 @@ export class Game {
     return out;
   }
   learnCost(p: Player, id: string): Cost { return this.adjust(p, this.card(id).tome?.learn ?? {}, ['spell']); }
+  /** 秘術を唱える費用。nth＝このあと続けて唱える何枚目か（0＝次の1枚）。連鎖詠唱の「次の秘術は費用なし」と、詠唱短縮の「ラウンドで最初の秘術は−1」 */
+  spellCost(p: Player, id: string, nth = 0): Cost {
+    if (nth === 0 && this.flag(p, 'free_spell') > 0) return {};
+    let c = this.cardCost(p, id);
+    const cut = this.mods(p).first_spell_cut;
+    if (cut && p.st.castsRound + nth === 0) c = cleanCost(subCost(c, { mana: cut }));
+    return c;
+  }
   /** ギルドで職能を出す費用（食料1、2枚目から2。カードの cost はその上乗せ） */
   occCost(p: Player, id?: string): Cost {
     const playedViaGuild = Math.max(0, p.occs.length - 1);
@@ -624,8 +705,11 @@ export class Game {
   }
   bedCost(p: Player, disc: Cost = {}) { return subCost(this.adjust(p, D.BED_COST, ['bed']), disc); }
   wallCost(p: Player, disc: Cost = {}) { return subCost(this.adjust(p, D.WALL_COST, ['wall']), disc); }
-  /** 足りない資源を金貨で払った費用（作る・建てる・職能。1回に GOLD_SUB.max 個まで、買値+premium）。マナ鉱石は gold_mana があれば金貨で。払えなければ null */
-  goldPlan(p: Player, cost: Cost, base: Cost = {}): Cost | null {
+  /** 足りない資源を金貨で払った費用（作る・建てる・職能。1回に GOLD_SUB.max 個まで、買値+premium）。マナ鉱石は gold_mana があれば金貨で。払えなければ null。
+   *  make：作る・建てるとき（値切りの「金貨で払うとき−3」が効く） */
+  goldPlan(p: Player, cost: Cost, base: Cost = {}, make = false): Cost | null {
+    let cut = make ? this.flag(p, 'goldcut') : 0;
+    if (cut && (cost.gold ?? 0) > 0) { const d = Math.min(cut, cost.gold ?? 0); cost = cleanCost({ ...cost, gold: (cost.gold ?? 0) - d }); cut -= d; }
     const need = addCost(base, cost);
     if (canPay(p, need)) return cost;
     const out: Cost = { ...cost };
@@ -635,30 +719,39 @@ export class Game {
       if (r === 'gold') continue;
       const short = (need[r] ?? 0) - p.res[r];
       if (short <= 0) continue;
-      const price = r === 'mana' && gm ? gm : D.BUY[r] + D.GOLD_SUB.premium;
+      const price = r === 'mana' && gm ? gm : this.buyPrice(r) + D.GOLD_SUB.premium;
       if (!(r === 'mana' && gm)) { subs += short; if (subs > D.GOLD_SUB.max) return null; }
       out[r] = (out[r] ?? 0) - short;
       gold += short * price;
     }
+    // 値切り：足りない分を金貨で払うときも、金貨の分から−cut（費用に金貨がなかったとき）
+    if (cut && gold > 0) gold = Math.max(0, gold - cut);
     out.gold = (out.gold ?? 0) + gold;
     const c = cleanCost(out);
     return canPay(p, addCost(base, c)) ? c : null;
   }
-  /** 秘術の費用（マナ鉱石は gold_mana があれば金貨で払える。足りないマナ鉱石だけ）。払えなければ null */
+  /** 秘術の費用（足りないマナ鉱石は herb_mana があれば薬草で、gold_mana があれば金貨で払える）。払えなければ null */
   manaPlan(p: Player, cost: Cost, base: Cost = {}): Cost | null {
     if (canPay(p, addCost(base, cost))) return cost;
-    const gm = this.mods(p).gold_mana;
-    if (!gm) return null;
-    const short = Math.max(0, (cost.mana ?? 0) + (base.mana ?? 0) - p.res.mana);
-    const c = cleanCost({ ...cost, mana: (cost.mana ?? 0) - short, gold: (cost.gold ?? 0) + short * gm });
-    return canPay(p, addCost(base, c)) ? c : null;
+    const m = this.mods(p);
+    const hm = m.herb_mana, gm = m.gold_mana;
+    if (!gm && !hm) return null;
+    let short = Math.max(0, (cost.mana ?? 0) + (base.mana ?? 0) - p.res.mana);
+    const c: Cost = { ...cost, mana: (cost.mana ?? 0) - short };
+    if (hm) {
+      const byHerb = Math.min(short, Math.floor(Math.max(0, p.res.herb - (cost.herb ?? 0) - (base.herb ?? 0)) / hm));
+      c.herb = (c.herb ?? 0) + byHerb * hm; short -= byHerb;
+    }
+    if (short > 0) { if (!gm) return null; c.gold = (c.gold ?? 0) + short * gm; }
+    const cc = cleanCost(c);
+    return canPay(p, addCost(base, cc)) ? cc : null;
   }
   prereqOk(p: Player, id: string): boolean {
     const pr = this.card(id).prereq;
     if (!pr) return true;
     if (pr.occs !== undefined && p.occs.length < pr.occs) return false;
     if (pr.comps !== undefined && p.comps.length < pr.comps) return false;
-    if (pr.walls !== undefined && p.walls < pr.walls) return false;
+    if (pr.walls !== undefined && this.wallsOf(p) < pr.walls) return false;
     if (pr.facilities !== undefined && p.tools.length < pr.facilities) return false;
     if (pr.kills !== undefined && p.kills < pr.kills) return false;
     if (pr.has !== undefined && !this.has(p, pr.has)) return false;
@@ -668,7 +761,7 @@ export class Game {
   compCap(p: Player) { return D.MAX_COMPS + this.mods(p).comp_cap; }
   /** 交換所で扱える数（交換所に2人目として置いたときは −1。sp を渡す） */
   marketQty(p: Player, sp?: SpaceSt) { return Math.max(1, D.MARKET_QTY + this.mods(p).market_qty - (sp && sp.id === 'market' && sp.occ.some((x) => x !== p.pid) ? 1 : 0)); }
-  sellPrice(p: Player, r: Res) { const m = this.mods(p); return (m.sell_full ? D.BUY[r] : D.sellPrice(r)) + m.sell_bonus + (this.is(p, 'merchant') ? D.LEADER.merchant.sellBonus : 0); }
+  sellPrice(p: Player, r: Res) { const m = this.mods(p); return this.buyPrice(r) + m.sell_bonus + (this.is(p, 'merchant') ? D.LEADER.merchant.sellBonus : 0); }
   itemSell(id: string) {
     const c = this.card(id);
     if (c.sell !== undefined) return c.sell;
@@ -676,16 +769,26 @@ export class Game {
     return Math.max(1, Math.floor(v * D.ITEM_SELL_RATE));
   }
   storage(p: Player): string[] {
-    const eq = [...p.comps.map((c) => c.weapon), ...p.comps.map((c) => c.armor)].filter(Boolean) as string[];
+    const eq = p.comps.flatMap((c) => gearOf(c));
     const left = [...p.items];
     for (const e of eq) { const i = left.indexOf(e); if (i >= 0) left.splice(i, 1); }
     return left;
   }
-  homeGuard(p: Player) { const m = this.mods(p); return p.walls + m.base_guard + m.home_guard + p.ward; }
-  /** 1回に送れる仲間 */
-  sendCap(p: Player) { return D.MAX_SEND + this.mods(p).send_cap; }
-  fightGuardBase(p: Player) { return Math.floor(p.walls / D.WALLS_PER_GUARD) + this.mods(p).base_guard; }
+  homeGuard(p: Player) { const m = this.mods(p); return p.walls + m.wall_count + m.base_guard + m.home_guard + p.ward; }
+  /** 1回に送れる仲間（総力戦の印で+1） */
+  sendCap(p: Player) { return D.MAX_SEND + this.mods(p).send_cap + (this.flag(p, 'r:send') > 0 ? 1 : 0); }
+  fightGuardBase(p: Player) { const m = this.mods(p); return Math.floor((p.walls + m.wall_count) / D.WALLS_PER_GUARD) + m.base_guard; }
   healCost(p: Player): Cost { return { herb: Math.max(0, D.HEAL_COST - this.mods(p).heal_discount) }; }
+  /** 負傷を治す払い（薬草が足りなければ、heal_gold があれば足りない薬草1つを金貨で）。払えなければ null */
+  healPlan(p: Player): Cost | null {
+    const c = this.healCost(p);
+    if (canPay(p, c)) return c;
+    const hg = this.mods(p).heal_gold;
+    if (!hg) return null;
+    const short = (c.herb ?? 0) - p.res.herb;
+    const alt = cleanCost({ herb: p.res.herb, gold: short * hg });
+    return canPay(p, alt) ? alt : null;
+  }
 
   // ------------------------------------------------------------ 魔物
   private drawType(): MonsterType {
@@ -724,10 +827,19 @@ export class Game {
     return Math.max(3, Math.round(R.base + (R.slope[this.years] ?? 15) + g + R.sd * R.clip - R.ease.base - (R.ease.slope[this.years] ?? 4)));
   }
   /** 遺物の修復のしかた。key は選択肢（ふつうは遺物の id。探検家は「id~減らす資源.減らす資源」で、減らす資源を選べる） */
-  repairVariants(p: Player, id: string): { key: string; cost: Cost }[] {
+  repairVariants(p: Player, id: string, extraCut = 0): { key: string; cost: Cost }[] {
+    const base = this.repairBase(p, id, extraCut);
+    // 修復師：素材1つを金貨で払える
+    const rg = this.mods(p).repair_gold;
+    if (!rg) return base;
+    const out = [...base];
+    for (const v of base) if ((v.cost.mat ?? 0) > 0) out.push({ key: `${v.key.includes('~') ? v.key : v.key + '~'}!g`, cost: cleanCost({ ...v.cost, mat: (v.cost.mat ?? 0) - 1, gold: (v.cost.gold ?? 0) + rg }) });
+    return out;
+  }
+  private repairBase(p: Player, id: string, extraCut: number): { key: string; cost: Cost }[] {
     const a = this.anc.get(id);
     if (!a) return [];
-    const cut = (this.is(p, 'explorer') ? D.LEADER.explorer.repairCut : 0) + this.mods(p).repair_cut;
+    const cut = (this.is(p, 'explorer') ? D.LEADER.explorer.repairCut : 0) + this.mods(p).repair_cut + extraCut;
     if (!cut) return [{ key: id, cost: a.repair }];
     const units: Res[] = [];
     for (const [r, n] of Object.entries(a.repair)) for (let k = 0; k < (n as number); k++) units.push(r as Res);
@@ -756,7 +868,8 @@ export class Game {
     const t = D.WEIGHT_TIER[c.weight ?? ''];
     if (t === undefined) return null;
     const dn = p ? this.mods(p).stone_down : [];
-    const down = dn.includes(c.kind) || (c.two_hand && dn.includes('two_hand')) ? 1 : 0;
+    // 業火の鍛造（stone2h の印）：次に作る両手武器は魔石の段階が1つ下
+    const down = dn.includes(c.kind) || (c.two_hand && (dn.includes('two_hand') || (p && this.flag(p, 'stone2h') > 0))) ? 1 : 0;
     return Math.max(0, t - down);
   }
   private refillForecast() {
@@ -1028,9 +1141,29 @@ export class Game {
     this.emit({ t: 'refill', adds });
     for (const s of this.spaces) s.occ = [];
     this.refillCurio();
+    this.blocks = this.blocks.filter((b) => b.round >= r);
+    this.buyBans = this.buyBans.filter((b) => b.round >= r);
+    this.valueUps = this.valueUps.filter((b) => b.round >= r);
+    // 金貸し：返す日
+    for (const ln of this.loans.filter((l) => l.due === r)) {
+      const q = this.players[ln.to], lender = this.players[ln.from];
+      if (q.res.gold >= ln.back) {
+        q.res.gold -= ln.back; lender.res.gold += ln.back;
+        this.emit({ t: 'pay', seat: q.pid, cost: { gold: ln.back }, reason: ln.card });
+        this.emit({ t: 'gain', seat: lender.pid, gain: { gold: ln.back }, reason: ln.card });
+      } else {
+        q.fame.effect -= ln.fame;
+        this.emit({ t: 'fame', seat: q.pid, amount: -ln.fame, reason: ln.card });
+      }
+    }
+    this.loans = this.loans.filter((l) => l.due > r);
     for (const p of this.players) {
-      p.extra = 0; p.ignoreFull = false; p.tradesUsed = 0; p.acts = []; p.rbuf = emptyBuf(); p.lastSpace = null; p.st.castsRound = 0; p.st.returns = 0; p.st.mageRound = 0;
+      p.extra = 0; p.ignoreFull = false; p.tradesUsed = 0; p.acts = []; p.rbuf = emptyBuf(); p.lastSpace = null; p.st.castsRound = 0; p.st.returns = 0; p.st.mageRound = 0; p.st.fightsRound = 0;
+      for (const k of Object.keys(p.flags)) if (k.startsWith('r:')) delete p.flags[k];
+      p.later = p.later.filter((l) => l.round === null);
       for (const c of p.comps) c.used = false;
+      // 根性の鉢巻：休みの仲間でも、着ていれば訓練のマスに置ける
+      p.restTrain = p.comps.map((_, i) => i).filter((i) => p.comps[i].rest && this.wearMod(p.comps[i], 'rest_train'));
       // 蓄積効果
       const due = p.future.filter((f) => f.round === r);
       p.future = p.future.filter((f) => f.round > r);
@@ -1061,11 +1194,11 @@ export class Game {
   *workPhase(): Gen {
     const order = Array.from({ length: this.n }, (_, i) => (this.first + i) % this.n);
     let guard = 0;
-    while (order.some((i) => this.players[i].avail() > 0)) {
+    while (order.some((i) => this.canAct(this.players[i]))) {
       if (++guard > 40) { this.errors.push('work loop guard'); break; }
       for (const i of order) {
         const p = this.players[i];
-        if (p.avail() <= 0) continue;
+        if (!this.canAct(p)) continue;
         if (p.ai?.tradePhase) p.ai.tradePhase(this, p);
         this.emit({ t: 'turn', seat: p.pid });
         // 秘術は1手番に何枚でも（何度でもの秘術はカードごとの回数まで）。そのあとマスに置く
@@ -1075,7 +1208,7 @@ export class Game {
           const opts = this.legal(p, n < 30);
           o = yield* this.ask({ k: 'choose', g: this, p, opts });
           if (!opts.some((x) => sameOpt(x, o))) throw new Error(`illegal option ${JSON.stringify(o)}`);
-          if (o.s !== '@spell' && o.s !== '@learn') break;
+          if (!FREE_ACTS.includes(o.s)) break;
           yield* this.apply(p, o);
         }
         yield* this.apply(p, o);
@@ -1110,8 +1243,8 @@ export class Game {
       for (let i = 0; i < p.comps.length; i++) {
         const c = p.comps[i];
         if (!c.injured) continue;
-        const cost = this.healCost(p);
-        if (canPay(p, cost) && (yield* this.ask({ k: 'heal', g: this, p, comp: i, cost }))) {
+        const cost = this.healPlan(p);
+        if (cost && (yield* this.ask({ k: 'heal', g: this, p, comp: i, cost }))) {
           this.spend(p, cost);
           c.injured = false;
           p.acts.push('heal');
@@ -1130,7 +1263,9 @@ export class Game {
     this.emit({ t: 'winter_start' });
     const y = this.year();
     for (const p of this.players) {
-      const need = this.upkeepNeed(p);
+      // 籠城：この冬の食料がいらない
+      const need = this.flag(p, 'no_upkeep') ? 0 : this.upkeepNeed(p);
+      delete p.flags.no_upkeep;
       let paid = Math.min(need, p.res.food);
       p.res.food -= paid;
       // 足りない食料は、カードの winter_gold があるときだけ金貨 winter_gold 枚で1つの代わり（あるだけ）
@@ -1170,10 +1305,12 @@ export class Game {
   // ------------------------------------------------------------ 選べる手
   legal(p: Player, spells = true): Option[] {
     const out: Option[] = [];
-    if (spells) {
+    const m = this.mods(p);
+    const normal = p.avail() > 0;
+    if (spells && normal) {
       const castable = (c: string, ei: number, e: Effect) => {
         if (e.when !== 'play' || !this.limitOk(p, c, ei, e.limit) || !checkCond(e.if, this.env(p))) return false;
-        const cost = this.manaPlan(p, this.cardCost(p, c), sumPays(e.do ?? []));
+        const cost = this.manaPlan(p, this.spellCost(p, c), sumPays(e.do ?? []));
         if (!cost) return false;
         return this.expand(p, e.do ?? [], {}, false, addCost(cost, sumPays(e.do ?? []))).length > 0;
       };
@@ -1187,39 +1324,74 @@ export class Game {
         }
         cd.effects.forEach((e, ei) => { if (castable(c, ei, e)) out.push({ s: '@spell', i: ei, card: c }); });
       }
-      for (const c of p.tomes) {
+      for (const c of new Set(p.tomes)) {
         const cd = this.card(c);
         if ((p.tomeUses[c] ?? 0) >= (cd.tome?.uses ?? 1)) continue;
         cd.effects.forEach((e, ei) => { if (castable(c, ei, e)) out.push({ s: '@spell', i: ei, card: c }); });
       }
+      // カードの行動（act）：置く前に。道具・職能などの「好きなときに1回」
+      for (const c of new Set(this.activeCards(p))) {
+        this.card(c).effects.forEach((e, ei) => {
+          if (e.when !== 'act' || !this.limitOk(p, c, ei, e.limit) || !checkCond(e.if, this.env(p))) return;
+          if (!this.canPayOps(p, e.do ?? []) || !this.expand(p, e.do ?? []).length) return;
+          out.push({ s: '@act', i: ei, card: c });
+        });
+      }
+      // 市の屋台：ほかの人から、金貨を払って価値の表どおりに買う（取引とは別枠。1ラウンドに1人1回）
+      for (const q of this.players) {
+        if (q === p || this.flag(p, `r:stall:${q.pid}`) || !this.mods(q).stall) continue;
+        for (const r of RES) {
+          if (r === 'gold') continue;
+          for (let n = 1; n <= Math.min(D.MARKET_QTY, q.res[r]); n++) if (p.res.gold >= this.val(r) * n) out.push({ s: '@stall', i: q.pid, x: { m: 'buy', r, q: n } });
+        }
+      }
     }
     const nfree = p.fightable();
     const hasComp = nfree > 0;
-    if (p.avail() <= 0) return out;
-    for (const s of this.spaces) {
-      const cap = this.capOf(s);
-      // 定員を無視して置く効果（ignore_full）は巣だけ。冒険のマスの相乗りは、もう1人置けるマス（討伐隊）には使えない（置き続けられてしまうので）
-      if (cap > 0 && s.occ.length >= cap && !(s.id === 'workshop' && this.is(p, 'crafter')) && !((this.is(p, 'explorer') || this.mods(p).adv_free) && this.isAdventure(s.id) && !s.def.options.some((ops) => ops.some((op) => op.extra_worker)))) continue;
+    const rt = this.restTrainFree(p).length > 0;
+    if (!normal && !rt) return out;
+    // 瞑想家：仲間1人をマスに置かずに休ませる（1ラウンド1回）
+    if (normal && m.rest_gain && !this.flag(p, 'r:rest') && p.free().length) out.push({ s: '@rest', i: 0 });
+    const spaceOpts = (s: SpaceSt, own?: string) => {
+      const tag = own ? { own } : {};
       s.def.options.forEach((ops, i) => {
         const eff = s.optEffects?.[i];
-        if (eff) {
-          if (!this.limitOk(p, s.id, i, eff.limit) || !checkCond(eff.if, this.env(p))) return;
-        }
-        if (!canPay(p, sumPays(ops))) return;
-        for (const x of this.expand(p, ops, {}, false, {}, s)) out.push(x === undefined ? { s: s.id, i } : { s: s.id, i, x });
+        if (eff && (!this.limitOk(p, s.id, i, eff.limit) || !checkCond(eff.if, this.env(p)))) return;
+        if (!this.canPayOps(p, ops)) return;
+        for (const x of this.expand(p, ops, {}, false, {}, s)) out.push(x === undefined ? { s: s.id, i, ...tag } : { s: s.id, i, x, ...tag });
       });
       // instead:<space>
       for (const [card, ei, e] of this.effectsOf(p, `instead:${s.id}`)) {
-        if (!canPay(p, sumPays(e.do ?? []))) continue;
-        for (const x of this.expand(p, e.do ?? [], {}, false, {}, s)) out.push({ s: s.id, i: -1, card, e: ei, ...(x === undefined ? {} : { x }) });
+        if (!this.canPayOps(p, e.do ?? [])) continue;
+        for (const x of this.expand(p, e.do ?? [], {}, false, {}, s)) out.push({ s: s.id, i: -1, card, e: ei, ...(x === undefined ? {} : { x }), ...tag });
       }
+    };
+    for (const s of this.spaces) {
+      // 休みの仲間（根性の鉢巻）だけなら訓練のマスだけ
+      if (!normal && s.id !== 'training') continue;
+      if (this.spaceBanned(p, s.id)) continue;
+      const cap = this.capOf(s);
+      const full = cap > 0 && s.occ.length >= cap;
+      // 抜け道：ほかの人がいるマスにも置ける（1ラウンド1回）
+      const squeeze = full && m.squeeze && !this.flag(p, 'r:squeeze') && s.occ.some((x) => x !== p.pid);
+      // 定員を無視して置く効果（ignore_full）は巣だけ。冒険のマスの相乗りは、もう1人置けるマス（討伐隊）には使えない（置き続けられてしまうので）
+      if (full && !squeeze && !(s.id === 'workshop' && this.is(p, 'crafter')) && !((this.is(p, 'explorer') || m.adv_free) && this.isAdventure(s.id) && !s.def.options.some((ops) => ops.some((op) => op.extra_worker)))) continue;
+      spaceOpts(s);
     }
-    if (hasComp) {
+    // 自分だけが使えるマス（道場：自分だけの訓練のマス。1ラウンド1回）
+    for (const sid of m.own_space) {
+      const s = this.space(sid);
+      if (!s || this.flag(p, `r:own:${sid}`) || (!normal && sid !== 'training')) continue;
+      spaceOpts(s, sid);
+    }
+    if (hasComp && normal) {
       for (const nd of this.nests) {
         if (!nd.mon) continue;
+        // 落とし穴：ほかの人が印をつけた魔物とは戦えない
+        if (!this.reserveOk(p, nd.mon)) continue;
         // 餌付け師ハル：巣の魔物は倒せない。好物を払って使い魔にする（主・古竜は倒せる）
         if (this.is(p, 'tamer')) {
-          if ((nd.groups < D.NEST_CAP || p.ignoreFull) && canPay(p, this.captureCost(nd.mon, p))) out.push({ s: nd.id, i: 0, k: 1, mode: 'capture' });
+          if ((nd.groups < D.NEST_CAP || p.ignoreFull) && this.capturePay(p, nd.mon)) out.push({ s: nd.id, i: 0, k: 1, mode: 'capture' });
           continue;
         }
         if (nd.wait) {
@@ -1237,7 +1409,7 @@ export class Game {
         for (const key of [`instead:nest`, `instead:${nd.id}`]) {
           for (const [card, ei, e] of this.effectsOf(p, key, { race: nd.mon.race, coop: false, k: 1, boss: false })) {
             if (!canPay(p, sumPays(e.do ?? []))) continue;
-            if ((e.do ?? []).some((op) => op.tame) && (!this.canTame(nd.mon) || !canPay(p, addCost(sumPays(e.do ?? []), this.captureCost(nd.mon))))) continue;
+            if ((e.do ?? []).some((op) => op.tame) && (!this.canTame(nd.mon) || !this.capturePay(p, nd.mon, sumPays(e.do ?? [])))) continue;
             out.push({ s: nd.id, i: -1, card, e: ei, k: 1 });
           }
         }
@@ -1245,17 +1417,51 @@ export class Game {
       const boss = this.bossOf[this.round];
       if (boss && !this.lairQ.some((e) => e.pid === p.pid)) {
         for (let k = 1; k <= Math.min(this.sendCap(p), nfree); k++) for (const mode of ['normal', 'safe', 'gamble', 'guard'] as FightMode[]) out.push({ s: 'lair', i: 0, k, mode });
+        // 竜騎士の鎧：主も使い魔にできる（古竜は除く。好物は boss_tame 倍。1つの主に1人）
+        if (m.boss_tame && boss.type !== D.ANCIENT_DRAGON.id && !this.lairQ.some((e) => e.mode === 'capture') && this.capturePay(p, boss)) {
+          for (let k = 1; k <= Math.min(this.sendCap(p), nfree); k++) out.push({ s: 'lair', i: 0, k, mode: 'capture' });
+        }
       }
     }
-    if (!out.some((o) => o.s !== '@spell' && o.s !== '@learn')) out.push({ s: 'plaza', i: 0 });
+    if (normal && !out.some((o) => !FREE_ACTS.includes(o.s))) out.push({ s: 'plaza', i: 0 });
     return out;
   }
 
+  /** 置いてよい仲間がいるか（ふつうの仲間・もう1人置ける・休みでも訓練に置ける仲間） */
+  canAct(p: Player): boolean {
+    if (p.avail() > 0) return true;
+    return this.restTrainFree(p).length > 0 && this.legal(p, false).some((o) => !FREE_ACTS.includes(o.s));
+  }
+  restTrainFree(p: Player): number[] { return p.restTrain.filter((i) => p.comps[i] && !p.comps[i].used); }
+  /** 仲間の装備（着た人だけに効く mod：剣帯・根性の鉢巻）を持っているか */
+  wearMod(c: Comp, key: 'wear_weapon2' | 'rest_train'): boolean {
+    return gearOf(c).some((id) => cardEffects(this.card(id)).some((e) => e.when === 'passive' && e.mod?.[key]));
+  }
+  /** そのマスを使えないか（ほかの人がふさいだ・交換所の出禁） */
+  spaceBanned(p: Player, sid: string): boolean {
+    return this.blocks.some((b) => b.s === sid && b.pid !== p.pid && b.round === this.round) || (MARKET_IDS.includes(sid) && this.marketBan[p.pid] === this.round);
+  }
+  /** その巣の魔物と戦える・使い魔にできるか（落とし穴の印） */
+  reserveOk(p: Player, mon: Monster): boolean { const r = this.reserved[mon.uid]; return r === undefined || r === p.pid; }
+  /** 手順の払いが払えるか（薬膳の修行僧：熟練を上げる手順の食料は薬草でも払える） */
+  canPayOps(p: Player, ops: Op[]): boolean {
+    const c = sumPays(ops);
+    if (canPay(p, c)) return true;
+    const h = this.herbVariant(p, ops, c);
+    return !!h && canPay(p, h);
+  }
+  /** 熟練を上げる手順の食料を薬草にした払い（できなければ null） */
+  herbVariant(p: Player, ops: Op[], c: Cost): Cost | null {
+    if (!(c.food ?? 0) || !ops.some((o) => o.train || o.train_sent) || !this.mods(p).train_herb) return null;
+    return cleanCost({ ...c, food: 0, herb: (c.herb ?? 0) + (c.food ?? 0) });
+  }
+
   /** カードの効果のうち when が合い、条件・回数を満たすもの */
-  effectsOf(p: Player, when: string, fight?: FightEnv, idxs?: number[], thScale = 1): [string, number, Effect][] {
+  effectsOf(p: Player, when: string, fight?: FightEnv, idxs?: number[], thScale = 1, space?: string, only?: (card: string) => boolean): [string, number, Effect][] {
     const out: [string, number, Effect][] = [];
-    const env = this.env(p, fight, thScale);
+    const env = this.env(p, fight, thScale, space);
     for (const c of this.activeCards(p, idxs)) {
+      if (only && !only(c)) continue;
       this.card(c).effects.forEach((e, i) => {
         if (e.when === when && this.limitOk(p, c, i, e.limit) && checkCond(e.if, env)) out.push([c, i, e]);
       });
@@ -1270,8 +1476,16 @@ export class Game {
     // 作る・建てる・職能は、足りない資源を金貨で払える（goldPlan）
     const after = (c: Cost) => this.goldPlan(p, c, base) !== null;
     for (const o of ops) if ((o.hire || o.hire_free) && !this.canHire(p, !!o.hire_free)) return [];
-    if (!nestCtx && ops.some((o) => o.tame) && !this.nests.some((nd) => nd.mon && this.canTame(nd.mon) && canPay(p, addCost(base, this.captureCost(nd.mon))))) return [];
+    if (!nestCtx && ops.some((o) => o.tame) && !this.nests.some((nd) => nd.mon && this.canTame(nd.mon) && this.reserveOk(p, nd.mon) && this.capturePay(p, nd.mon, base))) return [];
     if (ops.some((o) => o.buy_card) && !this.curio.length) return [];
+    // 選ぶ相手・対象がなければできない手順
+    for (const o of ops) {
+      if (o.skill_copy && p.comps.length < 2) return [];
+      if (o.pay_pick && RES.reduce((a, r) => a + (o.pay_pick!.from.includes(r) ? Math.max(0, p.res[r] - (base[r] ?? 0)) : 0), 0) < o.pay_pick.n) return [];
+      if (o.relic_fix && !this.decks.ancient.length) return [];
+      if (o.relic_sort && !this.decks.ancient.length) return [];
+      if (o.accum_take && !this.accumTakeCands(p, sp?.id).length) return [];
+    }
     if (!op) return [undefined];
     const k = opKey(op);
     const out: Choice[] = [];
@@ -1283,19 +1497,19 @@ export class Game {
         const cd = this.card(c);
         const ok = (want === 'weapon' || want === 'any') && cd.kind === 'weapon' || (want === 'armor' || want === 'any') && cd.kind === 'armor';
         const sn = this.stoneNeed(c, p);
-        if (ok && this.prereqOk(p, c) && (sn === null || p.stones[sn] > 0) && after(this.cardCost(p, c, disc))) out.push(c);
+        if (ok && this.prereqOk(p, c) && (sn === null || p.stones[sn] > 0) && this.goldPlan(p, this.cardCost(p, c, disc), base, true) !== null) out.push(c);
       }
       for (const gd of this.cs.gear) {
         const sl = slotOf(gd);
         const ok = want === 'any' || want === sl;
-        if (ok && (this.gearStock[gd.id] ?? 0) > 0 && after(this.cardCost(p, gd.id, disc))) out.push(gd.id);
+        if (ok && (this.gearStock[gd.id] ?? 0) > 0 && this.goldPlan(p, this.cardCost(p, gd.id, disc), base, true) !== null) out.push(gd.id);
       }
     } else if (k === 'build') {
       const b = op.build!;
-      const d = op.discount ?? disc;
-      if ((b === 'bed' || b === 'any') && after(this.bedCost(p, d))) out.push('bed');
-      if ((b === 'wall' || b === 'any') && after(this.wallCost(p, d))) out.push('wall');
-      if (b === 'facility' || b === 'any') for (const c of new Set(p.hand)) if (this.card(c).kind === 'tool' && this.prereqOk(p, c) && after(this.cardCost(p, c, d))) out.push(c);
+      const mk = (c: Cost) => this.goldPlan(p, c, base, true) !== null;
+      if ((b === 'bed' || b === 'any') && mk(this.buildCost(p, 'bed', op, disc))) out.push('bed');
+      if ((b === 'wall' || b === 'any') && mk(this.buildCost(p, 'wall', op, disc))) out.push('wall');
+      if (b === 'facility' || b === 'any') for (const c of new Set(p.hand)) if (this.card(c).kind === 'tool' && this.prereqOk(p, c) && mk(this.buildCost(p, c, op, disc))) out.push(c);
     } else if (k === 'train') {
       const t = op.train!;
       for (const s of ['atk', 'def'] as const) if ((t === s || t === 'any') && this.trainCands(p, s, !!op.fresh).length) out.push(s);
@@ -1307,28 +1521,75 @@ export class Game {
     } else if (k === 'exchange') {
       const q = this.marketQty(p, sp);
       const sells: { r: Res; q: number }[] = [], buys: { r: Res; q: number }[] = [];
+      // 買い占め：ほかの人が押さえた資源は買えない
+      const canBuy = (r: Res) => !this.buyBans.some((b) => b.r === r && b.pid !== p.pid && b.round === this.round);
       for (const r of RES) {
         if (r === 'gold') continue;
         for (let n = 1; n <= Math.min(q, p.res[r] - (base[r] ?? 0)); n++) sells.push({ r, q: n });
-        for (let n = 1; n <= q; n++) if (after({ gold: D.BUY[r] * n })) buys.push({ r, q: n });
+        if (canBuy(r)) for (let n = 1; n <= q; n++) if (after({ gold: this.buyPrice(r) * n })) buys.push({ r, q: n });
       }
       for (const s of sells) out.push({ m: 'sell', ...s });
       for (const b of buys) out.push({ m: 'buy', ...b });
       for (const id of new Set(this.storage(p))) out.push({ m: 'item', id });
-      // 資源1種類 ⇄ 別の資源1種類（同じ価値＝同じ数）
-      for (const s of sells) for (const r of RES) if (r !== 'gold' && r !== s.r) out.push({ m: 'both', sell: s, buy: { r, q: s.q * D.VALUE[s.r] / D.VALUE[r] } });
-      // 魔石は1つずつ、同じ価値の資源1種類と（3つの上限は魔石のときはない）
+      // 資源1種類 ⇄ 別の資源1種類（同じ価値。価値の表が変わって割り切れないときは選べない）
+      for (const s of sells) for (const r of RES) {
+        if (r === 'gold' || r === s.r || !canBuy(r)) continue;
+        const v = s.q * this.val(s.r);
+        if (v % this.val(r) === 0) out.push({ m: 'both', sell: s, buy: { r, q: v / this.val(r) } });
+      }
+      // 魔石は1つずつ、同じ価値の資源1種類と（3つの上限は魔石のときはない）。魔石の闇商人は買うとき stone_buy_cut 安い
+      const cut = this.mods(p).stone_buy_cut;
       for (let t = 0; t < D.STONE.value.length; t++) {
         const v = D.STONE.value[t];
         for (const r of RES) {
-          if (p.stones[t] > 0) out.push({ m: 'stone', dir: 'sell', tier: t, r, q: v });
-          if (p.res[r] - (base[r] ?? 0) >= v) out.push({ m: 'stone', dir: 'buy', tier: t, r, q: v });
+          const vr = this.val(r);
+          if (p.stones[t] > 0 && v % vr === 0 && canBuy(r)) out.push({ m: 'stone', dir: 'sell', tier: t, r, q: v / vr });
+          const vb = Math.max(1, v - cut);
+          if (vb % vr === 0 && p.res[r] - (base[r] ?? 0) >= vb / vr) out.push({ m: 'stone', dir: 'buy', tier: t, r, q: vb / vr });
         }
       }
+    } else if (k === 'repair_free') {
+      for (const id of new Set(p.broken)) if ((this.anc.get(id)?.fame ?? 99) <= op.repair_free!) out.push(`fix0:${id}`);
+    } else if (k === 'mark_weapon') {
+      for (const id of new Set(p.items)) if (slotOf(this.card(id)) === 'weapon' && this.flag(p, `mark:${id}`) < op.mark_weapon!) out.push(`mk:${id}`);
+    } else if (k === 'block') {
+      for (const s of this.spaces) {
+        if (s.id === 'plaza' || (op.block === 'accum' && !s.def.accum)) continue;
+        if (this.blocks.some((b) => b.s === s.id && b.round === this.round && b.pid === p.pid)) continue;
+        out.push(`blk:${s.id}`);
+      }
+    } else if (k === 'peek_discard') {
+      for (const q of this.players) if (q !== p && q.hand.length) out.push(`pl:${q.pid}`);
+    } else if (k === 'market_ban' || k === 'lend') {
+      if (k === 'lend' && p.res.gold - (base.gold ?? 0) < op.lend!.amt) return [];
+      for (const q of this.players) if (q !== p) out.push(`pl:${q.pid}`);
+    } else if (k === 'value_up' || k === 'buy_ban') {
+      for (const r of RES) if (r !== 'gold') out.push(`${k === 'value_up' ? 'val' : 'ban'}:${r}`);
+    } else if (k === 'accum_take') {
+      for (const id of this.accumTakeCands(p, sp?.id)) out.push(`acc:${id}`);
+    } else if (k === 'dup_tool') {
+      for (const id of new Set(p.tools)) out.push(`dup:${id}`);
+    } else if (k === 'reserve') {
+      for (const nd of this.nests) if (nd.mon && this.reserved[nd.mon.uid] === undefined) out.push(`rsv:${nd.id}`);
     }
     return out;
   }
 
+  /** 建てる費用（寝床・防壁・道具。値引き・上乗せ（突貫大工）・資源+n（工房長の2つ目）込み） */
+  buildCost(p: Player, what: string, op: Op, disc: Cost = {}): Cost {
+    const d = op.discount ?? disc;
+    let c = what === 'bed' ? this.bedCost(p, d) : what === 'wall' ? this.wallCost(p, d) : this.cardCost(p, what, d);
+    if (op.surcharge) c = addCost(c, op.surcharge);
+    for (let n = 0; n < (op.extra_units ?? 0); n++) {
+      const r = (Object.keys(c) as Res[]).filter((x) => x !== 'gold' && (c[x] ?? 0) > 0).sort((a, b) => (c[b] ?? 0) - (c[a] ?? 0) || RES.indexOf(a) - RES.indexOf(b))[0] ?? 'wood';
+      c = addCost(c, { [r]: 1 });
+    }
+    return cleanCost(c);
+  }
+  /** ほかのたまるマスで、取れる資源があるもの */
+  accumTakeCands(_p: Player, except?: string): string[] {
+    return this.spaces.filter((s) => s.def.accum && s.id !== except && costUnits(s.stock) > 0).map((s) => s.id);
+  }
   canHire(p: Player, free: boolean) {
     if (p.comps.length >= this.compCap(p)) return false;
     return free || p.comps.length < this.bedCap(p);
@@ -1336,21 +1597,55 @@ export class Game {
 
   // ------------------------------------------------------------ 手を実行する
   *apply(p: Player, o: Option): Gen {
+    // 印 a:（この手のあいだだけ）を消す
+    for (const k of Object.keys(p.flags)) if (k.startsWith('a:')) delete p.flags[k];
     if (o.s === '@spell') { yield* this.playSpell(p, o.card!, o.i); return; }
     if (o.s === '@learn') { yield* this.learnSpell(p, o.card!); return; }
+    if (o.s === '@act') { yield* this.cardAct(p, o.card!, o.i); return; }
+    if (o.s === '@stall') { if (o.x && typeof o.x === 'object' && o.x.m === 'buy') this.stallBuy(p, this.players[o.i], o.x.r, o.x.q); return; }
+    if (o.s === '@rest') {
+      // 瞑想家：仲間1人をマスに置かずに休ませる
+      const used = this.useWorker(p, 1, this.whoFor(p, o) ?? undefined);
+      this.addFlag(p, 'r:rest');
+      const gain = this.mods(p).rest_gain ?? {};
+      this.emit({ t: 'place', seat: p.pid, space: '@rest', companions: used, option: 'rest' });
+      gainRes(p, gain); this.emit({ t: 'gain', seat: p.pid, gain, reason: 'rest' }); this.actGain(p, gain);
+      p.acts.push('rest');
+      return;
+    }
     const nd = this.nest(o.s);
     if (nd || o.s === 'lair') { yield* this.placeFight(p, o); return; }
     const sp = this.space(o.s);
     if (!sp) throw new Error(`unknown space ${o.s}`);
-    const used = this.useWorker(p, 1, this.whoFor(p, o) ?? undefined);
-    sp.occ.push(p.pid);
+    // 休みの仲間しかいない（根性の鉢巻で訓練のマスに置く）
+    let used: number[];
+    if (p.avail() <= 0) { const i = this.restTrainFree(p)[0]; if (i === undefined) throw new Error('no companion'); p.comps[i].used = true; used = [i]; }
+    else used = this.useWorker(p, 1, this.whoFor(p, o) ?? undefined);
+    const own = o.own && this.mods(p).own_space.includes(o.own) ? o.own : null;
+    const others = [...new Set(sp.occ.filter((x) => x !== p.pid))];
     const cap = this.capOf(sp);
-    if (cap > 0 && sp.occ.length > cap) p.ignoreFull = false;
+    if (own) this.addFlag(p, `r:own:${own}`);
+    else {
+      sp.occ.push(p.pid);
+      if (cap > 0 && sp.occ.length > cap) p.ignoreFull = false;
+    }
     this.emit({ t: 'place', seat: p.pid, space: sp.id, companions: used, option: optLabel(o) });
     p.acts.push(`sp:${sp.id}`);
     if (o.i >= 0) p.lastSpace = { s: sp.id, i: o.i };
     if (sp.id === 'board') p.acts.push('board');
     if (sp.id === 'plaza') p.acts.push('plaza');
+    // 抜け道：ほかの人がいるマスに置いたら、その人と取引を1回（1ラウンド1回）
+    if (!own && others.length && this.mods(p).squeeze && !this.flag(p, 'r:squeeze')) {
+      this.addFlag(p, 'r:squeeze');
+      const opts = others.map((x) => `pl:${x}`);
+      const x: string = yield* this.askOne(p, opts, { k: 'pick', g: this, p, what: 'squeeze', options: opts });
+      const q = this.players[Number(String(x).slice(3))];
+      if (q && q !== p && others.includes(q.pid)) {
+        this.addFlag(p, `r:tw:${q.pid}`);
+        this.emit({ t: 'note', seat: p.pid, card: 'squeeze', text: `pl:${q.pid}` });
+        p.ai?.tradeWith?.(this, p, q);
+      }
+    }
     const adv = this.is(p, 'explorer') && this.isAdventure(sp.id);
     if (o.i === -1) {
       const e = this.card(o.card!).effects[o.e!];
@@ -1361,9 +1656,13 @@ export class Game {
       if (sp.def.accum) {
         const bonus = this.mods(p).accum_bonus;
         const got: Cost = { ...sp.stock };
-        for (const r of Object.keys(sp.def.accum)) if (bonus[sp.id]) got[r as Res] = (got[r as Res] ?? 0) + (bonus[sp.id] ?? 0);
+        // 豊作：次に使うたまるマスで+n、黄金の手：次に使うたまるマスは2倍（採集家の1.5倍のかわり）
+        const plus = (bonus[sp.id] ?? 0) + this.flag(p, 'accum+');
+        for (const r of Object.keys(sp.def.accum)) if (plus) got[r as Res] = (got[r as Res] ?? 0) + plus;
+        const x2 = this.flag(p, 'accum2x') > 0;
+        delete p.flags['accum+']; delete p.flags['accum2x'];
         // 採集家は集める量が倍、探検家は冒険マスの効果が倍
-        const gm = (this.is(p, 'gatherer') ? D.LEADER.gatherer.mult : 1) * (adv ? D.LEADER.explorer.mult : 1);
+        const gm = (x2 ? 2 : this.is(p, 'gatherer') ? D.LEADER.gatherer.mult : 1) * (adv ? D.LEADER.explorer.mult : 1);
         if (gm > 1) for (const r of Object.keys(got)) got[r as Res] = Math.floor((got[r as Res] ?? 0) * gm);
         sp.stock = {};
         gainRes(p, got);
@@ -1394,7 +1693,35 @@ export class Game {
     yield* this.fire(p, `use:${sp.id}`, { space: sp.id });
     if (sp.def.accum) yield* this.fire(p, 'use:any_accum', { space: sp.id });
     if (this.isAdventure(sp.id) && sp.id !== 'plaza') yield* this.fire(p, 'use:adventure', { space: sp.id });
+    yield* this.fire(p, 'use:any', { space: sp.id });
     for (const q of this.players) if (q !== p) yield* this.fire(q, `other:${sp.id}`, { space: sp.id });
+  }
+
+  /** カードの行動（act）：選ぶものがあれば聞いてから実行 */
+  *cardAct(p: Player, card: string, ei: number): Gen {
+    const e = this.card(card).effects[ei];
+    if (!e || e.when !== 'act' || !this.limitOk(p, card, ei, e.limit)) return;
+    const ops = e.do ?? [];
+    const xs = this.expand(p, ops);
+    if (!xs.length) return;
+    const x = xs.length === 1 ? xs[0] : yield* this.ask({ k: 'pick', g: this, p, what: card, options: xs as Choice[] });
+    this.markLimit(p, card, ei, e.limit);
+    this.emit({ t: 'effect', seat: p.pid, card, when: 'act' });
+    yield* this.runOps(p, ops, { card, x });
+  }
+  /** 市の屋台：q から資源 r を n 個、価値の表どおりの金貨で買う（取引とは別枠。1ラウンドに1人1回） */
+  stallBuy(p: Player, q: Player | undefined, r: Res, n: number) {
+    if (!q || q === p || !this.mods(q).stall || this.flag(p, `r:stall:${q.pid}`) || r === 'gold') return;
+    const gold = this.val(r) * n;
+    if (n <= 0 || p.res.gold < gold || q.res[r] < n) return;
+    p.res.gold -= gold; q.res.gold += gold; q.res[r] -= n; p.res[r] += n;
+    this.addFlag(p, `r:stall:${q.pid}`);
+    this.emit({ t: 'pay', seat: p.pid, cost: { gold }, reason: 'stall' });
+    this.emit({ t: 'gain', seat: p.pid, gain: { [r]: n }, reason: 'stall' });
+    this.emit({ t: 'pay', seat: q.pid, cost: { [r]: n }, reason: 'stall' });
+    this.emit({ t: 'gain', seat: q.pid, gain: { gold }, reason: 'stall' });
+    this.emit({ t: 'note', seat: p.pid, card: 't_mi5', text: `pl:${q.pid}` });
+    this.actGain(p, { [r]: n }); p.acts.push('buy');
   }
 
   /** k 人置く（prefer＝選んだ仲間。空いていれば先に使う） */
@@ -1441,7 +1768,7 @@ export class Game {
   }
   compPower(p: Player, i: number) {
     const c = p.comps[i];
-    return D.POWER_PER + c.atk * this.skillMult(p) + (c.weapon ? (this.card(c.weapon).power ?? 0) * this.weaponMult(p) : 0);
+    return D.POWER_PER + c.atk * this.skillMult(p) + this.compWeaponPower(p, c) * this.weaponMult(p);
   }
   /** 熟練の効き目（努力家は倍） */
   skillMult(p: Player) { return this.is(p, 'striver') ? D.LEADER.striver.skillMult : 1; }
@@ -1481,7 +1808,18 @@ export class Game {
           if (ty) { const top = (Object.entries(g) as [Res, number][]).filter(([r]) => r !== 'gold').sort((a, b) => b[1] - a[1])[0]; if (top) g[top[0]] = top[1] + ty; }
           gainRes(p, g); this.emit({ t: 'gain', seat: p.pid, gain: g, reason: ctx.card ?? ctx.space ?? '' }); this.actGain(p, g); break;
         }
-        case 'pay': if (!canPay(p, op.pay!)) return; this.spend(p, op.pay!); this.emit({ t: 'pay', seat: p.pid, cost: op.pay!, reason: ctx.card ?? ctx.space ?? '' }); break;
+        case 'pay': {
+          // 薬膳の修行僧：熟練を上げる手順の食料は薬草でも払える（両方払えるなら選ぶ）
+          const alt = this.herbVariant(p, ops, op.pay!);
+          let c = op.pay!;
+          if (alt && canPay(p, alt)) {
+            if (!canPay(p, c)) c = alt;
+            else if ((yield* this.ask({ k: 'pick', g: this, p, what: 'payres', options: ['payres:food', 'payres:herb'] })) === 'payres:herb') c = alt;
+          }
+          if (!canPay(p, c)) return;
+          this.spend(p, c); this.emit({ t: 'pay', seat: p.pid, cost: c, reason: ctx.card ?? ctx.space ?? '' });
+          break;
+        }
         case 'convert': {
           const cv = op.convert!;
           if (!canPay(p, cv.from)) break;
@@ -1568,7 +1906,9 @@ export class Game {
           const i = p.tools.indexOf(id);
           if (i < 0) break;
           p.tools.splice(i, 1);
-          this.recycle(id);
+          // 複製した道具は山に戻さない（もとの1枚だけが山のカード）
+          if (this.flag(p, `copy:${id}`) > 0) this.addFlag(p, `copy:${id}`, -1);
+          else this.recycle(id);
           this.emit({ t: 'scrap', seat: p.pid, card: id });
           const per = op.scrap!.gain_per_cost;
           if (per) { const got = addCost({}, per, costUnits(this.card(id).cost ?? {})); if (costUnits(got)) { gainRes(p, got); this.emit({ t: 'gain', seat: p.pid, gain: got, reason: ctx.card ?? '' }); this.actGain(p, got); } }
@@ -1610,12 +1950,12 @@ export class Game {
           // 戦わずに使い魔にする（獣だけ。食料を払う）
           let nd = ctx.nest ? this.nest(ctx.nest) : undefined;
           if (!nd) {
-            const cand = this.nests.filter((n) => n.mon && this.canTame(n.mon) && canPay(p, this.captureCost(n.mon))).map((n) => n.id);
+            const cand = this.nests.filter((n) => n.mon && this.canTame(n.mon) && this.reserveOk(p, n.mon) && this.capturePay(p, n.mon)).map((n) => n.id);
             if (!cand.length) break;
             const nid: string = yield* this.askOne(p, cand, { k: 'pick', g: this, p, what: 'tame', options: cand });
             nd = this.nest(nid);
           }
-          if (!nd?.mon || !this.canTame(nd.mon) || !canPay(p, this.captureCost(nd.mon))) break;
+          if (!nd?.mon || !this.canTame(nd.mon) || !this.capturePay(p, nd.mon)) break;
           const mon = nd.mon;
           nd.mon = null;
           yield* this.addPet(p, mon);
@@ -1628,22 +1968,66 @@ export class Game {
           // 誰を鍛えるかは本人が選ぶ（いちばん熟練の低い仲間が先頭＝お任せのときの答え）
           const idx = Number(String(yield* this.askOne(p, cands.map((i) => `tr:${i}`), { k: 'pick', g: this, p, what: `train:${s}`, options: cands.map((i) => `tr:${i}`) })).slice(3));
           if (!cands.includes(idx)) throw new Error('bad train target');
-          p.comps[idx][s] += 1;
-          p.acts.push('train');
-          this.emit({ t: 'train', seat: p.pid, companion: idx, stat: s });
+          yield* this.trainComp(p, idx, s);
+          break;
+        }
+        case 'train_sent': {
+          // 送った仲間全員の熟練+1（攻めか守りを1人ずつ選ぶ）
+          for (const i of ctx.plan?.idxs ?? []) {
+            const xs = (['atk', 'def'] as const).filter((s) => this.trainCands(p, s).includes(i));
+            if (!xs.length) continue;
+            const s = (yield* this.askOne(p, xs.map((x2) => `${x2}:${i}`), { k: 'pick', g: this, p, what: 'train_sent', options: xs.map((x2) => `${x2}:${i}`) })) as string;
+            const st = s.split(':')[0] as 'atk' | 'def';
+            if (xs.includes(st)) yield* this.trainComp(p, i, st);
+          }
+          break;
+        }
+        case 'train_copy': {
+          // 伝承の羽織：上がった熟練を、ほかの仲間1人にも
+          const t = ctx.trained;
+          if (!t) break;
+          const cands = this.trainCands(p, t.s).filter((i) => i !== t.i);
+          if (!cands.length) break;
+          const opts = cands.map((i) => `tr:${i}`);
+          const idx = Number(String(yield* this.askOne(p, opts, { k: 'pick', g: this, p, what: `train:${t.s}`, options: opts })).slice(3));
+          if (!cands.includes(idx)) break;
+          p.comps[idx][t.s] += 1;
+          this.emit({ t: 'train', seat: p.pid, companion: idx, stat: t.s });
+          this.autoEquip(p);
+          break;
+        }
+        case 'skill_copy': {
+          // 伝授：仲間1人の熟練を、もう1人に写す（高いほうに合わせる。上限まで）
+          if (p.comps.length < 2) break;
+          const all = p.comps.map((_, i) => `tr:${i}`);
+          const from = Number(String(yield* this.askOne(p, all, { k: 'pick', g: this, p, what: 'copy_from', options: all })).slice(3));
+          const tos = p.comps.map((_, i) => i).filter((i) => i !== from).map((i) => `tr:${i}`);
+          const to = Number(String(yield* this.askOne(p, tos, { k: 'pick', g: this, p, what: 'copy_to', options: tos })).slice(3));
+          const a = p.comps[from], b = p.comps[to];
+          if (!a || !b || from === to) break;
+          for (const s of ['atk', 'def'] as const) {
+            const cap = this.skillCap(p, s);
+            while (b[s] < Math.min(cap, a[s]) && !(s === 'atk' && this.mods(p).no_atk_train)) { b[s] += 1; this.emit({ t: 'train', seat: p.pid, companion: to, stat: s }); }
+          }
           this.autoEquip(p);
           break;
         }
         case 'build': {
           const what = typeof x === 'string' ? x : op.build;
-          const d = op.discount ?? {};
-          if (what === 'bed') { const c = this.goldPlan(p, this.bedCost(p, d)); if (!c) break; this.spend(p, c); p.beds += 1; this.emit({ t: 'build', seat: p.pid, kind: 'bed' }); }
-          else if (what === 'wall') { const c = this.goldPlan(p, this.wallCost(p, d)); if (!c) break; this.spend(p, c); p.walls += 1; this.emit({ t: 'build', seat: p.pid, kind: 'wall' }); }
-          else if (what && p.hand.includes(what) && this.card(what).kind === 'tool') {
-            const c = this.goldPlan(p, this.cardCost(p, what, d));
-            if (!c) break;
+          const pay = (cost: Cost): boolean => {
+            const c = this.goldPlan(p, cost, {}, true);
+            if (!c) return false;
+            // 値切りを使ったら印を消す
+            if (this.flag(p, 'goldcut') && JSON.stringify(c) !== JSON.stringify(this.goldPlan(p, cost))) delete p.flags.goldcut;
             this.spend(p, c);
+            return true;
+          };
+          if (what === 'bed') { if (!pay(this.buildCost(p, 'bed', op))) break; p.beds += 1; this.emit({ t: 'build', seat: p.pid, kind: 'bed' }); }
+          else if (what === 'wall') { if (!pay(this.buildCost(p, 'wall', op))) break; p.walls += 1; this.emit({ t: 'build', seat: p.pid, kind: 'wall' }); }
+          else if (what && p.hand.includes(what) && this.card(what).kind === 'tool') {
+            if (!pay(this.buildCost(p, what, op))) break;
             yield* this.playItem(p, what, true);
+            this.addFlag(p, 'a:tool');
             if (this.is(p, 'crafter')) {
               this.leadFame(p, D.LEADER.crafter.fame, '職人');
               // 道具を作ったあと、山からランダムに look 枚の道具を見て1枚を手札に（回数の制限なし）
@@ -1657,11 +2041,14 @@ export class Game {
         case 'craft': {
           const id = typeof x === 'string' ? x : null;
           if (!id) break;
-          const c = this.goldPlan(p, this.cardCost(p, id));
+          const c = this.goldPlan(p, this.cardCost(p, id), {}, true);
           if (!c) break;
           const sn = this.stoneNeed(id, p);
           if (sn !== null && p.stones[sn] <= 0) break;
+          if (this.flag(p, 'goldcut') && JSON.stringify(c) !== JSON.stringify(this.goldPlan(p, this.cardCost(p, id)))) delete p.flags.goldcut;
           this.spend(p, c);
+          // 重さ消し：次に作る両手武器の魔石の段階−1（使ったら消す）
+          if (this.card(id).two_hand && this.flag(p, 'stone2h')) delete p.flags.stone2h;
           if (sn !== null) { p.stones[sn] -= 1; this.emit({ t: 'stone_use', seat: p.pid, tier: sn }); }
           if (this.card(id).kind === 'gear') {
             this.gearStock[id] -= 1;
@@ -1687,6 +2074,9 @@ export class Game {
         case 'exchange': {
           if (!x || typeof x === 'string') break;
           p.acts.push('exchange');
+          // 天秤：交換で受け取る数+n（1ラウンド1回）
+          const mp = this.mods(p).market_plus && !this.flag(p, 'r:mplus') ? this.mods(p).market_plus : 0;
+          const bonus = (c: Cost) => { if (!mp) return; this.addFlag(p, 'r:mplus'); gainRes(p, c); this.emit({ t: 'gain', seat: p.pid, gain: c, reason: 't_mi4' }); this.actGain(p, c); };
           if (x.m === 'sell' || x.m === 'both') {
             const s = x.m === 'both' ? x.sell : (x as { r: Res; q: number });
             if (p.res[s.r] < s.q) break;
@@ -1695,16 +2085,18 @@ export class Game {
             this.emit({ t: 'market', seat: p.pid, kind: 'sell', res: s.r, qty: s.q, gold });
             p.acts.push('sell');
             p.st.sold += 1;
+            if (x.m === 'sell') bonus({ gold: 1 * mp });
             yield* this.fire(p, 'sell', {});
           }
           if (x.m === 'buy' || x.m === 'both') {
             const b = x.m === 'both' ? x.buy : (x as { r: Res; q: number });
-            const gold = D.BUY[b.r] * b.q;
+            const gold = this.buyPrice(b.r) * b.q;
             if (p.res.gold < gold) break;
             p.res.gold -= gold; p.res[b.r] += b.q;
             this.emit({ t: 'market', seat: p.pid, kind: 'buy', res: b.r, qty: b.q, gold });
             this.actGain(p, { [b.r]: b.q });
             p.acts.push('buy');
+            bonus({ [b.r]: mp });
             yield* this.fire(p, 'buy', {});
           }
           if (x.m === 'stone') {
@@ -1714,6 +2106,7 @@ export class Game {
               this.emit({ t: 'stone_use', seat: p.pid, tier: x.tier });
               this.emit({ t: 'gain', seat: p.pid, gain: { [x.r]: x.q }, reason: 'market' });
               this.actGain(p, { [x.r]: x.q });
+              bonus({ [x.r]: mp });
             } else {
               if (p.res[x.r] < x.q) break;
               p.res[x.r] -= x.q; p.stones[x.tier] += 1;
@@ -1730,6 +2123,7 @@ export class Game {
             if (this.card(x.id).kind === 'gear') this.gearStock[x.id] = (this.gearStock[x.id] ?? 0) + 1;
             else this.recycle(x.id);
             this.emit({ t: 'market', seat: p.pid, kind: 'sell', res: x.id, qty: 1, gold });
+            bonus({ gold: mp });
             p.acts.push('sell');
             p.st.sold += 1;
             yield* this.fire(p, 'sell', {});
@@ -1789,30 +2183,241 @@ export class Game {
         case 'trade_bonus': p.tradesUsed -= op.trade_bonus!; break;
         case 'ward': p.ward += op.ward!; break;
         case 'accum_add': for (const s of this.spaces) if (s.def.accum) { const r = Object.keys(s.def.accum)[0] as Res; s.stock = addCost(s.stock, { [r]: op.accum_add! }); } break;
+        // ---- 300枚のリストで足したもの
+        case 'flag': this.addFlag(p, op.flag!.k, op.flag!.n ?? 1, op.flag!.max); break;
+        case 'weapon_again': if (ctx.plan) ctx.plan.again = (ctx.plan.again ?? 0) + 1; break;
+        case 'skill_boost': if (ctx.plan) { ctx.plan.skillBoost = (ctx.plan.skillBoost ?? 0) + op.skill_boost!; ctx.plan.power += op.skill_boost! * this.skillMult(p); } break;
+        case 'ally_guard': if (ctx.plan) ctx.plan.allyGuard = true; break;
+        case 'hog': if (ctx.plan) ctx.plan.hog = true; break;
+        case 'loot_gold': if (ctx.plan) ctx.plan.lootGold = true; break;
+        case 'refate': break;
+        case 'mark_weapon': {
+          const id = typeof x === 'string' && x.startsWith('mk:') ? x.slice(3) : null;
+          if (!id || !p.items.includes(id) || this.flag(p, `mark:${id}`) >= op.mark_weapon!) break;
+          this.addFlag(p, `mark:${id}`, 1, op.mark_weapon!);
+          this.emit({ t: 'note', seat: p.pid, card: ctx.card ?? '', text: `mk:${id}` });
+          this.autoEquip(p);
+          break;
+        }
+        case 'loot_tamed': {
+          const loot = ctx.mon?.loot;
+          if (!loot || !costUnits(loot)) break;
+          gainRes(p, loot); this.actGain(p, loot);
+          this.emit({ t: 'loot', seat: p.pid, gain: { ...loot } });
+          break;
+        }
+        case 'reserve': {
+          const nd = typeof x === 'string' && x.startsWith('rsv:') ? this.nest(x.slice(4)) : undefined;
+          if (!nd?.mon || this.reserved[nd.mon.uid] !== undefined) break;
+          this.reserved[nd.mon.uid] = p.pid;
+          this.emit({ t: 'note', seat: p.pid, card: ctx.card ?? '', text: `rsv:${nd.id}` });
+          break;
+        }
+        case 'repair_free': {
+          const id = typeof x === 'string' && x.startsWith('fix0:') ? x.slice(5) : null;
+          const i = id ? p.broken.indexOf(id) : -1;
+          if (!id || i < 0 || (this.anc.get(id)?.fame ?? 99) > op.repair_free!) break;
+          p.broken.splice(i, 1); p.ancient.push(id);
+          p.acts.push('repair');
+          this.emit({ t: 'repair', seat: p.pid, card: id, cost: {} });
+          yield* this.fire(p, 'repair', {});
+          break;
+        }
+        case 'relic_fix': {
+          // 遺物を look 枚見て1枚取り、すぐに費用−cut で直せる
+          const before = p.broken.length;
+          yield* this.drawCards(p, 'ancient', op.relic_fix!.look + this.mods(p).ancient_look, 1);
+          if (p.broken.length <= before) break;
+          const id = p.broken[p.broken.length - 1];
+          const vs = this.repairVariants(p, id, op.relic_fix!.cut).filter((v) => canPay(p, v.cost));
+          if (!vs.length) break;
+          const opts = [...vs.map((v) => v.key), 'skip'];
+          const k2: string = yield* this.ask({ k: 'pick', g: this, p, what: 'repair', options: opts });
+          const v = vs.find((y) => y.key === k2);
+          if (!v) break;
+          this.spend(p, v.cost);
+          p.broken.splice(p.broken.lastIndexOf(id), 1); p.ancient.push(id);
+          p.acts.push('repair');
+          this.emit({ t: 'repair', seat: p.pid, card: id, cost: v.cost });
+          yield* this.fire(p, 'repair', {});
+          break;
+        }
+        case 'relic_sort': {
+          // 遺物の山の上 n 枚を見て、好きな順に並べる（引くまで混ぜない）
+          const top = this.decks.ancient.splice(0, Math.min(op.relic_sort!, this.decks.ancient.length));
+          const order: string[] = [];
+          while (top.length > 1) {
+            const c: string = yield* this.ask({ k: 'card', g: this, p, why: 'sort', cards: [...top], kind: 'ancient' });
+            const j = top.indexOf(c);
+            if (j < 0) throw new Error('bad sort');
+            order.push(top.splice(j, 1)[0]);
+          }
+          order.push(...top);
+          this.decks.ancient.unshift(...order);
+          this.ancientSorted = order.length;
+          this.emit({ t: 'note', seat: p.pid, card: ctx.card ?? '', text: 'sort' });
+          break;
+        }
+        case 'accum_seed': {
+          const sp = ctx.space ? this.space(ctx.space) : undefined;
+          if (!sp?.def.accum) break;
+          const r = Object.keys(sp.def.accum)[0] as Res;
+          sp.stock = addCost(sp.stock, { [r]: op.accum_seed! });
+          this.emit({ t: 'refill', adds: { [sp.id]: { [r]: op.accum_seed! } } });
+          break;
+        }
+        case 'accum_take': {
+          const sp = typeof x === 'string' && x.startsWith('acc:') ? this.space(x.slice(4)) : undefined;
+          if (!sp?.def.accum) break;
+          const r = Object.keys(sp.def.accum)[0] as Res;
+          const n = Math.min(op.accum_take!, sp.stock[r] ?? 0);
+          if (n <= 0) break;
+          sp.stock = cleanCost({ ...sp.stock, [r]: (sp.stock[r] ?? 0) - n });
+          gainRes(p, { [r]: n });
+          this.emit({ t: 'gain', seat: p.pid, gain: { [r]: n }, reason: ctx.card ?? '' });
+          this.emit({ t: 'refill', adds: { [sp.id]: { [r]: -n } } });
+          this.actGain(p, { [r]: n });
+          break;
+        }
+        case 'block': {
+          const sid = typeof x === 'string' && x.startsWith('blk:') ? x.slice(4) : null;
+          if (!sid || !this.space(sid)) break;
+          this.blocks.push({ s: sid, pid: p.pid, round: this.round });
+          this.emit({ t: 'note', seat: p.pid, card: ctx.card ?? '', text: `blk:${sid}` });
+          break;
+        }
+        case 'peek_discard': {
+          const q = typeof x === 'string' && x.startsWith('pl:') ? this.players[Number(x.slice(3))] : undefined;
+          if (!q || q === p || !q.hand.length) break;
+          const cards = [...q.hand];
+          const c: string = yield* this.ask({ k: 'card', g: this, p, why: 'peek', cards, kind: `pl:${q.pid}` });
+          const j = q.hand.indexOf(c);
+          if (j < 0) throw new Error('bad peek');
+          q.hand.splice(j, 1);
+          if (this.byId.has(c)) this.recycle(c);
+          this.emit({ t: 'discard', seat: q.pid, card: c });
+          break;
+        }
+        case 'market_ban': {
+          const q = typeof x === 'string' && x.startsWith('pl:') ? this.players[Number(x.slice(3))] : undefined;
+          if (!q || q === p) break;
+          this.marketBan[q.pid] = this.round + 1;
+          this.emit({ t: 'note', seat: p.pid, card: ctx.card ?? '', text: `ban:pl:${q.pid}` });
+          break;
+        }
+        case 'value_up': case 'buy_ban': {
+          const r = typeof x === 'string' && /^(val|ban):/.test(x) ? (x.slice(4) as Res) : null;
+          if (!r || !RES.includes(r)) break;
+          if (k === 'value_up') this.valueUps.push({ r, round: this.round });
+          else this.buyBans.push({ r, pid: p.pid, round: this.round });
+          this.emit({ t: 'note', seat: p.pid, card: ctx.card ?? '', text: x as string });
+          break;
+        }
+        case 'pay_pick': {
+          const pp = op.pay_pick!;
+          const have = RES.reduce((a, r) => a + (pp.from.includes(r) ? p.res[r] : 0), 0);
+          if (have < pp.n) return;
+          const paid: Cost = {};
+          for (let j = 0; j < pp.n; j++) {
+            const xs = pp.from.filter((r) => p.res[r] - (paid[r] ?? 0) > 0).map((r) => `payres:${r}`);
+            const y: string = yield* this.askOne(p, xs, { k: 'pick', g: this, p, what: 'pay_pick', options: xs });
+            const r = y.slice(7) as Res;
+            if (!xs.includes(y)) throw new Error('bad pay');
+            paid[r] = (paid[r] ?? 0) + 1;
+          }
+          this.spend(p, paid);
+          this.emit({ t: 'pay', seat: p.pid, cost: paid, reason: ctx.card ?? '' });
+          break;
+        }
+        case 'fame_flag': {
+          const ff = op.fame_flag!;
+          const n = Math.min(ff.max ?? Infinity, this.flag(p, ff.k) * ff.mult);
+          if (n <= 0) break;
+          const f = Math.round(n * (ctx.fameScale ?? 1));
+          p.fame.effect += f; this.emit({ t: 'fame', seat: p.pid, amount: f, reason: ctx.card ?? '' }); p.acts.push('fame');
+          break;
+        }
+        case 'dup_tool': {
+          const id = typeof x === 'string' && x.startsWith('dup:') ? x.slice(4) : null;
+          if (!id || !p.tools.includes(id)) break;
+          p.tools.push(id);
+          this.addFlag(p, `copy:${id}`);
+          p.fame.card += this.card(id).fame ?? 0;
+          this.emit({ t: 'build', seat: p.pid, kind: 'facility', card: id });
+          this.emit({ t: 'note', seat: p.pid, card: ctx.card ?? '', text: `dup:${id}` });
+          p.acts.push('build');
+          break;
+        }
+        case 'later': p.later.push({ when: op.later!.when, do: op.later!.do, round: op.later!.round ? this.round : null, card: ctx.card ?? '' }); break;
+        case 'invest': {
+          // 投資家：去年預けた金貨を rate 倍（切り捨て）で受け取り、今年の分を預ける
+          const key = `dep:${ctx.card ?? ''}`;
+          const dep = this.flag(p, key);
+          if (dep > 0) {
+            const back = Math.floor(dep * op.invest!);
+            delete p.flags[key];
+            gainRes(p, { gold: back }); this.emit({ t: 'gain', seat: p.pid, gain: { gold: back }, reason: ctx.card ?? '' });
+          }
+          if (this.year() >= this.years || p.res.gold <= 0) break;
+          const xs = Array.from({ length: p.res.gold + 1 }, (_, n) => `gold:${n}`);
+          const y: string = yield* this.ask({ k: 'pick', g: this, p, what: 'invest', options: xs });
+          const n = Math.min(p.res.gold, Math.max(0, Number(String(y).slice(5)) || 0));
+          if (n > 0) { p.res.gold -= n; this.addFlag(p, key, n); this.emit({ t: 'pay', seat: p.pid, cost: { gold: n }, reason: ctx.card ?? '' }); }
+          break;
+        }
+        case 'lend': {
+          const ln = op.lend!;
+          const q = typeof x === 'string' && x.startsWith('pl:') ? this.players[Number(x.slice(3))] : undefined;
+          if (!q || q === p || p.res.gold < ln.amt) break;
+          p.res.gold -= ln.amt; q.res.gold += ln.amt;
+          this.loans.push({ from: p.pid, to: q.pid, due: this.round + ln.rounds, back: ln.back, fame: ln.fame, card: ctx.card ?? '' });
+          this.emit({ t: 'pay', seat: p.pid, cost: { gold: ln.amt }, reason: ctx.card ?? '' });
+          this.emit({ t: 'gain', seat: q.pid, gain: { gold: ln.amt }, reason: ctx.card ?? '' });
+          this.emit({ t: 'note', seat: p.pid, card: ctx.card ?? '', text: `pl:${q.pid}` });
+          break;
+        }
+        case 'trade_skim': {
+          const r = op.trade_skim!.find((y) => (ctx.got?.[y] ?? 0) > 0);
+          if (!r) break;
+          gainRes(p, { [r]: 1 }); this.emit({ t: 'gain', seat: p.pid, gain: { [r]: 1 }, reason: ctx.card ?? '' }); this.actGain(p, { [r]: 1 });
+          break;
+        }
         default: throw new Error(`unknown op ${k}`);
       }
     }
   }
 
   /** 熟練を上げられる仲間（いちばん熟練の低い仲間が先頭。fresh：まだその熟練がない仲間だけ） */
+  skillCap(p: Player, s: 'atk' | 'def') { return D.MAX_SKILL[s] + (this.is(p, 'striver') ? D.LEADER.striver.skillCap : 0) + this.mods(p).skill_cap; }
+  /** 仲間1人の熟練+1（上がったら trained の効果：その仲間の装備と、全体のカード） */
+  *trainComp(p: Player, idx: number, s: 'atk' | 'def'): Gen {
+    p.comps[idx][s] += 1;
+    p.acts.push('train');
+    this.emit({ t: 'train', seat: p.pid, companion: idx, stat: s });
+    this.autoEquip(p);
+    yield* this.fire(p, 'trained', { trained: { i: idx, s } }, undefined, [idx]);
+  }
   trainCands(p: Player, s: 'atk' | 'def', fresh = false): number[] {
     const out: number[] = [];
     if (s === 'atk' && this.mods(p).no_atk_train) return out;
-    const cap = D.MAX_SKILL[s] + (this.is(p, 'striver') ? D.LEADER.striver.skillCap : 0) + this.mods(p).skill_cap;
+    const cap = this.skillCap(p, s);
     p.comps.forEach((c, i) => { if (c[s] < cap && (!fresh || c[s] === 0)) out.push(i); });
     return out.sort((a, b) => p.comps[a][s] - p.comps[b][s] || a - b);
   }
 
   /** when に合う効果をすべて実行する（pay・convert を含む効果は使うかどうか聞く） */
-  *fire(p: Player, when: string, ctx: OpCtx, fight?: FightEnv, idxs?: number[]): Gen {
-    for (const [card, ei, e] of this.effectsOf(p, when, fight, idxs, ctx.thScale ?? 1)) {
+  *fire(p: Player, when: string, ctx: OpCtx, fight?: FightEnv, idxs?: number[], only?: (card: string) => boolean): Gen {
+    const sp = ctx.space ? this.space(ctx.space) : undefined;
+    for (const [card, ei, e] of this.effectsOf(p, when, fight, idxs, ctx.thScale ?? 1, ctx.space, only)) {
       const ops = e.do ?? [];
-      if (!canPay(p, sumPays(ops))) continue;
+      // 印が上限まで付いている効果は起こさない
+      if (ops.some((o) => o.flag?.max !== undefined && this.flag(p, o.flag.k) >= o.flag.max)) continue;
+      if (!this.canPayOps(p, ops)) continue;
       const conv = ops.find((o) => o.convert);
       if (conv && !canPay(p, addCost(sumPays(ops), conv.convert!.from))) continue;
-      const xs = this.expand(p, ops);
+      const xs = this.expand(p, ops, {}, false, {}, sp);
       if (!xs.length) continue;
-      const optional = ops.some((o) => o.pay || o.convert) || xs[0] !== undefined;
+      const optional = ops.some((o) => o.pay || o.convert || o.pay_pick) || xs[0] !== undefined;
       if (optional) {
         const yes: boolean = yield* this.ask({ k: 'effect', g: this, p, card, when, ops, ei });
         if (!yes) continue;
@@ -1822,14 +2427,30 @@ export class Game {
       this.emit({ t: 'effect', seat: p.pid, card, when });
       for (let t = 0; t < this.effMult(p, card); t++) yield* this.runOps(p, ops, { ...ctx, card, x, ...(fight ? { fenv: fight } : {}) });
     }
+    if (only) return;
+    // 秘術で予約した「次に○○したとき」の効果
+    for (const l of [...p.later]) {
+      if (l.when !== when || !p.later.includes(l)) continue;
+      if (!this.canPayOps(p, l.do)) continue;
+      const xs = this.expand(p, l.do, {}, false, {}, sp);
+      if (!xs.length) continue;
+      if (l.round === null) p.later.splice(p.later.indexOf(l), 1);
+      const x = xs.length === 1 && xs[0] === undefined ? undefined : yield* this.askOne(p, xs, { k: 'pick', g: this, p, what: l.card, options: xs as Choice[] });
+      this.emit({ t: 'effect', seat: p.pid, card: l.card, when });
+      yield* this.runOps(p, l.do, { ...ctx, card: l.card, x, ...(fight ? { fenv: fight } : {}) });
+    }
   }
+  /** 戦利品を分けるときの戦力（手柄の独り占め：ほかの人の戦力は半分） */
+  sharePow(pl: Plan, plans: Plan[]): number { return plans.some((q) => q !== pl && q.hog) ? pl.power / 2 : pl.power; }
+  /** 運命返しを聞くときの、勝つのに足りない分（AI 用） */
+  fateGap = 0;
   /** 戦闘に勝ったときのリーダーの名声（努力家・魔術師・鉄壁ガレス・巨人狩り） */
   private *leadWin(p: Player, mon: Monster, pl: Plan, plans: Plan[], boss: boolean): Gen {
     const L = D.LEADER;
     if (this.is(p, 'striver')) this.leadFame(p, Math.floor(pl.idxs.reduce((a, i) => a + p.comps[i].atk + p.comps[i].def, 0) / L.striver.fameDiv), '修行の鬼ジン');
     if (this.is(p, 'mage')) p.st.mageWon = 1;
     if (this.is(p, 'shield')) this.leadFame(p, Math.floor(Math.max(0, this.defense(p, pl) - Math.max(0, mon.counter + pl.counter)) / L.shield.fameDiv), '鉄壁ガレス');
-    if (this.is(p, 'giant') && boss && plans.every((q) => q === pl || q.power < pl.power)) this.leadFame(p, mon.type === D.ANCIENT_DRAGON.id ? L.giant.dragonFame : L.giant.bossFame, '巨人狩り');
+    if (this.is(p, 'giant') && boss && plans.every((q) => q === pl || this.sharePow(q, plans) < this.sharePow(pl, plans))) this.leadFame(p, mon.type === D.ANCIENT_DRAGON.id ? L.giant.dragonFame : L.giant.bossFame, '巨人狩り');
   }
   /** 秘術を使ったあと（魔術師：マナ鉱石か秘術1枚。1ラウンド perRound 回まで） */
   private *mageAfter(p: Player): Gen {
@@ -1871,9 +2492,10 @@ export class Game {
     const e = c.effects[ei];
     const tome = !!c.tome && p.tomes.includes(id);
     if (!tome && !p.hand.includes(id)) return;
-    const cost = this.manaPlan(p, this.cardCost(p, id), sumPays(e.do ?? []));
+    const cost = this.manaPlan(p, this.spellCost(p, id), sumPays(e.do ?? []));
     if (!cost) return;
     this.spend(p, cost);
+    delete p.flags.free_spell;
     if (costUnits(cost)) this.emit({ t: 'pay', seat: p.pid, cost: cleanCost(cost), reason: 'spell' });
     if (tome) p.tomeUses[id] = (p.tomeUses[id] ?? 0) + 1;
     else { p.hand.splice(p.hand.indexOf(id), 1); p.fame.card += c.fame ?? 0; }
@@ -1916,9 +2538,39 @@ export class Game {
   /** 捕まえる食料（強さ÷foodDiv の切り上げ） */
   captureCost(mon: Monster, p?: Player): Cost {
     // 餌付け師ハル：魔物ごとの好物を、強さに応じた数だけ
-    const cut = p ? this.mods(p).fav_cut : 0;
-    if (p && this.is(p, 'tamer')) return { [this.favRes(mon)]: Math.max(1, Math.ceil(mon.str / D.LEADER.tamer.favDiv) - cut) };
-    return { food: Math.max(1, Math.ceil(mon.str / D.CAPTURE.foodDiv) - cut) };
+    const m = p ? this.mods(p) : null;
+    const cut = m ? m.fav_cut : 0;
+    const tamer = !!p && this.is(p, 'tamer');
+    const r: Res = tamer ? this.favRes(mon) : 'food';
+    let n = Math.max(1, Math.ceil(mon.str / (tamer ? D.LEADER.tamer.favDiv : D.CAPTURE.foodDiv)) - cut);
+    // 主（竜騎士の鎧）：好物は boss_tame 倍
+    if (mon.boss) n *= m?.boss_tame || 3;
+    // 調教の鞭：好物の数−1（1ラウンド1回）
+    if (p && m?.fav_cut_round && !this.flag(p, 'r:favcut')) n = Math.max(1, n - m.fav_cut_round);
+    // 好物の香り：このラウンド、費用−2
+    if (p) n = Math.max(0, n - this.flag(p, 'r:capcut'));
+    return n ? { [r]: n } : {};
+  }
+  /** 使い魔にするときに実際に払うもの（獣の通訳：足りない好物1つを、好物でない資源 fav_alt 個で。多く持っている資源から）。払えなければ null */
+  capturePay(p: Player, mon: Monster, base: Cost = {}): Cost | null {
+    const c = this.captureCost(mon, p);
+    if (canPay(p, addCost(base, c))) return c;
+    const alt = this.mods(p).fav_alt;
+    const [r, n] = (Object.entries(c)[0] ?? []) as [Res, number];
+    if (!alt || !r) return null;
+    const have = Math.max(0, p.res[r] - (base[r] ?? 0));
+    let need = (n - have) * alt;
+    const out: Cost = have ? { [r]: Math.min(have, n) } : {};
+    const others = RES.filter((x) => x !== r && x !== 'gold').map((x) => [x, Math.max(0, p.res[x] - (base[x] ?? 0))] as [Res, number]).sort((a, b) => b[1] - a[1] || RES.indexOf(a[0]) - RES.indexOf(b[0]));
+    // いちばん多い資源から1つずつ（偏りすぎないように、毎回いま多いものを選ぶ）
+    const left = new Map(others);
+    while (need > 0) {
+      let best: Res | null = null;
+      for (const [x] of others) if ((left.get(x) ?? 0) > 0 && (!best || (left.get(x) ?? 0) > (left.get(best) ?? 0))) best = x;
+      if (!best) return null;
+      left.set(best, (left.get(best) ?? 0) - 1); out[best] = (out[best] ?? 0) + 1; need--;
+    }
+    return cleanCost(out);
   }
   /** 捕まえるのに要る戦力（残りの強さ＋格ごとの捕まえにくさ − capture_ease） */
   captureNeed(p: Player, mon: Monster): number {
@@ -1931,10 +2583,11 @@ export class Game {
   canTame(mon: Monster) { return mon.race === 'beast' && !mon.boss; }
   /** 使い魔にする（食料を払う。持てる数を超えたらいちばん弱い使い魔を放す） */
   *addPet(p: Player, mon: Monster): Gen {
-    const cost = this.captureCost(mon, p);
-    if (!canPay(p, cost)) return;
+    const cost = this.capturePay(p, mon);
+    if (!cost) return;
+    if (this.mods(p).fav_cut_round && !this.flag(p, 'r:favcut')) this.addFlag(p, 'r:favcut');
     this.spend(p, cost);
-    this.emit({ t: 'pay', seat: p.pid, cost, reason: 'tame' });
+    if (costUnits(cost)) this.emit({ t: 'pay', seat: p.pid, cost, reason: 'tame' });
     const id = `pet_${mon.type}`;
     const pet: Pet = { type: mon.type, name: mon.name, str: mon.str, power: this.is(p, 'tamer') ? D.LEADER.tamer.petPower : this.petPower(mon.str), card: this.byId.has(id) ? id : '' };
     p.pets.push(pet);
@@ -1946,7 +2599,7 @@ export class Game {
       const [r] = p.pets.splice(w, 1);
       this.emit({ t: 'release', seat: p.pid, monster: r.type });
     }
-    yield* this.fire(p, 'tame', {});
+    yield* this.fire(p, 'tame', { mon });
   }
   /** 遺物の欠片を得る。そろうたびに遺物を引く（1+ancient_look 枚見て1枚） */
   *gainShards(p: Player, n: number): Gen {
@@ -1988,6 +2641,8 @@ export class Game {
       this.emit({ t: 'draw', seat: p.pid, card: p.pid === this.me || this.me < 0 || from === 'ancient' ? c : '?', from });
     }
     for (const [c, d] of pool) d.push(c);
+    // 鑑定で並べ替えた遺物の山は、並びが残っているあいだ混ぜない
+    if (from === 'ancient' && this.ancientSorted > 0) { this.ancientSorted = Math.max(0, this.ancientSorted - look); return; }
     for (const d of decks) this.rng.shuffle(d);
   }
 
@@ -1995,8 +2650,8 @@ export class Game {
    *  AI の席だけ（人の席は自分で持たせる：gotGear の問いと、手番の equip） */
   autoEquip(p: Player) {
     if (!p.ai) return;
-    const before = p.comps.map((c) => [c.weapon, c.armor]);
-    for (const c of p.comps) { c.weapon = null; c.armor = null; }
+    const before = p.comps.map((c) => [c.weapon, c.armor, c.weapon2, c.armor2]);
+    for (const c of p.comps) { c.weapon = null; c.armor = null; c.weapon2 = null; c.armor2 = null; }
     const items = [...p.items].map((id) => this.card(id));
     const weapons = items.filter((c) => slotOf(c) === 'weapon');
     const armors = items.filter((c) => slotOf(c) === 'armor');
@@ -2015,12 +2670,51 @@ export class Game {
       const i = cand.find((j) => !p.comps[j].armor && (m.two_hand_armor || !(p.comps[j].weapon && this.card(p.comps[j].weapon!).two_hand)));
       if (i !== undefined) p.comps[i].armor = a.id;
     }
+    // 2つ目の枠（二刀・剣帯・重装）：余った武器・防具を、持てる仲間に
+    const used = new Set<CardDef>();
+    for (const w of weapons) if (p.comps.some((c) => c.weapon === w.id)) used.add(w);
+    for (const a of armors) if (p.comps.some((c) => c.armor === a.id)) used.add(a);
+    const restW = weapons.filter((w) => !used.has(w) || p.comps.filter((c) => c.weapon === w.id).length < p.items.filter((x) => x === w.id).length);
+    for (const w of restW) {
+      const i = byAtk.find((j) => !p.comps[j].weapon2 && this.slot2Ok(p, p.comps[j], 'weapon2', w.id));
+      if (i !== undefined) p.comps[i].weapon2 = w.id;
+    }
+    const restA = armors.filter((a) => !used.has(a) || p.comps.filter((c) => c.armor === a.id).length < p.items.filter((x) => x === a.id).length);
+    for (const a of restA) {
+      const i = byDef.find((j) => !p.comps[j].armor2 && this.slot2Ok(p, p.comps[j], 'armor2', a.id));
+      if (i !== undefined) p.comps[i].armor2 = a.id;
+    }
     if (this.E) {
       p.comps.forEach((c, i) => {
-        if (before[i]?.[0] !== c.weapon) this.emit({ t: 'equip', seat: p.pid, companion: i, slot: 'weapon', card: c.weapon });
-        if (before[i]?.[1] !== c.armor) this.emit({ t: 'equip', seat: p.pid, companion: i, slot: 'armor', card: c.armor });
+        SLOTS.forEach((s, k) => { if ((before[i]?.[[0, 2, 1, 3][k]] ?? null) !== c[s]) this.emit({ t: 'equip', seat: p.pid, companion: i, slot: s, card: c[s] }); });
       });
     }
+  }
+  /** 2つ目の枠に id を持てるか（weapon2：剣帯を着ているか、二刀の心得で軽い武器2本。armor2：重装の心得で軽い防具） */
+  slot2Ok(p: Player, c: Comp, slot: 'weapon2' | 'armor2', id: string): boolean {
+    const cd = this.card(id);
+    const m = this.mods(p);
+    if (slot === 'weapon2') {
+      if (slotOf(cd) !== 'weapon' || cd.two_hand || !c.weapon || this.card(c.weapon).two_hand) return false;
+      if (m.leader_no_weapon && c.leader) return false;
+      if (cd.leader_only && !c.leader) return false;
+      return this.wearMod(c, 'wear_weapon2') || (m.dual_light && cd.weight === 'light' && this.card(c.weapon).weight === 'light');
+    }
+    if (slotOf(cd) !== 'armor' || !c.armor || !m.dual_armor_light || cd.weight !== 'light') return false;
+    if (cd.leader_only && !c.leader) return false;
+    return m.two_hand_armor || !(c.weapon && this.card(c.weapon).two_hand);
+  }
+  /** 持ち替えのあと、持てなくなった2つ目の枠を倉庫へ */
+  private fixSlots(p: Player) {
+    p.comps.forEach((c, i) => {
+      for (const s of ['weapon2', 'armor2'] as const) {
+        const id = c[s];
+        if (!id) continue;
+        c[s] = null;
+        if (this.slot2Ok(p, c, s, id)) c[s] = id;
+        else this.emit({ t: 'equip', seat: p.pid, companion: i, slot: s, card: null });
+      }
+    });
   }
 
   /** その装備を持てる仲間（空いている枠が先、次に熟練の高い順）。two_hand の武器を持つ仲間は防具を持てない、leader_only はリーダーだけ */
@@ -2039,24 +2733,37 @@ export class Game {
       .sort((a, b) => +!!p.comps[a][sl] - +!!p.comps[b][sl] || p.comps[b][sk] - p.comps[a][sk] || a - b);
   }
   /** 持たせられないなら理由（持たせられるなら null）。id＝null ははずす。倉庫か、ほかの仲間の同じ枠から持ってくる */
-  equipError(p: Player, ci: number, slot: 'weapon' | 'armor', id: string | null): string | null {
+  equipError(p: Player, ci: number, slot: Slot, id: string | null): string | null {
     const c = p.comps[ci];
-    if (!c || (slot !== 'weapon' && slot !== 'armor')) return 'その仲間はいない';
+    if (!c || !SLOTS.includes(slot)) return 'その仲間はいない';
     if (id === null) return c[slot] ? null : 'もう何も持っていない';
-    if (typeof id !== 'string' || !this.byId.has(id) || slotOf(this.card(id)) !== slot) return 'その枠には持てない';
+    const base = slotBase(slot);
+    if (typeof id !== 'string' || !this.byId.has(id) || slotOf(this.card(id)) !== base) return 'その枠には持てない';
     if (c[slot] === id) return 'もう持っている';
-    if (!this.storage(p).includes(id) && !p.comps.some((x, j) => j !== ci && x[slot] === id)) return '倉庫にない';
+    if (!this.storage(p).includes(id) && !p.comps.some((x, j) => SLOTS.some((s) => slotBase(s) === base && x[s] === id && (j !== ci || s !== slot)))) return '倉庫にない';
+    if (slot === 'weapon2' || slot === 'armor2') {
+      const probe: Comp = { ...c };
+      for (const s of SLOTS) if (probe[s] === id && s !== slot) probe[s] = null;
+      return this.slot2Ok(p, probe, slot, id) ? null : slot === 'weapon2' ? '2本目の武器は持てない' : '2つ目の防具は着られない';
+    }
     if (!this.equipTargets(p, id).includes(ci)) return this.card(id).leader_only ? 'リーダーだけが持てる' : slot === 'weapon' && this.is(p, 'giant') ? '両手武器しか持てない' : slot === 'weapon' ? 'リーダーは武器を持てない' : '両手武器を持っていると防具は持てない';
     return null;
   }
   /** 持たせる・はずす・持ち替える（無料）。前に持っていたものは倉庫へ。two_hand の武器を持たせると防具は倉庫へ */
-  equip(p: Player, ci: number, slot: 'weapon' | 'armor', id: string | null) {
+  equip(p: Player, ci: number, slot: Slot, id: string | null) {
     const err = this.equipError(p, ci, slot, id);
     if (err) throw new Error(err);
-    const set = (j: number, s: 'weapon' | 'armor', v: string | null) => { p.comps[j][s] = v; this.emit({ t: 'equip', seat: p.pid, companion: j, slot: s, card: v }); };
-    if (id !== null && !this.storage(p).includes(id)) set(p.comps.findIndex((x, j) => j !== ci && x[slot] === id), slot, null);
+    const set = (j: number, s: Slot, v: string | null) => { p.comps[j][s] = v; this.emit({ t: 'equip', seat: p.pid, companion: j, slot: s, card: v }); };
+    if (id !== null && !this.storage(p).includes(id)) {
+      const base = slotBase(slot);
+      outer: for (let j = 0; j < p.comps.length; j++) for (const s of SLOTS) if (slotBase(s) === base && p.comps[j][s] === id && (j !== ci || s !== slot)) { set(j, s, null); break outer; }
+    }
     set(ci, slot, id);
-    if (id && slot === 'weapon' && this.card(id).two_hand && p.comps[ci].armor && !this.mods(p).two_hand_armor) set(ci, 'armor', null);
+    if (id && slot === 'weapon' && this.card(id).two_hand && !this.mods(p).two_hand_armor) {
+      if (p.comps[ci].armor) set(ci, 'armor', null);
+      if (p.comps[ci].armor2) set(ci, 'armor2', null);
+    }
+    this.fixSlots(p);
   }
   /** 装備を手に入れたとき：AI は自動で持ち替え、人には誰に持たせるか聞く（"eq:<仲間の番号>" か、倉庫に置く "eq:-"） */
   *gotGear(p: Player, id: string): Gen {
@@ -2065,10 +2772,13 @@ export class Game {
     if (!sl || !this.storage(p).includes(id)) return;
     // 同じ装備（共通の装備は同じ id が何枚もある）をもう持っている仲間には持たせない（equip が「もう持っている」で弾く）
     const to = this.equipTargets(p, id).filter((i) => p.comps[i][sl] !== id);
-    if (!to.length) return;
-    const x: string = yield* this.ask({ k: 'pick', g: this, p, what: `equip:${id}`, options: [...to.map((i) => `eq:${i}`), 'eq:-'] });
-    const ci = typeof x === 'string' && /^eq:\d+$/.test(x) ? Number(x.slice(3)) : -1;
-    if (to.includes(ci)) this.equip(p, ci, sl, id);
+    const s2: Slot = sl === 'weapon' ? 'weapon2' : 'armor2';
+    const to2 = p.comps.map((_, i) => i).filter((i) => !p.comps[i][s2] && !this.equipError(p, i, s2, id));
+    if (!to.length && !to2.length) return;
+    const x: string = yield* this.ask({ k: 'pick', g: this, p, what: `equip:${id}`, options: [...to.map((i) => `eq:${i}`), ...to2.map((i) => `eq2:${i}`), 'eq:-'] });
+    const ci = typeof x === 'string' && /^eq2?:\d+$/.test(x) ? Number(x.split(':')[1]) : -1;
+    if (typeof x === 'string' && x.startsWith('eq2:')) { if (to2.includes(ci)) this.equip(p, ci, s2, id); }
+    else if (to.includes(ci)) this.equip(p, ci, sl, id);
   }
 
   // ------------------------------------------------------------ 戦闘（§5・§6）
@@ -2096,23 +2806,25 @@ export class Game {
   /** 送った仲間の戦闘の環境（攻めの熟練・武器の戦力の合計、守りを超える反撃の見込み） */
   fightEnv(p: Player, mon: Monster, idxs: number[], coop: boolean, boss: boolean): FightEnv {
     let atk = 0, wpow = 0;
-    for (const i of idxs) { const c = p.comps[i]; atk += c.atk; wpow += c.weapon ? this.card(c.weapon).power ?? 0 : 0; }
-    const base: FightEnv = { race: mon.race, coop, k: idxs.length, boss, atk, wpow, exposed: 0 };
-    base.exposed = Math.max(0, mon.counter - this.defenseOf(p, idxs));
+    const m = this.mods(p);
+    for (const i of idxs) { const c = p.comps[i]; atk += c.atk; wpow += this.compWeaponPower(p, c, m); }
+    const guard = this.defenseOf(p, idxs);
+    const base: FightEnv = { race: mon.race, coop, k: idxs.length, boss, atk, wpow, exposed: 0, guard };
+    base.exposed = Math.max(0, mon.counter - guard);
     return base;
   }
 
   /** 戦力・守り・後押しの計画（盤面は変えない）。need は運命なしで勝つのに要る戦力の目安 */
   makePlan(p: Player, mon: Monster, idxs: number[], mode: FightMode, coop: boolean, need: number, use?: string[]): Plan {
     const pl: Plan = { pid: p.pid, idxs, mode, power: 0, parts: [], guard: 0, counter: 0, loot: 0, trophy: 0, str: 0, noInj: 0, cost: {}, boosts: [], spells: [], used: [], tomeUse: {}, pets: [], rage: 0, keys: [] };
+    const mods = this.mods(p);
+    const sm = this.skillMult(p);
     for (const i of idxs) {
       const c = p.comps[i];
-      const w = c.weapon ? this.card(c.weapon) : null;
-      const v = D.POWER_PER + c.atk * this.skillMult(p) + (w?.power ?? 0) * this.weaponMult(p);
+      const v = D.POWER_PER + c.atk * sm + this.compWeaponPower(p, c, mods) * this.weaponMult(p);
       pl.power += v;
-      pl.parts.push({ kind: 'companion', label: `仲間${i + 1}`, value: v, seat: p.pid, ...(w ? { ref: w.id } : {}) });
+      pl.parts.push({ kind: 'companion', label: `仲間${i + 1}`, value: v, seat: p.pid, ...(c.weapon ? { ref: c.weapon } : {}) });
     }
-    const mods = this.mods(p);
     if (idxs.length) {
       pl.pets = this.bringPets(p);
       for (const j of pl.pets) {
@@ -2131,7 +2843,8 @@ export class Game {
     if (mods.power) { pl.power += mods.power; pl.parts.push({ kind: 'mod', label: 'カード', value: mods.power, seat: p.pid }); }
     const fenv = this.fightEnv(p, mon, idxs, coop, mon.boss);
     const env = this.env(p, fenv);
-    // 自動で効く fight の効果（pay なし）
+    // 自動で効く fight の効果（pay なし）。武器の分は「もう一度」のために覚えておく
+    const weaponOps: Op[][] = [];
     const optional: { name: string; cost: Cost; ops: Op[]; card: string; e: number; spell: boolean; tome?: boolean }[] = [];
     for (const [card, ei, e] of this.effectsOf(p, 'fight', fenv, idxs)) {
       if (p.tomes.includes(card)) continue;
@@ -2139,7 +2852,7 @@ export class Game {
       const pays = sumPays(ops);
       if (costUnits(pays)) { optional.push({ name: card, cost: pays, ops: this.effMult(p, card) > 1 ? Array.from({ length: this.effMult(p, card) }, () => ops).flat() : ops, card, e: ei, spell: false }); continue; }
       const before = pl.power;
-      for (let t = 0; t < this.effMult(p, card); t++) applyFightOps(pl, ops, env);
+      for (let t = 0; t < this.effMult(p, card); t++) { applyFightOps(pl, ops, env, sm); if (this.card(card).kind === 'weapon') weaponOps.push(ops); }
       pl.used.push(`${card}#${ei}`);
       if (pl.power !== before) pl.parts.push({ kind: 'card', label: this.card(card).name, value: pl.power - before, seat: p.pid, ref: card });
     }
@@ -2154,16 +2867,25 @@ export class Game {
       if (!this.byId.has(c)) continue;
       const cd = this.card(c);
       if (cd.kind !== 'spell' || cd.tome) continue;
-      cd.effects.forEach((e, ei) => { if (spellOk(c, ei, e)) optional.push({ name: c, cost: addCost(this.cardCost(p, c), sumPays(e.do ?? [])), ops: e.do ?? [], card: c, e: ei, spell: true }); });
+      cd.effects.forEach((e, ei) => { if (spellOk(c, ei, e)) optional.push({ name: c, cost: addCost(this.spellCost(p, c), sumPays(e.do ?? [])), ops: e.do ?? [], card: c, e: ei, spell: true }); });
     }
     for (const c of new Set(p.tomes)) {
       const cd = this.card(c);
       const left = (cd.tome?.uses ?? 1) - (p.tomeUses[c] ?? 0);
-      for (let u = 0; u < left; u++) cd.effects.forEach((e, ei) => { if (spellOk(c, ei, e)) optional.push({ name: c, cost: addCost(this.cardCost(p, c), sumPays(e.do ?? [])), ops: e.do ?? [], card: c, e: ei, spell: true, tome: true }); });
+      for (let u = 0; u < left; u++) cd.effects.forEach((e, ei) => { if (spellOk(c, ei, e)) optional.push({ name: c, cost: addCost(this.spellCost(p, c), sumPays(e.do ?? [])), ops: e.do ?? [], card: c, e: ei, spell: true, tome: true }); });
     }
+    // 2枚目からの秘術は、最初の1枚だけ安くなる効果（費用なし・−1）が効かない
+    let nth = 0;
+    const costOf = (o: (typeof optional)[number]) => (o.spell ? addCost(this.spellCost(p, o.card, nth), sumPays(this.card(o.card).effects[o.e]?.do ?? [])) : o.cost);
+    const took = (o: (typeof optional)[number]) => { if (o.spell) nth++; };
     const keyOf = (o: (typeof optional)[number]) => (o.card ? `${o.card}#${o.e}` : o.name);
     const labelOf = (o: (typeof optional)[number]) => (o.card ? this.card(o.card).name : o.name === 'morale' ? '士気' : o.name === 'merc' ? '傭兵' : 'ポーション');
-    const gainOf = (o: (typeof optional)[number]) => { const t: Plan = { ...pl, parts: [] }; t.power = 0; t.str = 0; applyFightOps(t, o.ops, env); return t.power - t.str; };
+    const gainOf = (o: (typeof optional)[number]) => {
+      const t: Plan = { ...pl, parts: [] }; t.power = 0; t.str = 0; t.again = 0;
+      applyFightOps(t, o.ops, env, sm);
+      for (let a = 0; a < (t.again ?? 0); a++) for (const ops of weaponOps) applyFightOps(t, ops, env, sm);
+      return t.power - t.str;
+    };
     pl.chips = optional.map((o) => ({ key: keyOf(o), name: o.name, label: labelOf(o), cost: o.cost, gain: gainOf(o), ...(o.card ? { card: o.card } : {}), spell: o.spell }));
     let chosen: (typeof optional)[number][] = [];
     let cost: Cost = {};
@@ -2173,9 +2895,9 @@ export class Game {
       for (const key of use) {
         const j = left.findIndex((o) => keyOf(o) === key);
         if (j < 0) continue;
-        const tot = addCost(cost, left[j].cost);
+        const tot = addCost(cost, costOf(left[j]));
         if (!canPay(p, tot)) continue;
-        cost = tot; chosen.push(left[j]); left.splice(j, 1);
+        cost = tot; chosen.push(left[j]); took(left[j]); left.splice(j, 1);
       }
     } else {
       let target: number | null = null;
@@ -2187,12 +2909,12 @@ export class Game {
         let pw = pl.power;
         for (const c of cand) {
           if (pw >= target) break;
-          const tot = addCost(cost, c.o.cost);
+          const tot = addCost(cost, costOf(c.o));
           if (!canPay(p, tot)) continue;
-          cost = tot; pw += c.g; pick.push(c.o);
+          cost = tot; pw += c.g; pick.push(c.o); took(c.o);
         }
         if (pw >= target || mode === 'safe' || mode === 'wait' || mode === 'capture') chosen = pick;
-        else cost = {};
+        else { cost = {}; nth = 0; }
       }
       // 自動で選ぶとき（AI）：勝てる見込みなら秘術も使う。
       // 連唱魔女ミナは使った秘術ごとに名声とマナ鉱石が返るので、払える秘術は全部。ほかの人は守りを超える反撃があれば、反撃を下げる・守る秘術を1つ
@@ -2204,16 +2926,18 @@ export class Game {
           const mage = this.is(p, 'mage') && won;
           const shield = exposed > 0 && o.ops.some((op) => (op.counter ?? 0) < 0 || (op.guard ?? 0) > 0 || (op.no_injury ?? 0) > 0);
           if (!mage && !shield) continue;
-          const tot = addCost(cost, o.cost);
+          const tot = addCost(cost, costOf(o));
           if (!canPay(p, tot)) continue;
-          cost = tot; chosen.push(o);
+          cost = tot; chosen.push(o); took(o);
           if (!mage) break;
         }
       }
     }
     for (const o of chosen) {
       const before = pl.power;
-      applyFightOps(pl, o.ops, env);
+      const again0 = pl.again ?? 0;
+      applyFightOps(pl, o.ops, env, sm);
+      for (let a = again0; a < (pl.again ?? 0); a++) for (const ops of weaponOps) applyFightOps(pl, ops, env, sm);
       pl.boosts.push(o.name);
       pl.keys!.push(keyOf(o));
       if (o.tome) pl.tomeUse[o.card] = (pl.tomeUse[o.card] ?? 0) + 1;
@@ -2237,7 +2961,7 @@ export class Game {
 
   defenseOf(p: Player, idxs: number[]): number {
     let d = this.fightGuardBase(p);
-    for (const i of idxs) { const c = p.comps[i]; d += D.GUARD_PER + c.def * this.skillMult(p) + (c.armor ? this.card(c.armor).guard ?? 0 : 0) + (c.weapon ? this.card(c.weapon).guard ?? 0 : 0); }
+    for (const i of idxs) { const c = p.comps[i]; d += D.GUARD_PER + c.def * this.skillMult(p) + this.compGearGuard(c); }
     return d;
   }
   defense(p: Player, pl: Plan): number { return this.defenseOf(p, pl.idxs) + pl.guard; }
@@ -2245,6 +2969,8 @@ export class Game {
   *placeFight(p: Player, o: Option): Gen {
     const idxs = this.compsFor(p, o);
     this.useComps(p, idxs);
+    // 総力戦：もう1人送れるのはこの戦闘だけ
+    if (this.flag(p, 'r:send')) delete p.flags['r:send'];
     const nd0 = this.nest(o.s);
     if (nd0 && nd0.groups >= D.NEST_CAP) p.ignoreFull = false;
     for (const q of this.players) if (q !== p) yield* this.fire(q, 'other:nest', { nest: o.s });
@@ -2271,16 +2997,47 @@ export class Game {
       return;
     }
     if (o.mode === 'wait') { nd.wait = { pid: p.pid, idxs }; this.emit({ t: 'wait', seat: p.pid, nest: nd.id }); return; }
+    // 誘いの笛：戦う前に次の予告の魔物も見て、入れ替えられる
+    if (!o.join && !nd.wait && nd.mon && this.mods(p).nest_peek && this.forecastQ.length) {
+      const nx = this.forecastQ[0];
+      if (this.reserveOk(p, nx)) {
+        const x: string = yield* this.ask({ k: 'pick', g: this, p, what: 'peek', options: ['peek:keep', `peek:swap:${nd.id}`] });
+        if (x.startsWith('peek:swap')) {
+          const old = nd.mon;
+          nd.mon = this.forecastQ.shift()!;
+          nd.mon.year = this.year();
+          this.forecastQ.unshift(old);
+          this.emit({ t: 'monster_spawn', nest: nd.id, monster: { ...nd.mon } });
+          this.emit({ t: 'monster_forecast', monsters: this.forecastQ.map((m) => ({ ...m })) });
+        }
+      }
+    }
+    let won: boolean;
     if (o.join && nd.wait) {
       const w = nd.wait;
       nd.wait = null;
-      yield* this.fight(nd, [{ p: this.players[w.pid], idxs: w.idxs, mode: 'gamble' }, { p, idxs, mode: o.mode ?? 'normal', use: o.use }]);
-    } else yield* this.fight(nd, [{ p, idxs, mode: o.mode ?? 'normal', use: o.use }]);
+      won = (yield* this.fight(nd, [{ p: this.players[w.pid], idxs: w.idxs, mode: 'gamble' }, { p, idxs, mode: o.mode ?? 'normal', use: o.use }])).win;
+    } else won = (yield* this.fight(nd, [{ p, idxs, mode: o.mode ?? 'normal', use: o.use }])).win;
     yield* this.fire(p, 'use:nest', { nest: nd.id });
+    // 追撃：勝ったあと、同じ仲間（負傷していない人）でほかの巣の魔物とも戦える
+    if (won && this.flag(p, 'r:chase')) {
+      delete p.flags['r:chase'];
+      const left = idxs.filter((i) => !p.comps[i].injured);
+      const cands = this.nests.filter((n) => n !== nd && n.mon && !n.wait && n.groups < D.NEST_CAP && this.reserveOk(p, n.mon));
+      if (left.length && cands.length) {
+        const x: string = yield* this.ask({ k: 'pick', g: this, p, what: 'chase', options: [...cands.map((n) => `chase:${n.id}`), 'skip'] });
+        const n2 = cands.find((n) => `chase:${n.id}` === x);
+        if (n2) {
+          n2.groups += 1;
+          this.emit({ t: 'note', seat: p.pid, card: 's_ak3', text: `chase:${n2.id}` });
+          yield* this.fight(n2, [{ p, idxs: left, mode: 'normal' }]);
+        }
+      }
+    }
   }
 
   /** 巣の戦闘（1人か共闘の2人） */
-  *fight(nd: NestSt, sides: { p: Player; idxs: number[]; mode: FightMode; use?: string[] }[]): Gen {
+  *fight(nd: NestSt, sides: { p: Player; idxs: number[]; mode: FightMode; use?: string[] }[]): Gen<{ win: boolean }> {
     const mon = nd.mon!;
     const coop = sides.length > 1;
     const capture = !coop && sides[0].mode === 'capture';
@@ -2295,6 +3052,7 @@ export class Game {
     const res = yield* this.resolve(mon, sides.map((s) => s.p), plans, false, capture ? need0 : undefined);
     if (res.win) nd.mon = null;
     else if (res.wounds) mon.wounds += res.wounds;
+    return { win: res.win };
   }
 
   *resolveLair(): Gen {
@@ -2306,12 +3064,16 @@ export class Game {
     const plans: Plan[] = [];
     let acc = 0;
     const ps = this.lairQ.map((e) => this.players[e.pid]);
+    // 竜騎士の鎧：主を使い魔にしようとする人がいれば、勝つのに要る戦力は捕まえる強さ
+    const tamer = this.lairQ.find((e) => e.mode === 'capture');
+    const tp = tamer ? this.players[tamer.pid] : null;
+    const need = tp && this.capturePay(tp, boss) ? this.captureNeed(tp, boss) : undefined;
     this.lairQ.forEach((e, j) => {
-      const pl = this.makePlan(ps[j], boss, e.idxs, e.mode, this.lairQ.length > 1, boss.str - acc, e.use);
+      const pl = this.makePlan(ps[j], boss, e.idxs, e.mode === 'capture' && need === undefined ? 'normal' : e.mode, this.lairQ.length > 1, (need ?? boss.str) - acc, e.use);
       plans.push(pl);
       acc += pl.power;
     });
-    const res = yield* this.resolve(boss, ps, plans, true);
+    const res = yield* this.resolve(boss, ps, plans, true, need, need !== undefined ? tp!.pid : undefined);
     if (!res.win) this.failBoss(boss);
     this.lairQ = [];
     this.absentPenalty(boss, absent);
@@ -2329,7 +3091,7 @@ export class Game {
   }
 
   /** 戦闘の解決：払う → 運命 → 勝ち負け → 戦利品・証 → 反撃 */
-  *resolve(mon: Monster, ps: Player[], plans: Plan[], boss: boolean, captureNeed?: number): Gen<{ win: boolean; wounds: number }> {
+  *resolve(mon: Monster, ps: Player[], plans: Plan[], boss: boolean, captureNeed?: number, tameBy?: number): Gen<{ win: boolean; wounds: number }> {
     const capture = captureNeed !== undefined;
     const coop = ps.length > 1;
     this.emit({ t: 'combat_start', nest: boss ? 'lair' : '', monster: { ...mon }, seats: ps.map((p) => p.pid), mode: plans[0].mode });
@@ -2340,7 +3102,17 @@ export class Game {
       if (costUnits(pl.cost)) this.emit({ t: 'pay', seat: p.pid, cost: cleanCost(pl.cost), reason: 'fight' });
       for (const c of pl.spells) { const i = p.hand.indexOf(c); if (i < 0) continue; p.hand.splice(i, 1); this.countCast(p); p.fame.card += this.card(c).fame ?? 0; this.emit({ t: 'spell', seat: p.pid, card: c }); this.spentSpell(p, c); }
       for (const [c, n] of Object.entries(pl.tomeUse)) { p.tomeUses[c] = (p.tomeUses[c] ?? 0) + n; for (let u = 0; u < n; u++) this.countCast(p); this.emit({ t: 'spell', seat: p.pid, card: c }); }
+      if (pl.spells.length || Object.keys(pl.tomeUse).length) delete p.flags.free_spell;
       if (pl.rage) p.rage = 0;
+      // 盾の誓い：共闘の相手の守りを自分の守りにも足す（鉄壁ガレスは守りが戦力にもなる）
+      if (pl.allyGuard) {
+        const extra = ps.reduce((a, q, k) => (k === j ? a : a + this.defenseOf(q, plans[k].idxs)), 0);
+        pl.guard += extra;
+        if (extra && this.is(p, 'shield') && pl.idxs.length) {
+          const v = extra * D.LEADER.shield.guardMult;
+          pl.power += v; pl.parts.push({ kind: 'mod', label: '盾の誓い', value: v, seat: p.pid });
+        }
+      }
       for (const u of pl.used) { const [c, e] = u.split('#'); this.markLimit(p, c, Number(e), this.card(c).effects[Number(e)]?.limit); }
       total += pl.power;
       strAdj += pl.str;
@@ -2354,8 +3126,37 @@ export class Game {
     this.emit({ t: 'power', parts: plans.flatMap((pl) => pl.parts), total });
     // 運命：主の巣は全員が1枚ずつ、巣は置いた人（共闘なら待っていた人）が1枚
     const flips = boss ? ps : [ps[0]];
-    for (const p of flips) { const v = this.drawFate(p); total += v; this.emit({ t: 'fate_flip', seat: p.pid, value: v }); }
     const strength = (capture ? captureNeed! : mon.str - mon.wounds) + strAdj;
+    const fates = new Map<Player, number>();
+    for (const p of flips) { const v = this.drawFate(p); fates.set(p, v); total += v; this.emit({ t: 'fate_flip', seat: p.pid, value: v }); }
+    // 運命返し：運命カードが確定してから、負けるなら1回引き直せる
+    for (const p of flips) {
+      if (total >= strength) break;
+      for (const [card, ei, e] of this.effectsOf(p, 'fate')) {
+        if (!(e.do ?? []).some((o) => o.refate)) continue;
+        const cd = this.card(card);
+        if (cd.tome && (cd.tome.uses ?? 1) - (p.tomeUses[card] ?? 0) <= 0) continue;
+        const cost = this.manaPlan(p, this.spellCost(p, card), sumPays(e.do ?? []));
+        if (!cost) continue;
+        this.fateGap = strength - total;
+        const yes: boolean = yield* this.ask({ k: 'effect', g: this, p, card, when: 'fate', ops: e.do ?? [], ei });
+        this.fateGap = 0;
+        if (!yes) continue;
+        this.spend(p, cost);
+        if (costUnits(cost)) this.emit({ t: 'pay', seat: p.pid, cost: cleanCost(cost), reason: 'spell' });
+        delete p.flags.free_spell;
+        if (cd.tome) p.tomeUses[card] = (p.tomeUses[card] ?? 0) + 1;
+        this.countCast(p);
+        this.markLimit(p, card, ei, e.limit);
+        this.emit({ t: 'spell', seat: p.pid, card });
+        total -= fates.get(p) ?? 0;
+        const v = this.drawFate(p);
+        fates.set(p, v); total += v;
+        this.emit({ t: 'fate_flip', seat: p.pid, value: v });
+        yield* this.mageAfter(p);
+        break;
+      }
+    }
     const win = total >= strength;
     this.fightLog.push({
       round: this.round, t: this.t, kind: mon.type === D.ANCIENT_DRAGON.id ? 'dragon' : boss ? 'boss' : 'nest', str: strength,
@@ -2366,12 +3167,14 @@ export class Game {
     this.lastClash = { base: plans.reduce((a, pl) => a + pl.power, 0), strength, win };
     this.emit({ t: 'clash', total, strength, result: win ? 'win' : 'lose' });
     let wounds = 0;
-    const totPow = Math.max(1, plans.reduce((a, pl) => a + Math.max(0, pl.power), 0));
+    const totPow = Math.max(1, plans.reduce((a, pl) => a + Math.max(0, this.sharePow(pl, plans)), 0));
     for (let j = 0; j < ps.length; j++) {
       const p = ps[j], pl = plans[j];
-      const share = coop ? Math.max(0, pl.power) / totPow : 1;
+      const share = coop ? Math.max(0, this.sharePow(pl, plans)) / totPow : 1;
       const fenv = this.fightEnv(p, mon, pl.idxs, coop, boss);
-      if (win && capture) {
+      p.st.lastWin = win ? 1 : 0;
+      p.st.fightsRound += 1;
+      if (win && capture && tameBy === undefined) {
         rec.tro[j] = 0;
         p.st.wins += 1;
         p.acts.push('win', 'capture');
@@ -2380,6 +3183,11 @@ export class Game {
         // 勝ったときの効果（loot / trophy を足すものもあるので先に）
         // 主・古竜は年数によらず数が決まっているので、主に勝ったときの名声は年数の倍率をかける
         yield* this.fire(p, 'win', { plan: pl, ...(boss ? { fameScale: D.POINT_SCALE[this.years] ?? 1 } : {}) }, fenv, pl.idxs);
+        // 二度斬り：送った仲間の武器の「勝ったとき」をもう一度
+        if (pl.again) {
+          const ws = new Set(pl.idxs.flatMap((i) => weaponsOf(p.comps[i])));
+          for (let a = 0; a < pl.again; a++) yield* this.fire(p, 'win', { plan: pl, ...(boss ? { fameScale: D.POINT_SCALE[this.years] ?? 1 } : {}) }, fenv, pl.idxs, (c) => ws.has(c));
+        }
         yield* this.fire(p, `win_race:${mon.race}`, { plan: pl }, fenv, pl.idxs);
         // 戦利品（共闘は戦力の割合で分ける。端数は後から来た人）
         const units: Res[] = [];
@@ -2387,8 +3195,14 @@ export class Game {
         const mine = !coop ? units.length : j === ps.length - 1 ? units.length - Math.floor(units.length * (1 - share)) : Math.floor(units.length * share);
         const pick = j === 0 ? units.slice(0, mine) : units.slice(units.length - mine);
         for (let u = 0; u < pl.loot; u++) pick.push(units[0] ?? 'mat');
-        const loot: Cost = {};
+        let loot: Cost = {};
         for (const r of pick) loot[r] = (loot[r] ?? 0) + 1;
+        // 算盤の棍：戦利品を価値の表どおりに金貨で受け取れる
+        if (pl.lootGold && costUnits(loot) && !loot.gold) {
+          const gold = (Object.entries(loot) as [Res, number][]).reduce((a, [r, n]) => a + this.val(r) * n, 0);
+          const x: string = yield* this.ask({ k: 'pick', g: this, p, what: 'loot', options: ['loot:res', `loot:gold:${gold}`] });
+          if (x.startsWith('loot:gold')) loot = { gold };
+        }
         gainRes(p, loot);
         this.actGain(p, loot);
         if (costUnits(loot)) this.emit({ t: 'loot', seat: p.pid, gain: loot });
@@ -2420,6 +3234,8 @@ export class Game {
           yield* this.runOps(p, [{ gain: { food: D.BOSS_FOOD } }, { draw_any: { from: [...ITEM_KINDS], look: D.BOSS_DRAW, take: 1 } }], {});
           if (mon.type !== D.ANCIENT_DRAGON.id && this.decks.ancient.length) yield* this.drawCards(p, 'ancient', 1 + this.mods(p).ancient_look, 1);
         }
+        // 竜騎士の鎧：主を使い魔にした（参加した全員が倒した扱い）
+        if (tameBy === p.pid) { p.acts.push('capture'); yield* this.addPet(p, mon); }
       } else p.acts.push('lose');
       // 反撃
       if (pl.idxs.length) {
@@ -2456,29 +3272,49 @@ export class Game {
   tradeLimit(p: Player) { return 1 + this.mods(p).trade_count; }
   tradeOk(a: Player, b: Player, give: Cost, get: Cost): string | null {
     if (a === b) return '相手がいない';
-    if (a.tradesUsed >= this.tradeLimit(a)) return 'このラウンドの取引は終わり';
+    if (a.tradesUsed >= this.tradeLimit(a) && !this.flag(a, `r:tw:${b.pid}`)) return 'このラウンドの取引は終わり';
     if (!costUnits(give) || !costUnits(get)) return '渡すものと受け取るものを選ぶ';
     // 詐欺師だけ：1種類ずつ・同じ価値・金貨 tradeMax 枚分まで（ほかの人どうしの取引に制限はない。相手の了承で決まる）
     if (this.is(a, 'swindler')) {
       const kinds = (c: Cost) => Object.values(c).filter((n) => n).length;
-      const val = (c: Cost) => Object.entries(c).reduce((s, [r, n]) => s + D.VALUE[r as Res] * (n ?? 0), 0);
       if (kinds(give) !== 1 || kinds(get) !== 1) return '1種類ずつ';
-      if (val(give) !== val(get)) return '同じ価値どうし';
+      const vg = this.costVal(give), vt = this.costVal(get);
+      if (vg !== vt && !this.tradeCutOk(a, give, get)) return '同じ価値どうし';
       const mx = D.LEADER.swindler.tradeMax + this.mods(a).trade_max;
-      if (val(give) > mx) return `金貨${mx}枚分まで`;
+      if (vt > mx) return `金貨${mx}枚分まで`;
     }
     if (!canPay(a, give)) return '渡すものが足りない';
     if (!canPay(b, get)) return '相手の持ち物が足りない';
     return null;
   }
+  /** 価値の表での合計（このラウンドの値上げ込み） */
+  costVal(c: Cost): number { return (Object.entries(c) as [Res, number][]).reduce((s, [r, n]) => s + this.val(r) * (n ?? 0), 0); }
+  /** 口八丁：出す資源を cut 個まで少なくできる（同じ価値から、出すものを1つずつ減らした分。1ラウンド1回） */
+  tradeCutOk(a: Player, give: Cost, get: Cost): boolean {
+    const cut = this.mods(a).trade_cut;
+    if (!cut || this.flag(a, 'r:tcut')) return false;
+    const [r] = Object.keys(give).filter((k) => give[k as Res]) as Res[];
+    const short = this.costVal(get) - this.costVal(give);
+    return !!r && short > 0 && short % this.val(r) === 0 && short / this.val(r) <= cut;
+  }
   *tradeGen(a: Player, b: Player, give: Cost, get: Cost): Gen {
+    if (this.is(a, 'swindler') && this.costVal(give) !== this.costVal(get) && this.tradeCutOk(a, give, get)) this.addFlag(a, 'r:tcut');
     payRes(a, give); gainRes(b, give); payRes(b, get); gainRes(a, get);
-    a.tradesUsed += 1;
+    this.useTrade(a, b);
     a.st.trades += 1; b.st.trades += 1;
     a.acts.push('trade'); b.acts.push('trade');
     this.emit({ t: 'trade', a: a.pid, b: b.pid, give: cleanCost(give), get: cleanCost(get) });
-    yield* this.fire(a, 'trade', {});
-    yield* this.fire(b, 'trade', {});
+    yield* this.fire(a, 'trade', { got: cleanCost(get) });
+    yield* this.fire(b, 'trade', { got: cleanCost(give) });
+  }
+  /** 取引1回を数える（抜け道で決まった相手との取引は、手番の取引とは別） */
+  private useTrade(a: Player, b: Player) {
+    const k = `r:tw:${b.pid}`;
+    if (this.flag(a, k)) delete a.flags[k]; else a.tradesUsed += 1;
+  }
+  /** このラウンドにあと何回取引できるか（抜け道の分も） */
+  tradesLeft(p: Player): number {
+    return Math.max(0, this.tradeLimit(p) - p.tradesUsed) + Object.keys(p.flags).filter((k) => k.startsWith('r:tw:')).length;
   }
   /** 取引を同期で（効果の選択は既定の答え） */
   trade(a: Player, b: Player, give: Cost, get: Cost) { drive(this.tradeGen(a, b, give, get)); }
@@ -2486,7 +3322,7 @@ export class Game {
   stoneTradeOk(a: Player, b: Player, tier: number, get: Cost): string | null {
     if (a === b) return '相手がいない';
     if (!this.is(a, 'swindler')) return '魔石の取引は押し売りモモだけ';
-    if (a.tradesUsed >= this.tradeLimit(a)) return 'このラウンドの取引は終わり';
+    if (a.tradesUsed >= this.tradeLimit(a) && !this.flag(a, `r:tw:${b.pid}`)) return 'このラウンドの取引は終わり';
     if (!(a.stones[tier] > 0)) return '魔石がない';
     const ks = Object.entries(get).filter(([, n]) => n);
     if (ks.length !== 1) return '1種類ずつ';
@@ -2496,11 +3332,11 @@ export class Game {
   }
   *stoneTradeGen(a: Player, b: Player, tier: number, get: Cost): Gen {
     a.stones[tier] -= 1; b.stones[tier] += 1; payRes(b, get); gainRes(a, get);
-    a.tradesUsed += 1;
+    this.useTrade(a, b);
     a.st.trades += 1; b.st.trades += 1;
     a.acts.push('trade'); b.acts.push('trade');
     this.emit({ t: 'trade', a: a.pid, b: b.pid, give: {}, get: cleanCost(get), stone: tier });
-    yield* this.fire(a, 'trade', {});
+    yield* this.fire(a, 'trade', { got: cleanCost(get) });
     yield* this.fire(b, 'trade', {});
   }
   tradeStone(a: Player, b: Player, tier: number, get: Cost) { drive(this.stoneTradeGen(a, b, tier, get)); }
@@ -2549,7 +3385,17 @@ export class Game {
   }
 }
 
-export interface OpCtx { fenv?: FightEnv; fameScale?: number; thScale?: number; space?: string; nest?: string; x?: Choice; card?: string; plan?: Plan; again?: boolean; opIndex?: number }
+/** 手番の前に何度でもできること（秘術・身につける・カードの行動・屋台で買う）。置く場所の選択は続く */
+export const FREE_ACTS = ['@spell', '@learn', '@act', '@stall'];
+export interface OpCtx {
+  fenv?: FightEnv; fameScale?: number; thScale?: number; space?: string; nest?: string; x?: Choice; card?: string; plan?: Plan; again?: boolean; opIndex?: number;
+  /** trained の効果：上がった仲間と熟練 */
+  trained?: { i: number; s: 'atk' | 'def' };
+  /** trade の効果：受け取ったもの */
+  got?: Cost;
+  /** tame の効果：使い魔にした魔物 */
+  mon?: Monster;
+}
 
 /** power_per の値：floor(数 / per) × mult（max まで） */
 export function perValue(v: number, pp: { per: number; mult?: number; max?: number }): number {
@@ -2565,7 +3411,13 @@ export function slotOf(c: CardDef): 'weapon' | 'armor' | null {
   return null;
 }
 
-function newComp(leader: boolean): Comp { return { atk: 0, def: 0, weapon: null, armor: null, leader, injured: false, rest: false, used: false }; }
+function newComp(leader: boolean): Comp { return { atk: 0, def: 0, weapon: null, armor: null, weapon2: null, armor2: null, leader, injured: false, rest: false, used: false }; }
+/** 仲間の武器（1本目・2本目）・防具（1つ目・2つ目） */
+export const weaponsOf = (c: Comp): string[] => [c.weapon, c.weapon2].filter((x): x is string => !!x);
+export const armorsOf = (c: Comp): string[] => [c.armor, c.armor2].filter((x): x is string => !!x);
+export const gearOf = (c: Comp): string[] => [c.weapon, c.weapon2, c.armor, c.armor2].filter((x): x is string => !!x);
+export const SLOTS: Slot[] = ['weapon', 'weapon2', 'armor', 'armor2'];
+export const slotBase = (s: Slot): 'weapon' | 'armor' => (s === 'weapon' || s === 'weapon2' ? 'weapon' : 'armor');
 
 export function sumPays(ops: Op[]): Cost {
   let c: Cost = {};
@@ -2573,8 +3425,13 @@ export function sumPays(ops: Op[]): Cost {
   return c;
 }
 
-function applyFightOps(pl: Plan, ops: Op[], env?: CondEnv) {
+function applyFightOps(pl: Plan, ops: Op[], env?: CondEnv, skillMult = 1) {
   for (const o of ops) {
+    if (o.skill_boost) { pl.skillBoost = (pl.skillBoost ?? 0) + o.skill_boost; pl.power += o.skill_boost * skillMult; }
+    if (o.weapon_again) pl.again = (pl.again ?? 0) + 1;
+    if (o.ally_guard) pl.allyGuard = true;
+    if (o.hog) pl.hog = true;
+    if (o.loot_gold) pl.lootGold = true;
     if (o.power) pl.power += o.power;
     if (o.power_per && env) pl.power += perValue(env.stat(o.power_per.stat), o.power_per);
     if (o.guard) pl.guard += o.guard;
@@ -2623,7 +3480,7 @@ export function scoreBreakdown(g: Game, p: Player): Record<string, number> {
   const th = D.tableFor(g.years);
   const vals: Record<string, number> = {
     kills: p.kills, races: p.races.length, weapons: g.stat(p, 'weapons'), armors: g.stat(p, 'armors'), tools: p.tools.length, spells: p.st.casts,
-    walls: p.walls, occs: p.occs.length, pets: p.pets.length,
+    walls: g.wallsOf(p), occs: p.occs.length, pets: p.pets.length,
   };
   for (const [k, t] of Object.entries(th)) { const v = tableScore(vals[k] ?? 0, t); b[`table_${k}`] = v > 0 ? Math.round(v * sc) : v; }
   b.kinds = g.kinds(p) >= 4 ? Math.round(D.FOUR_KINDS_FAME * sc) : 0;
@@ -2639,7 +3496,7 @@ export function scoreBreakdown(g: Game, p: Player): Record<string, number> {
 export function leaderEndFame(g: Game, p: Player): number {
   const L = D.LEADER;
   if (g.is(p, 'explorer')) return p.ancient.length * L.explorer.ancientFame;
-  if (g.is(p, 'guard')) { const w = p.walls * L.guard.wallFame; return w + (p.st.blocked <= L.guard.lowBlocked ? w * (L.guard.lowMult - 1) : 0); }
+  if (g.is(p, 'guard')) { const w = g.wallsOf(p) * L.guard.wallFame; return w + (p.st.blocked <= L.guard.lowBlocked ? w * (L.guard.lowMult - 1) : 0); }
   if (g.is(p, 'swindler')) return p.st.trades * L.swindler.fame;
   if (g.is(p, 'merchant')) return Math.floor(p.res.gold / L.merchant.goldDiv);
   return 0;
