@@ -12,7 +12,7 @@ const NAMES = ['あなた', 'ハヤテ', 'コトネ', 'ジン'];
 function bare() {
   const g = new Game(2, [null, new AI('normal', { seed: 1 })], { seed: 1, cards: CARD_SET });
   const p = g.players[0];
-  p.comps = [0, 1, 2].map((i) => ({ atk: i, def: 0, weapon: null, armor: null, leader: i === 0, injured: false, rest: false, used: false }));
+  p.comps = [0, 1, 2].map((i) => ({ atk: i, def: 0, weapon: null, armor: null, weapon2: null, armor2: null, leader: i === 0, injured: false, rest: false, used: false }));
   return { g, p };
 }
 
@@ -81,7 +81,7 @@ describe('kiridani2 装備を自分で持たせる', () => {
     expect(p.comps[1].weapon).toBe('g_sword');
     // AI の席は聞かずに自動で
     const q = g.players[1];
-    q.comps = [{ atk: 0, def: 0, weapon: null, armor: null, leader: true, injured: false, rest: false, used: false }];
+    q.comps = [{ atk: 0, def: 0, weapon: null, armor: null, weapon2: null, armor2: null, leader: true, injured: false, rest: false, used: false }];
     q.items = ['g_sword'];
     expect(g.gotGear(q, 'g_sword').next().done).toBe(true);
     expect(q.comps[0].weapon).toBe('g_sword');

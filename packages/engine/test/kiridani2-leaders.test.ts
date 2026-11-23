@@ -7,7 +7,7 @@ function bare(leader: string) {
   const g = new Game(2, [null, new AI('normal', { seed: 1 })], { seed: 1, cards: CARD_SET });
   const p = g.players[0];
   p.leader = leader;
-  p.comps = [0, 1].map((i) => ({ atk: 1, def: 1, weapon: null, armor: null, leader: i === 0, injured: false, rest: false, used: false }));
+  p.comps = [0, 1].map((i) => ({ atk: 1, def: 1, weapon: null, armor: null, weapon2: null, armor2: null, leader: i === 0, injured: false, rest: false, used: false }));
   return { g, p };
 }
 

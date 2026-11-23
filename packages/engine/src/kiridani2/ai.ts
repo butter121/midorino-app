@@ -5,7 +5,7 @@
 import * as D from './data';
 import { cardEffects } from './dsl';
 import {
-  ancientScore, costValue, drive, Game, ITEM_KINDS, Player, score, type Brain, type Choice, type Option, type Ratio, type Req,
+  ancientScore, canPay, costValue, drive, Game, ITEM_KINDS, Player, score, type Brain, type Choice, type Option, type Ratio, type Req,
 } from './engine';
 import { Rng } from './rng';
 import { LEADER_W, type WeightMul } from './ai_weights';
@@ -125,6 +125,28 @@ export function opsValue(ops: Op[]): number {
     if (o.gain_pick) v += 0.5 * o.gain_pick.n;
     if (o.relic) v += 1.5 * o.relic;
     if (o.repair) v += 1.5;
+    // リストのカードの仕組み（目安）
+    if (o.flag) v += (o.flag.k.startsWith('mk:') ? 2 : 0.8) * (o.flag.n ?? 1);
+    if (o.weapon_again || o.hog || o.ally_guard || o.loot_gold) v += 1;
+    if (o.skill_boost) v += 0.5 * o.skill_boost;
+    if (o.mark_weapon) v += 1.2;
+    if (o.train_sent || o.train_copy || o.skill_copy) v += 1.2;
+    if (o.loot_tamed) v += 1;
+    if (o.reserve || o.block || o.market_ban || o.buy_ban || o.peek_discard) v += 0.8;
+    if (o.repair_free) v += 2.5;
+    if (o.relic_fix) v += 2.5;
+    if (o.relic_sort) v += 0.6;
+    if (o.accum_seed) v += 0.6 * o.accum_seed;
+    if (o.accum_take) v += 0.9 * o.accum_take;
+    if (o.pay_pick) v -= 0.8 * o.pay_pick.n;
+    if (o.fame_flag) v += 0.5 * (o.fame_flag.max ?? 4);
+    if (o.dup_tool) v += 2;
+    if (o.later) v += 0.7 * opsValue(o.later.do);
+    if (o.invest) v += 1;
+    if (o.lend) v += o.lend.back - o.lend.amt;
+    if (o.value_up) v += 0.6;
+    if (o.trade_skim) v += 0.5;
+    if (o.refate) v += 1;
   }
   return v;
 }
@@ -213,6 +235,10 @@ export class AI implements Brain {
     switch (req.k) {
       case 'card': {
         if (req.why === 'quest') return this.best(req.cards, (id) => this.questFit(g, id));
+        // 盗み見：相手の手札でいちばん良さそうなものを山に戻させる（伏せた '?' は0）
+        if (req.why === 'peek') return this.best(req.cards, (id) => (g.byId.has(id) ? cardValue(g.card(id)) : 0));
+        // 鑑定：名声の高い遺物から上に
+        if (req.why === 'sort') return this.best(req.cards, (id) => (g.anc.get(id)?.fame ?? 0));
         if (req.kind === 'ancient' || req.cards.every((id) => g.anc.has(id))) {
           return this.best(req.cards, (id) => (g.anc.get(id)?.fame ?? 0) - 0.3 * costValue(g.anc.get(id)?.repair ?? {}));
         }
@@ -241,13 +267,22 @@ export class AI implements Brain {
         return this.best(req.options, (r) => -ITEM_KINDS.reduce((a, k) => a + Math.abs(r[k] - want[k] * N / tot), 0) * 3);
       }
       case 'kind': return this.best(req.options, (k) => req.left[k]);
-      case 'heal': return g.round < g.R && p.res.herb >= (req.cost.herb ?? 0);
+      case 'heal': return g.round < g.R && canPay(p, req.cost);
       case 'effect': {
+        // 運命返し：負けそうなら引き直す
+        if (req.ops.some((o) => o.refate)) return g.fateGap > 0;
         const v = opsValue(req.ops) + 0.5 * req.ops.reduce((a, o) => a + (o.fame ?? 0), 0);
         return v > -0.05 || this.level === 'random';
       }
       // 誰を鍛えるか：いちばん熟練の低い仲間（エンジンが先頭に並べる）
-      case 'pick': return req.what.startsWith('train:') ? req.options[0] : this.best(req.options, (x) => this.choiceValue(g, p, x));
+      case 'pick': {
+        if (req.what.startsWith('train:')) return req.options[0];
+        // 伝授：熟練の高い仲間から低い仲間へ写す
+        const sk = (x: Choice) => { const c = p.comps[Number(String(x).slice(3))]; return c ? c.atk + c.def : 0; };
+        if (req.what === 'copy_from') return this.best(req.options, sk);
+        if (req.what === 'copy_to') return this.best(req.options, (x) => -sk(x));
+        return this.best(req.options, (x) => this.choiceValue(g, p, x));
+      }
       case 'choose': return this.choose(g, p, req.opts);
     }
   }
@@ -267,6 +302,8 @@ export class AI implements Brain {
       if (x === 'mage:draw') return 1.2;
       if (x === 'mage:mana') return 1;
       if (x === 'skip') return 0;
+      const v2 = this.newChoiceValue(g, p, x);
+      if (v2 !== null) return v2;
       if (x.startsWith('res:')) return this.W.res[x.slice(4) as Res] ?? 0;
       if (x === 'wall') return 1.5 + (this.targets.includes('fort') ? 1 : 0);
       if (x === 'atk') return 1 + (this.targets.some((t) => WEAPON_TAGS.has(t)) ? 0.5 : 0);
@@ -283,6 +320,35 @@ export class AI implements Brain {
     if (x.m === 'stone') return (x.dir === 'sell' ? 1 : -1) * (this.W.res[x.r] * x.q - D.STONE.fame[x.tier] * 1.2);
     if (x.m === 'both') return this.W.res[x.buy.r] * x.buy.q - this.W.res[x.sell.r] * x.sell.q;
     return 0;
+  }
+
+  /** 新しいカードの選択肢（追撃・笛・写し・投資・払い・戦利品・相手・マス） */
+  newChoiceValue(g: Game, p: Player, x: string): number | null {
+    const [h, a, b] = x.split(':');
+    switch (h) {
+      case 'chase': { const nd = g.nest(a); return nd?.mon ? 3 - 0.3 * nd.mon.str : 0; }
+      case 'peek': {
+        if (a === 'keep') return 0;
+        // 次の魔物のほうが弱ければ入れ替える
+        const nd = g.nest(b), nx = g.forecastQ[0];
+        return nd?.mon && nx ? nd.mon.str - nx.str : -1;
+      }
+      case 'loot': return a === 'gold' ? Number(b) * this.W.res.gold : 0.4 * Number(b ?? 0) + 0.5;
+      case 'gold': return -Number(a) * this.W.res.gold + Number(a) * 1.5 * this.W.res.gold * 0.8;
+      case 'payres': return -(this.W.res[a as Res] ?? 0);
+      case 'pl': { const q = g.players[Number(a)]; return q ? q.hand.length + 0.1 * q.res.gold : 0; }
+      case 'blk': return ({ guild: 1.5, workshop: 1.4, training: 1.2, market: 1 } as Record<string, number>)[a] ?? 0.5;
+      case 'acc': { const sp = g.space(a); return sp ? RES.reduce((s, r) => s + (sp.stock[r] ?? 0) * (this.W.res[r] ?? 0), 0) : 0; }
+      case 'val': return p.res[a as Res] ?? 0;
+      case 'ban': return 1;
+      case 'atk': case 'def': { const c = p.comps[Number(a)]; return c ? 2 - (c.atk + c.def) * 0.2 : 0; }
+      case 'rsv': { const nd = g.nest(a); return nd?.mon ? 1 + 0.1 * nd.mon.str : 0; }
+      case 'fix0': { const an = g.anc.get(a); return an ? an.fame : 0; }
+      case 'mk': { const c = p.comps.find((cc) => cc.weapon === a || cc.weapon2 === a); return c ? 1 + c.atk : 0.5; }
+      case 'dup': return g.byId.has(a) ? cardValue(g.card(a), this.targets) : 0;
+      case 'eq': case 'eq2': return a === '-' ? 0 : 1 + (p.comps[Number(a)]?.atk ?? 0) * 0.1;
+      default: return null;
+    }
   }
 
   // ------------------------------------------------------------ 置く場所の選択（1手先読み）
@@ -424,6 +490,24 @@ export class AI implements Brain {
       }
     }
   }
+  /** 抜け道：同じマスにいた人と取引を1回（詐欺師は同じ価値どうし、ほかは相手の AI が受けるときだけ） */
+  tradeWith(g: Game, p: Player, q: Player) {
+    const sw = g.is(p, 'swindler');
+    if (!sw && !(q.ai instanceof AI)) return;
+    const wants = RES.filter((r) => r !== 'gold' && q.res[r] > 0).sort((a, b) => this.needW(g, p, b) - this.needW(g, p, a));
+    const gives = RES.filter((r) => p.res[r] > 0).sort((a, b) => this.needW(g, p, a) - this.needW(g, p, b));
+    for (const r of wants) for (const m of gives) {
+      if (m === r || this.needW(g, p, m) >= this.needW(g, p, r)) continue;
+      let gk = 1, rk = 1;
+      if (sw) { const vr = g.val(r), vm = g.val(m); if (vr % vm) continue; gk = vr / vm; }
+      if (p.res[m] < gk) continue;
+      const give: Cost = { [m]: gk }, get: Cost = { [r]: rk };
+      if (g.tradeOk(p, q, give, get)) continue;
+      if (!sw && !(q.ai as AI).judgeOffer(g, q, give, get)) continue;
+      g.trade(p, q, give, get);
+      return;
+    }
+  }
   judgeOffer(g: Game, p: Player, recv: Cost, send: Cost): boolean {
     const val = (c: Cost) => Object.entries(c).reduce((a, [r, n]) => a + this.needW(g, p, r as Res) * (n as number), 0);
     return val(recv) - val(send) > 0.05;
@@ -515,8 +599,8 @@ export function evaluate(g: Game, p: Player, W: W, targets: EngineTag[] = []): n
   let sk = 0;
   for (const c of p.comps) {
     // 武器の戦力は武器狂いアカネなら倍。武器の守りも守りに入る
-    pw += c.atk * sm * SKILL_BONUS + (c.weapon ? (g.card(c.weapon).power ?? 0) * g.weaponMult(p) : 0);
-    df += c.def * sm * SKILL_BONUS + (c.armor ? g.card(c.armor).guard ?? 0 : 0) + (c.weapon ? g.card(c.weapon).guard ?? 0 : 0);
+    pw += c.atk * sm * SKILL_BONUS + g.compWeaponPower(p, c) * g.weaponMult(p);
+    df += c.def * sm * SKILL_BONUS + g.compGearGuard(c);
     sk += c.atk + c.def;
   }
   // 努力家：勝つたびに送った仲間の熟練の合計 ÷ fameDiv の名声。残りの戦闘の見込み（4ラウンドに約3回）で数える

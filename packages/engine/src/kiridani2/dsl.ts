@@ -10,6 +10,7 @@ export class DslError extends Error {
 export const WHEN_FIXED = new Set([
   'use', 'fight', 'win', 'lose', 'round_start', 'round_end', 'winter', 'game_end', 'setup',
   'build', 'hire', 'craft', 'sell', 'buy', 'trade', 'donate', 'spell', 'tame', 'play', 'passive', 'occ', 'quest', 'hit', 'injure', 'repair',
+  'fate', 'trained', 'act',
 ]);
 export const WHEN_PREFIX = ['use:', 'instead:', 'other:', 'win_race:'];
 
@@ -18,11 +19,17 @@ export const OP_KEYS = new Set([
   'extra_worker', 'place_again', 'ignore_full', 'future', 'draw', 'hire', 'hire_free', 'tame', 'train', 'build', 'heal',
   'steal_gain', 'craft', 'occ', 'exchange', 'first', 'donate', 'fame_per', 'gain_per', 'others_gain',
   'power_per', 'lose', 'injure', 'scrap', 'shard', 'buy_card', 'draw_any', 'gain_pick', 'repair', 'relic', 'trade_bonus', 'ward', 'accum_add',
+  'flag', 'weapon_again', 'refate', 'mark_weapon', 'train_sent', 'train_copy', 'skill_boost', 'skill_copy', 'ally_guard', 'loot_tamed', 'reserve', 'hog',
+  'repair_free', 'relic_fix', 'relic_sort', 'accum_seed', 'accum_take', 'block', 'peek_discard', 'market_ban', 'pay_pick', 'fame_flag', 'dup_tool', 'later',
+  'invest', 'lend', 'loot_gold', 'value_up', 'buy_ban', 'trade_skim',
 ]);
 /** 戦闘中だけ意味のある op */
-export const FIGHT_OPS = new Set(['power', 'guard', 'counter', 'loot', 'trophy', 'str', 'no_injury', 'tame', 'power_per']);
+export const FIGHT_OPS = new Set(['power', 'guard', 'counter', 'loot', 'trophy', 'str', 'no_injury', 'tame', 'power_per', 'weapon_again', 'skill_boost', 'ally_guard', 'hog']);
 /** 選択肢を広げる op（最初の1つは置く場所の選択肢に広げ、2つ目からは実行のときに聞く） */
-export const EXPAND_OPS = new Set(['craft', 'occ', 'build', 'exchange', 'train', 'scrap', 'repair']);
+export const EXPAND_OPS = new Set([
+  'craft', 'occ', 'build', 'exchange', 'train', 'scrap', 'repair',
+  'repair_free', 'mark_weapon', 'block', 'peek_discard', 'market_ban', 'lend', 'value_up', 'buy_ban', 'accum_take', 'dup_tool', 'reserve',
+]);
 
 export const MOD_KEYS = new Set([
   'market_qty', 'market_both', 'trade_count', 'accum_bonus', 'cost_discount', 'upkeep', 'donate_rate', 'base_guard', 'pet_power',
@@ -30,16 +37,19 @@ export const MOD_KEYS = new Set([
   'cost_extra', 'pet_cap', 'pet_bring', 'capture_ease', 'gold_mana', 'gold_cap', 'gold_div', 'sell_full', 'shard_need', 'ancient_look',
   'spell_return', 'comp_cap', 'occ_food', 'two_hand_armor', 'rage', 'no_atk_train', 'tool_yield', 'leader_no_weapon',
   'skill_cap', 'stone_down', 'send_cap', 'fav_cut', 'repair_cut', 'home_guard', 'adv_free', 'raid_mult', 'hoard_bonus', 'hoard_div', 'no_absent', 'trade_max', 'winter_gold',
+  'dual_light', 'wear_weapon2', 'dual_armor_light', 'train_herb', 'rest_train', 'first_spell_cut', 'rest_gain', 'herb_mana', 'fav_alt', 'fav_cut_round',
+  'nest_peek', 'boss_tame', 'two_hand_power', 'repair_gold', 'wall_count', 'trade_cut', 'stone_buy_cut', 'squeeze', 'heal_gold', 'market_plus', 'stall', 'own_space',
 ]);
-export const COND_KEYS = new Set(['season', 'min', 'max', 'race', 'coop', 'k_min', 'k_max', 'boss', 'has', 'res_min', 't_min', 't_max']);
+export const COND_KEYS = new Set(['season', 'min', 'max', 'race', 'coop', 'k_min', 'k_max', 'boss', 'has', 'res_min', 't_min', 't_max', 'flag', 'last_win', 'space_not']);
 export const STAT_KEYS = new Set<StatKey>([
   'comps', 'occs', 'walls', 'beds', 'facilities', 'gear', 'pets', 'kills', 'races', 'trophies', 'hand', 'ancient', 'quests', 'skills',
   'injured', 'boss', 'coop', 'spells', 'donations', 'trades', 'year', 'round',
   'weapons', 'armors', 'tools', 'tomes', 'casts', 'shards', 'kinds', 'sold', 'gold', 'atk', 'def', 'dmg',
   'sent_atk', 'sent_wpow', 'sent_k', 'exposed', 'casts_round', 'broken', 'blocked', 'res_total',
+  'pet_types', 'pet_same', 'fights_round', 'sent_guard',
 ]);
 /** 戦闘中だけ数える stat（fight の環境がないと 0） */
-export const FIGHT_STATS = new Set<StatKey>(['sent_atk', 'sent_wpow', 'sent_k', 'exposed']);
+export const FIGHT_STATS = new Set<StatKey>(['sent_atk', 'sent_wpow', 'sent_k', 'exposed', 'sent_guard']);
 const DRAW_FROM = new Set(['occ', 'item', 'equip', 'weapon', 'armor', 'tool', 'spell', 'ancient']);
 const DRAW_ANY_FROM = new Set(['occ', 'weapon', 'armor', 'tool', 'spell']);
 
@@ -67,14 +77,15 @@ export function validateCond(c: Cond, where = 'if') {
   if (c.res_min) checkCost(c.res_min, `${where}.res_min`);
 }
 
-/** do の1要素のキー（build＋discount と train＋fresh だけは2つ持てる） */
+/** do の1要素のキー（build＋discount・surcharge・extra_units と train＋fresh だけは2つ以上持てる） */
+const BUILD_SUB = ['discount', 'surcharge', 'extra_units'];
 export function opKey(op: Op, where = 'do'): string {
   const keys = Object.keys(op);
-  const main = keys.filter((k) => k !== 'discount' && k !== 'fresh');
+  const main = keys.filter((k) => !BUILD_SUB.includes(k) && k !== 'fresh');
   if (main.length !== 1) throw new DslError(`${where}: an op must have exactly one key (got ${keys.join(',') || 'none'})`);
   const k = main[0];
   if (!OP_KEYS.has(k)) throw new DslError(`${where}: unknown op "${k}"`);
-  if (keys.includes('discount') && k !== 'build') throw new DslError(`${where}: discount is only for build`);
+  if (keys.some((x) => BUILD_SUB.includes(x)) && k !== 'build') throw new DslError(`${where}: ${keys.filter((x) => BUILD_SUB.includes(x)).join(',')} is only for build`);
   if (keys.includes('fresh') && k !== 'train') throw new DslError(`${where}: fresh is only for train`);
   return k;
 }
@@ -106,9 +117,23 @@ export function validateOp(op: Op, where = 'do') {
     case 'future': { const f = v as Op['future']; if (!f || !Array.isArray(f.rounds)) throw new DslError(`${where}: future.rounds`); checkCost(f.gain, `${where}.future.gain`); break; }
     case 'draw': { const d = v as Op['draw']; if (!d || !DRAW_FROM.has(d.from)) throw new DslError(`${where}: draw.from "${d?.from}"`); break; }
     case 'train': if (!['atk', 'def', 'any'].includes(v as string)) throw new DslError(`${where}: train "${v}"`); break;
-    case 'build': if (!['wall', 'bed', 'facility', 'any'].includes(v as string)) throw new DslError(`${where}: build "${v}"`); if (op.discount) checkCost(op.discount, `${where}.discount`); break;
+    case 'build': if (!['wall', 'bed', 'facility', 'any'].includes(v as string)) throw new DslError(`${where}: build "${v}"`); if (op.discount) checkCost(op.discount, `${where}.discount`); if (op.surcharge) checkCost(op.surcharge, `${where}.surcharge`); break;
     case 'craft': if (!['weapon', 'armor', 'any'].includes(v as string)) throw new DslError(`${where}: craft "${v}"`); break;
     case 'donate': { const d = v as Op['donate']; if (!d) throw new DslError(`${where}: donate`); checkCost(d.pay, `${where}.donate.pay`); break; }
+    case 'flag': { const f = v as Op['flag']; if (!f || typeof f.k !== 'string' || !f.k) throw new DslError(`${where}: flag.k`); break; }
+    case 'fame_flag': { const f = v as Op['fame_flag']; if (!f || typeof f.k !== 'string' || typeof f.mult !== 'number') throw new DslError(`${where}: fame_flag`); break; }
+    case 'pay_pick': { const f = v as Op['pay_pick']; if (!f || typeof f.n !== 'number' || !Array.isArray(f.from) || !f.from.every((r) => RES.includes(r))) throw new DslError(`${where}: pay_pick`); break; }
+    case 'trade_skim': if (!Array.isArray(v) || !(v as Res[]).every((r) => RES.includes(r))) throw new DslError(`${where}: trade_skim`); break;
+    case 'block': if (v !== 'accum' && v !== 'any') throw new DslError(`${where}: block "${v}"`); break;
+    case 'later': {
+      const l = v as Op['later'];
+      if (!l || !Array.isArray(l.do)) throw new DslError(`${where}: later.do`);
+      validateWhen(l.when, `${where}.later.when`);
+      l.do.forEach((o, i) => validateOp(o, `${where}.later.do[${i}]`));
+      break;
+    }
+    case 'relic_fix': { const f = v as Op['relic_fix']; if (!f || typeof f.look !== 'number' || typeof f.cut !== 'number') throw new DslError(`${where}: relic_fix`); break; }
+    case 'lend': { const f = v as Op['lend']; if (!f || typeof f.amt !== 'number' || typeof f.back !== 'number' || typeof f.rounds !== 'number') throw new DslError(`${where}: lend`); break; }
     default: break;
   }
 }
@@ -118,6 +143,7 @@ export function validateMod(m: Mod, where = 'mod') {
   if (m.cost_discount) checkCost(m.cost_discount.res, `${where}.cost_discount.res`);
   if (m.donate_rate) checkCost(m.donate_rate, `${where}.donate_rate`);
   if (m.cost_extra) checkCost(m.cost_extra.res, `${where}.cost_extra.res`);
+  if (m.rest_gain) checkCost(m.rest_gain, `${where}.rest_gain`);
 }
 
 export function validateEffect(e: Effect, where = 'effect') {
@@ -130,7 +156,7 @@ export function validateEffect(e: Effect, where = 'effect') {
     if (!Array.isArray(e.do)) throw new DslError(`${where}: do must be an array`);
     e.do.forEach((op, i) => validateOp(op, `${where}.do[${i}]`));
   }
-  if (e.limit != null && !['round', 'year', 'game'].includes(e.limit)) throw new DslError(`${where}: unknown limit "${e.limit}"`);
+  if (e.limit != null && !['round', 'round2', 'year', 'game'].includes(e.limit)) throw new DslError(`${where}: unknown limit "${e.limit}"`);
 }
 
 /** カード1枚の形を確かめる（知らない when / op / mod / 条件は例外） */
@@ -153,6 +179,8 @@ export interface FightEnv {
   race: Race; coop: boolean; k: number; boss: boolean;
   /** 送った仲間の攻めの熟練の合計・武器の戦力の合計、守りを超える反撃 */
   atk?: number; wpow?: number; exposed?: number;
+  /** 送った仲間の守りの合計 */
+  guard?: number;
 }
 export interface CondEnv {
   stat(k: StatKey): number;
@@ -161,6 +189,12 @@ export interface CondEnv {
   res: Record<Res, number>;
   has(id: string): boolean;
   fight?: FightEnv;
+  /** 自分の印の数（flag） */
+  flag?(k: string): number;
+  /** 直前の自分の戦闘に勝ったか */
+  lastWin?: boolean;
+  /** 使ったマス（use の効果のとき） */
+  space?: string;
 }
 
 export function checkCond(c: Cond | undefined, env: CondEnv): boolean {
@@ -179,6 +213,9 @@ export function checkCond(c: Cond | undefined, env: CondEnv): boolean {
       case 'res_min': for (const [r, n] of Object.entries(c.res_min!)) if (env.res[r as Res] < (n as number)) return false; break;
       case 't_min': if (env.t < c.t_min! - 1e-9) return false; break;
       case 't_max': if (env.t > c.t_max! + 1e-9) return false; break;
+      case 'flag': if (!((env.flag?.(c.flag!) ?? 0) > 0)) return false; break;
+      case 'last_win': if (!!env.lastWin !== c.last_win) return false; break;
+      case 'space_not': if (env.space === undefined || env.space === c.space_not) return false; break;
       default: throw new DslError(`unknown condition "${k}"`);
     }
   }
@@ -195,6 +232,10 @@ export interface ModSum {
   two_hand_armor: boolean; rage: number; no_atk_train: boolean; tool_yield: number; leader_no_weapon: boolean;
   skill_cap: number; stone_down: string[]; send_cap: number; fav_cut: number; repair_cut: number; home_guard: number; adv_free: boolean;
   raid_mult: number; hoard_bonus: number; hoard_div: number; no_absent: boolean; trade_max: number; winter_gold: number;
+  dual_light: boolean; wear_weapon2: boolean; dual_armor_light: boolean; train_herb: boolean; rest_train: boolean; first_spell_cut: number;
+  rest_gain: Cost | null; herb_mana: number; fav_alt: number; fav_cut_round: number; nest_peek: boolean; boss_tame: number; two_hand_power: number;
+  repair_gold: number; wall_count: number; trade_cut: number; stone_buy_cut: number; squeeze: boolean; heal_gold: number; market_plus: number;
+  stall: boolean; own_space: string[];
 }
 export function emptyMods(): ModSum {
   return {
@@ -205,6 +246,9 @@ export function emptyMods(): ModSum {
     leader_no_weapon: false,
     skill_cap: 0, stone_down: [], send_cap: 0, fav_cut: 0, repair_cut: 0, home_guard: 0, adv_free: false,
     raid_mult: 1, hoard_bonus: 0, hoard_div: 0, no_absent: false, trade_max: 0, winter_gold: 0,
+    dual_light: false, wear_weapon2: false, dual_armor_light: false, train_herb: false, rest_train: false, first_spell_cut: 0,
+    rest_gain: null, herb_mana: 0, fav_alt: 0, fav_cut_round: 0, nest_peek: false, boss_tame: 0, two_hand_power: 0,
+    repair_gold: 0, wall_count: 0, trade_cut: 0, stone_buy_cut: 0, squeeze: false, heal_gold: 0, market_plus: 0, stall: false, own_space: [],
   };
 }
 export function addMod(s: ModSum, m: Mod) {
@@ -255,6 +299,28 @@ export function addMod(s: ModSum, m: Mod) {
       case 'no_absent': s.no_absent = s.no_absent || !!m.no_absent; break;
       case 'trade_max': s.trade_max += m.trade_max!; break;
       case 'winter_gold': s.winter_gold = s.winter_gold ? Math.min(s.winter_gold, m.winter_gold!) : m.winter_gold!; break;
+      case 'dual_light': s.dual_light = s.dual_light || !!m.dual_light; break;
+      case 'wear_weapon2': s.wear_weapon2 = s.wear_weapon2 || !!m.wear_weapon2; break;
+      case 'dual_armor_light': s.dual_armor_light = s.dual_armor_light || !!m.dual_armor_light; break;
+      case 'train_herb': s.train_herb = s.train_herb || !!m.train_herb; break;
+      case 'rest_train': s.rest_train = s.rest_train || !!m.rest_train; break;
+      case 'first_spell_cut': s.first_spell_cut += m.first_spell_cut!; break;
+      case 'rest_gain': s.rest_gain = addCost(s.rest_gain ?? {}, m.rest_gain!); break;
+      case 'herb_mana': s.herb_mana = s.herb_mana ? Math.min(s.herb_mana, m.herb_mana!) : m.herb_mana!; break;
+      case 'fav_alt': s.fav_alt = s.fav_alt ? Math.min(s.fav_alt, m.fav_alt!) : m.fav_alt!; break;
+      case 'fav_cut_round': s.fav_cut_round += m.fav_cut_round!; break;
+      case 'nest_peek': s.nest_peek = s.nest_peek || !!m.nest_peek; break;
+      case 'boss_tame': s.boss_tame = s.boss_tame ? Math.min(s.boss_tame, m.boss_tame!) : m.boss_tame!; break;
+      case 'two_hand_power': s.two_hand_power += m.two_hand_power!; break;
+      case 'repair_gold': s.repair_gold = s.repair_gold ? Math.min(s.repair_gold, m.repair_gold!) : m.repair_gold!; break;
+      case 'wall_count': s.wall_count += m.wall_count!; break;
+      case 'trade_cut': s.trade_cut += m.trade_cut!; break;
+      case 'stone_buy_cut': s.stone_buy_cut += m.stone_buy_cut!; break;
+      case 'squeeze': s.squeeze = s.squeeze || !!m.squeeze; break;
+      case 'heal_gold': s.heal_gold = s.heal_gold ? Math.min(s.heal_gold, m.heal_gold!) : m.heal_gold!; break;
+      case 'market_plus': s.market_plus += m.market_plus!; break;
+      case 'stall': s.stall = s.stall || !!m.stall; break;
+      case 'own_space': if (!s.own_space.includes(m.own_space!)) s.own_space.push(m.own_space!); break;
       default: throw new DslError(`unknown mod "${k}"`);
     }
   }

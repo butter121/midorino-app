@@ -4,7 +4,7 @@
 import { AI, type Level } from './ai';
 import { CARD_SET } from './cards';
 import { canPay, Game, sameOpt, slotOf, type Gen, type Option, type Player, type Req } from './engine';
-import type { CardSet, Cost, GameEvent, Res } from './types';
+import type { CardSet, Cost, GameEvent, Res, Slot } from './types';
 import { RES } from './types';
 import * as D from './data';
 
@@ -51,7 +51,7 @@ export function cleanWho(u: unknown): number[] | undefined {
 type Input =
   | { k: 'answer'; a: unknown }
   | { k: 'trade'; b: number; give: Cost; get: Cost }
-  | { k: 'equip'; c: number; slot: 'weapon' | 'armor'; id: string | null }
+  | { k: 'equip'; c: number; slot: Slot; id: string | null }
   | { k: 'auto'; seat: number; on: boolean; level: Level }
   | { k: 'seat'; seat: number; a: unknown };
 
@@ -225,7 +225,7 @@ export class Kiridani2Session {
   tradeLeft(): number {
     const p = this.player;
     if (!p || !this.waiting || this.waiting.k !== 'choose') return 0;
-    return Math.max(0, this.g.tradeLimit(p) - p.tradesUsed);
+    return this.g.tradesLeft(p);
   }
   tradePartners(): number[] {
     const me = this.player?.pid ?? this.human;
@@ -288,7 +288,7 @@ export class Kiridani2Session {
 
   // ---------------------------------------------------------- 装備（自分の手番に無料で持たせる・はずす・持ち替える）
   /** 装備を持たせる（id＝null ではずす）。置き場所の選択は続く */
-  equip(companion: number, slot: 'weapon' | 'armor', id: string | null): GameEvent[] {
+  equip(companion: number, slot: Slot, id: string | null): GameEvent[] {
     const w = this.waiting;
     if (!w || w.k !== 'choose') throw new Error('装備は自分の番に持ち替えられる');
     // 同じ操作が2度届いた（連打・再送）ときは何もしない

@@ -5,7 +5,7 @@ import type { NetEvent } from '@midorino/engine/src/kiridani2/net';
 export type Seat = number;
 export type Ev = NetEvent;
 
-export interface CompView { atk: number; def: number; weapon: string | null; armor: string | null; leader: boolean; injured: boolean; rest: boolean; at?: string }
+export interface CompView { atk: number; def: number; weapon: string | null; armor: string | null; weapon2?: string | null; armor2?: string | null; leader: boolean; injured: boolean; rest: boolean; at?: string }
 export interface PV2 {
   seat: Seat; name: string; leader?: string; fame: number; res: Record<Res, number>;
   beds: number; walls: number; tools: string[]; occs: string[]; items: string[]; hand: string[]; ancient: string[];
@@ -54,7 +54,24 @@ export const CARD2 = Object.fromEntries(ALL.map((c) => [c.id, c])) as Record<str
 export const QUEST2 = Object.fromEntries(CARD_SET.quests.map((q) => [q.id, q]));
 export const ANC2 = Object.fromEntries(CARD_SET.ancient.map((a) => [a.id, a]));
 export const cardName = (id: string) => CARD2[id]?.name ?? ANC2[id]?.name ?? QUEST2[id]?.name ?? '？';
-export const placeName = (id: string) => DATA.SPACE[id]?.name ?? CARD2[id]?.name ?? NEST_JP[id] ?? id;
+/** カードの効果の記録（エンジンの note の text を日本語に） */
+export function noteText(v: View2, card: string, text: string): string {
+  const [h, a, b] = text.split(':');
+  const name = card === 'squeeze' ? '抜け道' : cardName(card);
+  switch (h) {
+    case 'pl': return `${name}（${who(v, Number(a))}と）`;
+    case 'blk': return `${name}：${placeName(a)}をふさいだ`;
+    case 'mk': return `${name}：${cardName(a)}に印`;
+    case 'rsv': return `${name}：${NEST_JP[a] ?? a}の魔物に印`;
+    case 'sort': return `${name}：遺物の山を並べ替えた`;
+    case 'ban': return h === 'ban' && a === 'pl' ? `${name}：${who(v, Number(b))}は次のラウンド交換所を使えない` : `${name}：${RES_JP[a as Res] ?? a}を買い占めた`;
+    case 'val': return `${name}：${RES_JP[a as Res] ?? a}の価値+1`;
+    case 'dup': return `${name}：${cardName(a)}を複製`;
+    case 'chase': return `${name}：${NEST_JP[a] ?? a}の魔物とも戦う`;
+    default: return name;
+  }
+}
+export const placeName = (id: string) => (id === '@rest' ? '休ませる' : DATA.SPACE[id]?.name ?? CARD2[id]?.name ?? NEST_JP[id] ?? id);
 /**
  * 行動マスのまとまり（盤面で同じ役割のマスを並べる）。段階カードのマスも出たらここで分ける。
  * 載っていない id（新しい段階カードなど）はカードの強い動きの種類で分け、それも無ければ「冒険」。
@@ -205,6 +222,8 @@ export function applyEvent2(v0: View2, ev: Ev): View2 {
       break;
     }
     case 'effect': if (ev.seat === v.me) log(`${cardName(ev.card)}の効果`); break;
+    case 'discard': { const p = P(ev.seat); dropHand(p, ev.card); log(`${who(v, ev.seat)}の手札の${ev.card === '?' ? '1枚' : cardName(ev.card)}が山に戻った`); break; }
+    case 'note': log(`${who(v, ev.seat)}：${noteText(v, ev.card, ev.text)}`); break;
     case 'play_card': {
       const p = P(ev.seat), c = CARD2[ev.card];
       dropHand(p, ev.card);

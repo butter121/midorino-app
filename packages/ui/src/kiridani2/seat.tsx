@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   choiceLabel, DATA, stoneKey, optionLabel, opsText, previewFight, whenText, RES, slotOf, type Action2, type Choice, type Cost, type FightChip, type FightMode, type Game, type Option,
-  type Player, type SeatSession2,
+  type Player, type SeatSession2, type Slot,
 } from '@midorino/engine/src/kiridani2';
 import { KIcon } from '../kiridani/art-registry';
 import { ChoiceSheet, type ChoiceItem, type ChoiceSpec } from '../kiridani/ui/choice';
@@ -12,13 +12,14 @@ import { CostRow, Token } from '../kiridani/ui/parts';
 import { TradeButton, TradeTray } from '../kiridani/ui/tray';
 import type { SeatSession } from '@midorino/engine/src/kiridani';
 import { CardArt2, FateRow2, MonArt } from './parts2';
-import { whyTitle, type Ask2 } from './table2';
+import { whyTitle, type Ask2, type OnEquip } from './table2';
 import { MarketTray2 } from './market2';
 import { CARD2, cardName, placeName } from './view';
 
 const KIND_JP: Record<string, string> = { weapon: '武器', armor: '防具', tool: '道具', spell: '秘術' };
 const isFight = (sid: string) => sid.startsWith('nest') || sid === 'lair';
-const SLOT_JP = { weapon: '武器', armor: '防具' } as const;
+const SLOT_JP = { weapon: '武器', armor: '防具', weapon2: '2本目の武器', armor2: '2つ目の防具' } as const;
+const slotBase2 = (s: Slot): 'weapon' | 'armor' => (s === 'weapon' || s === 'weapon2' ? 'weapon' : 'armor');
 
 // ---------------------------------------------------------------- 仲間（戦力・守り・装備）
 export const compName = (p: Player, i: number) => (p.comps[i]?.leader ? 'リーダー' : `仲間${i + 1}`);
@@ -26,7 +27,8 @@ export const compName = (p: Player, i: number) => (p.comps[i]?.leader ? 'リー�
 export function compStats(g: Game, p: Player, i: number): { power: number; guard: number } {
   const c = p.comps[i];
   const gd = (id: string | null) => (id ? g.card(id).guard ?? 0 : 0);
-  return { power: g.compPower(p, i), guard: DATA.GUARD_PER + c.def + gd(c.armor) + gd(c.weapon) };
+  void gd;
+  return { power: g.compPower(p, i), guard: DATA.GUARD_PER + c.def + g.compGearGuard(c) };
 }
 
 // ---------------------------------------------------------------- 細かい選択を短く（見出し＋払う→得るのアイコン。説明は要るときだけ）
@@ -125,11 +127,12 @@ export function uiFor2(s: SeatSession2): { ask: Ask2 | null; sheet: (ChoiceSpec 
           ask: null, sheet: {
             title: `${cd.name}を誰に持たせる？`, sub: `${SLOT_JP[sl]}・${cd.text}`,
             items: w.options.map((x, i) => {
-              const ci = String(x) === 'eq:-' ? -1 : Number(String(x).slice(3));
+              const ci = String(x) === 'eq:-' ? -1 : Number(String(x).split(':')[1]);
               if (ci < 0) return { id: String(i), title: '倉庫に置く', detail: '自分の番に「拠点」でいつでも持たせられる' };
+              const two = String(x).startsWith('eq2:');
               const c = p.comps[ci], st = compStats(g, p, ci);
-              const out = [c[sl], sl === 'weapon' && cd.two_hand ? c.armor : null].filter(Boolean).map((y) => cardName(y!));
-              return { id: String(i), title: compName(p, ci), detail: `戦力${st.power}・守り${st.guard}${out.length ? `／${out.join('・')}は倉庫へ` : ''}`, primary: i === 0 };
+              const out = two ? [] : [c[sl], sl === 'weapon' && cd.two_hand ? c.armor : null, sl === 'weapon' && cd.two_hand ? c.weapon2 : null].filter(Boolean).map((y) => cardName(y!));
+              return { id: String(i), title: two ? `${compName(p, ci)}（${SLOT_JP[sl === 'weapon' ? 'weapon2' : 'armor2']}）` : compName(p, ci), detail: `戦力${st.power}・守り${st.guard}${out.length ? `／${out.join('・')}は倉庫へ` : ''}`, primary: i === 0 };
             }),
             toAction: (id) => ({ t: 'pick', i: Number(id) }),
           },
@@ -197,10 +200,11 @@ function Sheet({ label, children }: { label: string; children: ReactNode }) {
 // 送る仲間の数・戦い方を選び、使うもの（士気・ポーション・払うカードの効果・手札の秘術）をタップでトレイに足す。
 // 足すたびに戦力・勝つ見込み・運命・反撃と負傷・払うものがその場で変わる。計算はエンジン（previewFight → makePlan の use）。
 const STYLES: [FightMode, string, string][] = [
-  ['normal', '普通に', '戦力そのまま'], ['guard', '守って戦う', '戦力−2・反撃−2'], ['chip', '削るだけ', '負けても傷+1'],
+  ['normal', '普通に', '戦力そのまま'], ['guard', '守って戦う', '戦力−2・反撃−2'], ['chip', '削るだけ', '負けても傷+1'], ['capture', '使い魔にする', '好物を払って捕まえる'],
 ];
 /** 秘術を唱える・身につける（置く場所を選ぶ前に何度でも） */
-const isSpellOpt = (o: { s: string }) => o.s === '@spell' || o.s === '@learn';
+/** マスに置かない手（秘術・身につける・カードの効果・屋台・休ませる）。トレイの「秘術」ボタンから選ぶ */
+const isSpellOpt = (o: { s: string }) => o.s.startsWith('@');
 const sumCost = (c: Cost) => Object.values(c).reduce((a: number, n) => a + (n ?? 0), 0);
 const addC = (a: Cost, b: Cost): Cost => { const o: Cost = { ...a }; for (const [r, n] of Object.entries(b)) (o as Record<string, number>)[r] = ((o as Record<string, number>)[r] ?? 0) + (n as number); return o; };
 const payable = (res: Record<string, number> | undefined, c: Cost) => !!res && Object.entries(c).every(([r, n]) => (res[r] ?? 0) >= (n as number));
@@ -354,8 +358,8 @@ export function FightTray2({ s, sid, onPick, onCancel }: { s: SeatSession2; sid:
               <button key={i} type="button" className={`kd2-fcomp${on ? ' is-on' : ' is-off'}`} aria-pressed={on} onClick={() => toggleComp(i)} data-kd={`fcomp:${i}`}>
                 <span className="kd2-comp-who"><Token seat={p!.pid} size={20} dim={!on} /><small>{compName(p!, i)}</small></span>
                 <span className="kd2-fcomp-st"><KIcon name="power" size={13} />{st.power}<KIcon name="defense" size={13} />{st.guard}</span>
-                <span className={`kd2-slot is-weapon${c.weapon ? ' is-on' : ''}`}><small>武器</small>{c.weapon ? <b>{cardName(c.weapon)}</b> : <i>なし</i>}</span>
-                <span className={`kd2-slot is-armor${c.armor ? ' is-on' : ''}`}><small>防具</small>{c.armor ? <b>{cardName(c.armor)}</b> : <i>なし</i>}</span>
+                <span className={`kd2-slot is-weapon${c.weapon ? ' is-on' : ''}`}><small>武器</small>{c.weapon ? <b>{cardName(c.weapon)}{c.weapon2 ? `・${cardName(c.weapon2)}` : ''}</b> : <i>なし</i>}</span>
+                <span className={`kd2-slot is-armor${c.armor ? ' is-on' : ''}`}><small>防具</small>{c.armor ? <b>{cardName(c.armor)}{c.armor2 ? `・${cardName(c.armor2)}` : ''}</b> : <i>なし</i>}</span>
               </button>
             ); })}
           </div>
@@ -474,7 +478,7 @@ export function routeAnswer2(w: NonNullable<SeatSession2['waiting']>, c: string)
 /** 席の操作（盤面の答え・シート・トレイ・取引・秘術）をまとめて持つ */
 export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opts: { sheetReady: boolean; onTrade: (b: number, give: Cost, get: Cost) => void }) {
   const [sub, setSub] = useState<{ sid: string; opts: Option[] } | null>(null);
-  const [tray, setTray] = useState<{ kind: 'fight'; sid: string } | { kind: 'trade' } | { kind: 'spell' } | { kind: 'equip'; c: number; slot: 'weapon' | 'armor' } | null>(null);
+  const [tray, setTray] = useState<{ kind: 'fight'; sid: string } | { kind: 'trade' } | { kind: 'spell' } | { kind: 'equip'; c: number; slot: Slot } | null>(null);
   const ui = useMemo(() => (s ? uiFor2(s) : { ask: null, sheet: null }), [s]);
   const w = s?.waiting ?? null;
   const p = s?.player ?? null;
@@ -507,11 +511,13 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
   else if (s && p && w?.k === 'choose' && tray?.kind === 'equip') {
     const { c: ci, slot } = tray;
     const cur = p.comps[ci]?.[slot] ?? null;
-    const cand = [...new Set([...s.g.storage(p), ...p.comps.map((c) => c[slot]).filter((x): x is string => !!x)])].filter((id) => !s.g.equipError(p, ci, slot, id));
-    const from = (id: string) => (s.g.storage(p).includes(id) ? '倉庫' : compName(p, p.comps.findIndex((c) => c[slot] === id)));
+    const sb = slotBase2(slot);
+    const same = (c: (typeof p.comps)[number]) => (sb === 'weapon' ? [c.weapon, c.weapon2] : [c.armor, c.armor2]);
+    const cand = [...new Set([...s.g.storage(p), ...p.comps.flatMap(same).filter((x): x is string => !!x)])].filter((id) => !s.g.equipError(p, ci, slot, id));
+    const from = (id: string) => (s.g.storage(p).includes(id) ? '倉庫' : compName(p, p.comps.findIndex((c) => same(c).includes(id))));
     const items: ChoiceItem[] = cand.map((id) => {
       const cd = s.g.card(id);
-      const stat = slot === 'weapon' ? `戦力+${cd.power ?? 0}${cd.two_hand ? '・両手' : ''}` : `守り+${cd.guard ?? 0}`;
+      const stat = sb === 'weapon' ? `戦力+${cd.power ?? 0}${cd.two_hand ? '・両手' : ''}` : `守り+${cd.guard ?? 0}`;
       return { id, title: cd.name, detail: `${stat}（${from(id)}から）`, card: CARD2[id] ? id : undefined };
     });
     if (cur) items.unshift({ id: '-', title: `はずす：${cardName(cur)}`, detail: `いま持たせている。iで詳しく見る。はずすと倉庫へ`, card: CARD2[cur] ? cur : undefined, info: `card2:${cur}` });
@@ -521,7 +527,7 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
   else if (s && w?.k === 'choose' && tray?.kind === 'trade') sheetNode = <TradeTray s={tradeAdapter(s)} onTrade={(b, give, get) => { reset(); opts.onTrade(b, give, get); }} onCancel={reset} stones={s.player && s.g.is(s.player, 'swindler') ? { have: [...s.player.stones], jp: [...DATA.STONE.jp], value: [...DATA.STONE.value], key: (t) => stoneKey(t) as string } : undefined} />;
   else if (s && w?.k === 'choose' && tray?.kind === 'spell') {
     const sp = w.opts.filter((o) => isSpellOpt(o));
-    sheetNode = <ChoiceSheet spec={withInfo({ title: '秘術を使う', sub: '置く前に1枚。使い切りは使うと山に戻る', items: sp.map((o, i) => { const l = optionLabel(s.g, s.player, o); return { id: String(i), title: l.title.replace(/を使う$/, ''), detail: l.detail, card: l.card, cost: l.cost }; }), cancel: '使わない' })} onPick={(id) => go({ t: 'opt', i: w.opts.indexOf(sp[Number(id)]) })} onCancel={reset} />;
+    sheetNode = <ChoiceSheet spec={withInfo({ title: '秘術・カードの効果', sub: '置く前に使える。使い切りの秘術は使うと山に戻る', items: sp.map((o, i) => { const l = optionLabel(s.g, s.player, o); return { id: String(i), title: l.title.replace(/を使う$/, ''), detail: l.detail, card: l.card, cost: l.cost }; }), cancel: '使わない' })} onPick={(id) => go({ t: 'opt', i: w.opts.indexOf(sp[Number(id)]) })} onCancel={reset} />;
   } else if (s && p && w?.k === 'choose' && sub && sub.opts.every((o) => o.x !== undefined && typeof o.x === 'object')) {
     // 売り買いのマス：両替の形のトレイ
     const stage = s.g.space(sub.sid)?.stage;
@@ -543,7 +549,7 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
   const spells = w?.k === 'choose' ? w.opts.filter((o) => isSpellOpt(o)).length : 0;
   const actions = ui.ask?.kind === 'place' && s ? (
     <>
-      {spells > 0 && <button type="button" className="kd-btn kd-tradebtn" onClick={() => setTray({ kind: 'spell' })} aria-label={`秘術（${spells}）`}>✷ 秘術<small>{spells}</small></button>}
+      {spells > 0 && <button type="button" className="kd-btn kd-tradebtn" onClick={() => setTray({ kind: 'spell' })} aria-label={`秘術・効果（${spells}）`}>✷ 秘術・効果<small>{spells}</small></button>}
       <TradeButton s={tradeAdapter(s)} onOpen={() => setTray({ kind: 'trade' })} />
     </>
   ) : null;
@@ -558,13 +564,21 @@ export function useSeat2(s: SeatSession2 | null, send: (a: Action2) => void, opt
           <button key={i} type="button" role="radio" aria-checked={who === i} disabled={!ok} className={`kd2-whochip${who === i ? ' is-on' : ''}`} onClick={() => setWho(i)} data-kd={`who:${i}`}>
             <span className="kd2-whochip-h"><Token seat={p.pid} size={14} dim={!ok} injured={c.injured} /><b>{compName(p, i)}</b></span>
             <span className="kd2-whochip-st"><KIcon name="power" size={11} />{st.power}<KIcon name="defense" size={11} />{st.guard}</span>
-            <small className="kd2-whochip-eq">{c.weapon ? cardName(c.weapon) : '素手'}{c.armor ? `・${cardName(c.armor)}` : ''}</small>
+            <small className="kd2-whochip-eq">{c.weapon ? cardName(c.weapon) : '素手'}{c.weapon2 ? `・${cardName(c.weapon2)}` : ''}{c.armor ? `・${cardName(c.armor)}` : ''}{c.armor2 ? `・${cardName(c.armor2)}` : ''}</small>
           </button>
         );
       })}
     </div>
   ) : null;
   /** 拠点の装備の枠をタップ（自分の番だけ） */
-  const onEquip = w?.k === 'choose' && ui.ask?.kind === 'place' ? (c: number, slot: 'weapon' | 'armor') => { setSub(null); setTray({ kind: 'equip', c, slot }); } : undefined;
+  const onEquip: OnEquip | undefined = w?.k === 'choose' && ui.ask?.kind === 'place' && s && p
+    ? Object.assign((c: number, slot: Slot) => { setSub(null); setTray({ kind: 'equip', c, slot }); }, {
+      can2: (c: number, slot: 'weapon2' | 'armor2') => {
+        const sb = slot === 'weapon2' ? 'weapon' : 'armor';
+        const ids = new Set([...s.g.storage(p), ...p.comps.flatMap((x) => (sb === 'weapon' ? [x.weapon, x.weapon2] : [x.armor, x.armor2])).filter((x): x is string => !!x)]);
+        return [...ids].some((id) => !s.g.equipError(p, c, slot, id));
+      },
+    })
+    : undefined;
   return { ask: ui.ask, hasSheet: !!ui.sheet, sheetNode, actions, onAnswer, reset, picker, onEquip };
 }

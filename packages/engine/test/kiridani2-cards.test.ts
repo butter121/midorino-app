@@ -10,7 +10,7 @@ import type { CardDef, Effect, Cond } from '../src/kiridani2/types';
 const { occupations: OCCUPATIONS, weapons: WEAPONS, armors: ARMORS, tools: TOOLS, spells: SPELLS } = CARD_SET;
 const OPS = OP_KEYS;
 /** op のキーに添えてよいもの（build の値引き・train の fresh） */
-const OP_EXTRA = new Set(['discount', 'fresh']);
+const OP_EXTRA = new Set(['discount', 'fresh', 'surcharge', 'extra_units']);
 const MODS = MOD_KEYS;
 const CONDS = COND_KEYS;
 const STATS = STAT_KEYS as Set<string>;
@@ -20,7 +20,7 @@ const RACES = new Set(['beast', 'spirit', 'undead', 'humanoid', 'dragon']);
 // 始めからのマス（SPEC §4）＋人数で増えるマス（v1 min_p）＋段階カード＋まとめ指定
 const BASE_SPACES = [
   'forest', 'mine', 'meadow', 'spring', 'hunt', 'board', 'guild', 'forge', 'workshop', 'market', 'plaza', 'hall',
-  'grove', 'market2', 'deepmine', 'peddler', 'herb2', 'outpost', 'nest', 'any_accum', 'adventure', 'lair', 'curio', 'dig',
+  'grove', 'market2', 'deepmine', 'peddler', 'herb2', 'outpost', 'nest', 'any_accum', 'adventure', 'lair', 'curio', 'dig', 'any',
 ];
 const SPACES = new Set([...BASE_SPACES, ...STAGES.map((s) => s.id)]);
 const MOVES = ['hunt', 'gather', 'trade', 'fort', 'smith', 'family', 'arcane', 'beast', 'quest', 'ally', 'ruins', 'boss'] as const;
@@ -78,7 +78,7 @@ function checkEffect(e: Effect, where: string, errs: string[]) {
       if (op.gain_per) checkCost(op.gain_per.gain, where, errs);
     }
   }
-  if (e.limit != null && !['round', 'year', 'game'].includes(e.limit)) errs.push(`${where}: 知らない limit ${e.limit}`);
+  if (e.limit != null && !['round', 'round2', 'year', 'game'].includes(e.limit)) errs.push(`${where}: 知らない limit ${e.limit}`);
 }
 
 describe('kiridani2 cards', () => {
@@ -142,7 +142,7 @@ describe('kiridani2 cards', () => {
   });
 
   it('秘術：手札・身につけた秘術から使えるのは play と fight。唱えるマナ鉱石は0〜5、何度でもは1手番に1〜2回', () => {
-    for (const c of SPELLS) for (const e of c.effects) expect(['play', 'fight'], c.id).toContain(e.when);
+    for (const c of SPELLS) for (const e of c.effects) expect(['play', 'fight', 'fate'], c.id).toContain(e.when);
     for (const c of SPELLS) {
       expect(c.cost?.mana ?? 0, c.id).toBeLessThanOrEqual(5);
       if (!c.tome) expect(c.cost?.mana ?? 0, c.id).toBeGreaterThanOrEqual(1);

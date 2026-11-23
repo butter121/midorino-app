@@ -41,6 +41,8 @@ export type When =
   | 'round_start' | 'round_end' | 'winter' | 'game_end' | 'setup'
   | 'build' | 'hire' | 'craft' | 'sell' | 'buy' | 'trade' | 'donate' | 'spell' | 'tame'
   | 'occ' | 'quest' | 'hit' | 'injure' | 'repair'
+  /** 運命カードをめくったあと（引き直しなど）・仲間の熟練が上がったとき（その仲間の装備だけが効く）・手番の前に使えるカードの行動 */
+  | 'fate' | 'trained' | 'act'
   | `other:${string}`
   | 'play'
   | 'passive';
@@ -64,7 +66,9 @@ export type StatKey =
   /** このラウンドに唱えた回数 */
   | 'casts_round'
   /** 壊れたままの遺物の数・直前の冬に防いだ襲撃・持っている資源の合計（金貨を除く） */
-  | 'broken' | 'blocked' | 'res_total';
+  | 'broken' | 'blocked' | 'res_total'
+  /** 使い魔の種類の数・同じ種類の使い魔のいちばん多い数・このラウンドに戦った回数・戦闘中：送った仲間の守りの合計 */
+  | 'pet_types' | 'pet_same' | 'fights_round' | 'sent_guard';
 
 /** 効果の条件（すべて満たしたら効く）。知らないキーはエンジンが例外にする */
 export interface Cond {
@@ -87,6 +91,12 @@ export interface Cond {
   /** 進み具合 t（0〜1）がこれ以上 */
   t_min?: number;
   t_max?: number;
+  /** 自分の印（flag の op でつけたもの）がある */
+  flag?: string;
+  /** 直前の自分の戦闘に勝った（true）／負けた・まだ戦っていない（false） */
+  last_win?: boolean;
+  /** 使ったマスがこれではない（use:any の効果で使う） */
+  space_not?: string;
 }
 
 /** 効果の手順（do の1要素は、このうち1つのキーだけを持つ） */
@@ -165,6 +175,71 @@ export interface Op {
   /** すべてのたまるマスに資源を1つずつ足す */
   accum_add?: number;
   draw_any?: { from: ('occ' | 'weapon' | 'armor' | 'tool' | 'spell')[]; look: number; take: number };
+  // ---- 300枚のリストで足したもの（リストの効果をそのまま動かすため）
+  /** build のとき：費用の上乗せ（突貫大工の2つ目） */
+  surcharge?: Cost;
+  /** build のとき：費用のいちばん多い資源を n 個足す（工房長の2つ目） */
+  extra_units?: number;
+  /** 自分に印をつける（k の数を n 足す。max まで）。`r:` で始まる印はラウンドの始めに消える */
+  flag?: { k: string; n?: number; max?: number };
+  /** 戦闘中：送った仲間の武器の効果（戦闘・勝ったとき）をもう一度起こす */
+  weapon_again?: boolean;
+  /** 運命カードを引き直す（fate の効果） */
+  refate?: boolean;
+  /** 武器1本に戦力+1の印（1本に max まで） */
+  mark_weapon?: number;
+  /** 勝ったとき：送った仲間全員の熟練+1（攻めか守りを選ぶ） */
+  train_sent?: boolean;
+  /** trained の効果：上がった熟練を、ほかの仲間1人にも同じだけ */
+  train_copy?: boolean;
+  /** 戦闘中：仲間1人の熟練+n（この戦闘だけ。戦力に熟練の倍率がかかる） */
+  skill_boost?: number;
+  /** 仲間1人の熟練（攻め・守り）を、もう1人に写す（高いほうに合わせる。下がらない） */
+  skill_copy?: boolean;
+  /** 戦闘中：共闘の相手の守りを自分の守りにも足す */
+  ally_guard?: boolean;
+  /** tame の効果：使い魔にした魔物の戦利品も受け取る */
+  loot_tamed?: boolean;
+  /** 巣の魔物1体に印をつける（ほかの人はその魔物と戦えない） */
+  reserve?: boolean;
+  /** 戦闘中（主）：ほかの人の戦力を半分として数える（戦利品・魔石の分け方と、主を倒した手柄） */
+  hog?: boolean;
+  /** 名声 n 以下の壊れた遺物1つを費用なしで修復する */
+  repair_free?: number;
+  /** 遺物を look 枚見て1枚取り、すぐに費用 −cut で修復できる */
+  relic_fix?: { look: number; cut: number };
+  /** 遺物の山の上 n 枚を見て、好きな順に並べ替える */
+  relic_sort?: number;
+  /** 使ったたまるマスに、資源を n 個置いて残す（山から） */
+  accum_seed?: number;
+  /** ほかのたまるマス1つから資源を n 個取る */
+  accum_take?: number;
+  /** マス1つをこのラウンド、ほかの人が使えないようにする（accum＝たまるマスだけ） */
+  block?: 'accum' | 'any';
+  /** ほかの人1人の手札を見て、1枚を山に戻させる */
+  peek_discard?: boolean;
+  /** ほかの人1人は次のラウンド交換所を使えない */
+  market_ban?: boolean;
+  /** 好きな資源を n 個払う（1つずつ選ぶ） */
+  pay_pick?: { n: number; from: Res[] };
+  /** 印の数 × mult の名声（max まで） */
+  fame_flag?: { k: string; mult: number; max?: number };
+  /** 建てた道具1つを複製する */
+  dup_tool?: boolean;
+  /** このラウンド（round）か、次に起きるまで、when のときに do をする */
+  later?: { when: string; do: Op[]; round?: boolean };
+  /** 投資：去年預けた金貨を rate 倍（切り捨て）で受け取り、今年の分を預ける */
+  invest?: number;
+  /** 金貸し：ほかの人1人に amt を貸す。rounds ラウンド後に back を返す（返せなければ名声 −fame） */
+  lend?: { amt: number; back: number; rounds: number; fame: number };
+  /** 勝ったとき：戦利品を価値の表どおりに金貨で受け取れる */
+  loot_gold?: boolean;
+  /** このラウンド、価値の表で好きな1つの価値+1 */
+  value_up?: boolean;
+  /** このラウンド、好きな資源1種類を交換所で買えるのは自分だけ */
+  buy_ban?: boolean;
+  /** 取引で受け取ったのがこの資源なら、さらに1つ */
+  trade_skim?: Res[];
 }
 
 /** passive の修正（mod）。知らないキーはエンジンが例外にする */
@@ -252,6 +327,51 @@ export interface Mod {
   trade_max?: number;
   /** 冬の食料を金貨 n 枚で1つの代わりに払える */
   winter_gold?: number;
+  // ---- 300枚のリストをそのまま動かすために足したもの
+  /** 仲間1人が軽い武器を2本まで持てる */
+  dual_light?: boolean;
+  /** これを着た仲間は武器を1本多く持てる（着た仲間だけ） */
+  wear_weapon2?: boolean;
+  /** 仲間1人が軽い防具をもう1つ着られる */
+  dual_armor_light?: boolean;
+  /** 熟練を上げるときの食料を薬草で払える */
+  train_herb?: boolean;
+  /** これを着た仲間は、休みでも訓練のマスに置ける（着た仲間だけ） */
+  rest_train?: boolean;
+  /** ラウンドで最初に使う秘術の費用 −n */
+  first_spell_cut?: number;
+  /** 仲間1人をマスに置かずに休ませると得るもの（1ラウンド1回） */
+  rest_gain?: Cost;
+  /** 秘術のマナ鉱石を薬草で払える（マナ鉱石1＝薬草 n） */
+  herb_mana?: number;
+  /** 好物1つを、好物でない資源 n 個で払える */
+  fav_alt?: number;
+  /** 使い魔にするとき好物の数 −n（1ラウンド1回） */
+  fav_cut_round?: number;
+  /** 巣で、次に出る魔物と入れ替えて戦える（次の魔物を見て選ぶ） */
+  nest_peek?: boolean;
+  /** 主も使い魔にできる（好物は n 倍。古竜は除く） */
+  boss_tame?: number;
+  /** 両手武器の戦力 +n */
+  two_hand_power?: number;
+  /** 修復の費用の素材1つを金貨 n で払える */
+  repair_gold?: number;
+  /** 防壁 n つとして数える */
+  wall_count?: number;
+  /** 取引で出す資源を1つ少なくできる（1ラウンド1回） */
+  trade_cut?: number;
+  /** 交換所で魔石を買うとき n 安い */
+  stone_buy_cut?: number;
+  /** ほかの人がいるマスにも置け、その人と取引を1回する（1ラウンド1回） */
+  squeeze?: boolean;
+  /** 負傷を治す薬草1つを金貨 n で払える */
+  heal_gold?: number;
+  /** 交換所の交換で受け取る数 +n（1ラウンド1回） */
+  market_plus?: number;
+  /** ほかの人が、金貨を払って価値の表どおりに資源を買える（取引とは別枠） */
+  stall?: boolean;
+  /** 自分だけが使えるマス（そのマスと同じことができる。1ラウンド1回） */
+  own_space?: string;
 }
 
 export interface Effect {
@@ -259,7 +379,8 @@ export interface Effect {
   if?: Cond;
   do?: Op[];
   mod?: Mod;
-  limit?: 'round' | 'year' | 'game' | null;
+  /** round2＝2ラウンドに1回 */
+  limit?: 'round' | 'round2' | 'year' | 'game' | null;
 }
 
 export interface Prereq {
@@ -416,6 +537,8 @@ export interface SpaceDef {
 
 // ------------------------------------------------------------ 出来事（画面はこれを見る）
 export type Seat = number;
+/** 装備の枠（weapon2・armor2 は2本目・2つ目） */
+export type Slot = 'weapon' | 'armor' | 'weapon2' | 'armor2';
 export type FightMode = 'normal' | 'safe' | 'gamble' | 'chip' | 'wait' | 'guard' | 'capture';
 
 export interface PowerPart { kind: string; label: string; value: number; seat?: Seat; ref?: string }
@@ -437,7 +560,7 @@ export type GameEvent =
   | { t: 'stage_reveal'; card: string; stage: number }
   | { t: 'refill'; adds: Record<string, Cost> }
   | { t: 'future'; seat: Seat; gain: Cost }
-  | { t: 'equip'; seat: Seat; companion: number; slot: 'weapon' | 'armor'; card: string | null }
+  | { t: 'equip'; seat: Seat; companion: number; slot: Slot; card: string | null }
   | { t: 'monster_spawn'; nest: string; monster: Monster }
   | { t: 'monster_forecast'; monsters: Monster[] }
   | { t: 'boss_reveal'; boss: Monster; round: number }
@@ -476,6 +599,10 @@ export type GameEvent =
   | { t: 'scrap'; seat: Seat; card: string }
   | { t: 'wait'; seat: Seat; nest: string }
   | { t: 'combat_end' }
+  /** 手札の1枚を山に戻させられた */
+  | { t: 'discard'; seat: Seat; card: string }
+  /** カードの効果で起きたこと（ふさいだマス・印・貸し付けなど。ログ用） */
+  | { t: 'note'; seat: Seat; card: string; text: string }
   | { t: 'winter_start' }
   | { t: 'upkeep'; seat: Seat; need: number; paid: number; discontent: number }
   | { t: 'raid'; seat: Seat; damage: number; blocked: number }
